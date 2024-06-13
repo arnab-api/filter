@@ -15,17 +15,17 @@ ENV_HPARAMS_DIR = "RELATIONS_HPARAMS_DIR"
 logger = logging.getLogger(__name__)
 
 try:
-    PATH = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(PATH, "../../env.yml"), "r") as f:
+    PROJECT_ROOT = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-2])
+    with open(os.path.join(PROJECT_ROOT, "env.yml"), "r") as f:
         config = yaml.safe_load(f)
         DEFAULT_MODELS_DIR = config["MODEL_DIR"]
-        DEFAULT_DATA_DIR = config["DATA_DIR"]
-        DEFAULT_RESULTS_DIR = config["RESULTS_DIR"]
-        DEFAULT_HPARAMS_DIR = config["HPARAMS_DIR"]
+        DEFAULT_DATA_DIR = os.path.join(PROJECT_ROOT, config["DATA_DIR"])
+        DEFAULT_RESULTS_DIR = os.path.join(PROJECT_ROOT, config["RESULTS_DIR"])
+        DEFAULT_HPARAMS_DIR = os.path.join(PROJECT_ROOT, config["HPARAMS_DIR"])
 
 except FileNotFoundError:
     logger.error(
-        '''env.yml not found! 
+        f'''env.yml not found in {PROJECT_ROOT}!
 Setting MODEL_ROOT="". Models will now be downloaded to conda env cache, if not already there
 Other defaults are set to:
     DATA_DIR = "data"
