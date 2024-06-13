@@ -16,46 +16,44 @@ logger = logging.getLogger(__name__)
 # CACHEABLE_FUNCS = ["forward", "ssm", "selective_scan"]
 
 
-class ModelandTokenizer:
+class ModelandTokenizer(LanguageModel):
     def __init__(
         self,
-        model: Optional[LanguageModel] = None,
+        base_lm: Optional[LanguageModel] = None,
         tokenizer: Optional[transformers.AutoTokenizer] = None,
-        model_path: Optional[
+        model_key: Optional[
             str
         ] = "EleutherAI/gpt-j-6B",  # if model is provided, this will be ignored and rewritten
         torch_dtype=torch.float16,
     ) -> None:
         assert (
-            model is not None or model_path is not None
-        ), "Either model or model_name must be provided"
-        if model is not None:
-            self.name = model.config._name_or_path.split("/")[-1]
-            if tokenizer is None:
-                tokenizer = model.tokenizer
+            base_lm is not None or model_key is not None
+        ), "Either the `base_lm` or `model_key` must be provided"
+        if base_lm is not None:
+            self.__dict__ = base_lm.__dict__
+            self.name = base_lm._model.config._name_or_path.split("/")[-1]
 
         else:
-            model_path = get_full_model_path(model_path)
-            model = LanguageModel(
-                model_key=model_path,
+            model_key = get_full_model_path(model_key)
+            self.__dict__ = LanguageModel(
+                model_key=model_key,
                 torch_dtype=torch_dtype,
                 device_map="auto",
                 dispatch=True,
-            )
-            self.name = model_path
+            ).__dict__
+            self.name = model_key
 
-        self.model = model
-        self.tokenizer = model.tokenizer
-        self.model._model.eval()
-        self.device = determine_device(self.model._model)
-        self.parse_config(model.config)
+        self._model.eval()
+        self.tokenizer = tokenizer if tokenizer is not None else self.tokenizer
+        self.device = determine_device(self._model)
+        self.parse_config()
 
         logger.info(
-            f"loaded model <{model_path}> | size: {get_model_size(model._model)} | dtype: {determine_dtype(model._model)} | device: {self.device}"
+            f"loaded model <{model_key}> | size: {get_model_size(self._model)} | dtype: {determine_dtype(self._model)} | device: {self.device}"
         )
         # self.cache_forwards()
 
-    def parse_config(self, model_config=None) -> None:
+    def parse_config(self) -> None:
         fields = {
             "n_layer": None,
             "n_embd": None,
@@ -75,21 +73,21 @@ class ModelandTokenizer:
 
         fields["attn_module_name_format"] = None
         fields["mlp_module_name_format"] = None
-        if is_llama_variant(self.model):
+        if is_llama_variant(self):
             fields["mlp_module_name_format"] = "model.layers.{}.mlp"
             fields["attn_module_name_format"] = "model.layers.{}.self_attn"
 
-        elif is_gpt_variant(self.model):
-            # ! will be a little different for neox models. Ignoring for now
+        elif is_gpt_variant(self):
+            # ! will be different for neox models. Ignoring for now
             fields["mlp_module_name_format"] = "transformer.h.{}.mlp"
             fields["attn_module_name_format"] = "transformer.h.{}.attn"
 
-        elif is_pythia_variant(self.model):
+        elif is_pythia_variant(self):
             fields["mlp_module_name_format"] = "gpt_neox.layers.{}.mlp"
             fields["attn_module_name_format"] = "gpt_neox.layers.{}.attention"
 
         else:
-            logger.error(f"Unknown model type: {type(self.model).__name__}")
+            logger.error(f"Unknown model type: {type(unwrap_model(self)).__name__}")
 
         if fields["layer_name_format"] is not None and fields["n_layer"] is not None:
             fields["layer_names"] = [
@@ -99,14 +97,14 @@ class ModelandTokenizer:
         for key, value in fields.items():
             if value is None:
                 logger.error(
-                    f"!!! Error ({type(self.model).__name__}): {key} could not be set !!!"
+                    f"!!! Error ({type(unwrap_model(self)).__name__}): {key} could not be set !!!"
                 )
             setattr(self, key, value)
 
     @property
     def lm_head(self) -> torch.nn.Sequential:
-        lm_head = baukit.get_module(unwrap_model(self.model), self.lm_head_name)
-        ln_f = baukit.get_module(unwrap_model(self.model), self.final_layer_norm_name)
+        lm_head = baukit.get_module(unwrap_model(self), self.lm_head_name)
+        ln_f = baukit.get_module(unwrap_model(self), self.final_layer_norm_name)
         return LMHead(final_layer_norm=ln_f, lm_head=lm_head)
 
     # def cache_forwards(self):
@@ -164,6 +162,13 @@ def get_model_size(
     return bytes_to_human_readable(size_all, unit)
 
 
+def bytes_to_human_readable(
+    size: int, unit: Literal["B", "KB", "MB", "GB"] = "MB"
+) -> str:
+    denom = {"B": 1, "KB": 2**10, "MB": 2**20, "GB": 2**30}[unit]
+    return f"{size / denom:.3f} {unit}"
+
+
 def get_full_model_path(model_name: str) -> str:
     full_path = os.path.join(DEFAULT_MODELS_DIR, model_name)
     if os.path.exists(full_path):
@@ -176,18 +181,9 @@ If not found in cache, model will be downloaded from HuggingFace to cache direct
         return model_name
 
 
-def bytes_to_human_readable(
-    size: int, unit: Literal["B", "KB", "MB", "GB"] = "MB"
-) -> str:
-    denom = {"B": 1, "KB": 2**10, "MB": 2**20, "GB": 2**30}[unit]
-    return f"{size / denom:.3f} {unit}"
-
-
 def unwrap_model(
     net: ModelandTokenizer | LanguageModel | torch.nn.Module,
 ) -> torch.nn.Module:
-    if isinstance(net, ModelandTokenizer):
-        return net.model._model
     if isinstance(net, LanguageModel):
         return net._model
     if isinstance(net, torch.nn.Module):
