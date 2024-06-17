@@ -305,7 +305,7 @@ def find_token_range(
     if substring not in string:
         raise ValueError(f'"{substring}" not found in "{string}"')
 
-    logger.debug(f"Found substring in string {string.count(substring)} times")
+    # logger.debug(f"Found substring in string {string.count(substring)} times")
 
     if occurrence < 0:
         # If occurrence is negative, count from the right.
@@ -330,9 +330,9 @@ def find_token_range(
                 ) from error
     char_end = char_start + len(substring)
 
-    logger.debug(
-        f"char range: [{char_start}, {char_end}] => `{string[char_start:char_end]}`"
-    )
+    # logger.debug(
+    #     f"char range: [{char_start}, {char_end}] => `{string[char_start:char_end]}`"
+    # )
 
     if offset_mapping is None:
         assert tokenizer is not None
