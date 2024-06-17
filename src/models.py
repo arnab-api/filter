@@ -130,7 +130,7 @@ class ModelandTokenizer(LanguageModel):
 
     def __call__(self, *args, **kwargs) -> Any:
         """Call the model."""
-        return self.model._model(*args, **kwargs)
+        return self._model(*args, **kwargs)
 
 
 class LMHead(torch.nn.Module):
@@ -423,6 +423,45 @@ def determine_dtype(model: ModelandTokenizer | Model) -> torch.dtype | None:
     return parameter.dtype if parameter is not None else None
 
 
+def prepare_offset_mapping(string, tokenized, special_tokens):
+    """LLaMA3 tokenizer in Huggingface is buggy. This function is a workaround for the bug."""
+    """
+    <Test>
+    
+    prompts = ["The Eiffle Tower is located in", "The Space Needle is located in"]
+    inp = prepare_input(
+        prompts = prompts,
+        tokenizer=mt,
+        return_offsets_mapping=True,
+        device="cuda"
+    )
+
+    i=1 # <to be changed>
+    for token_id, offset in zip(inp["input_ids"][i], inp["offset_mapping"][i]):
+        print(f"`{tokenizer.decode(token_id)}`, {offset=} | `{prompts[i][offset[0]:offset[1]]}`")
+
+    """
+
+    offset_mapping = []
+    end = 0
+    for token in tokenized:
+        if token in special_tokens:
+            offset_mapping.append((end, end))
+            continue
+        # print(f"{string[end:].find(token)} | {end=}, {token=}, {string[end:]}")
+        next_tok_idx = string[end:].find(token)
+        assert next_tok_idx != -1, f"{token} not found in {string[end:]}"
+        assert next_tok_idx in [
+            0,
+            1,
+        ], f"{token} not found at the beginning of the string"
+
+        start = end
+        end = start + string[end:].find(token) + len(token)
+        offset_mapping.append((start, end))
+    return offset_mapping
+
+
 def prepare_input(
     prompts: str | list[str],
     tokenizer: ModelandTokenizer | Tokenizer,
@@ -435,9 +474,12 @@ def prepare_input(
     if isinstance(tokenizer, ModelandTokenizer):
         device = determine_device(
             tokenizer
-        )  # if tokenizer is ModelandTokenizer, get device and ignore the passed device
-    tokenizer = unwrap_tokenizer(tokenizer)
+        )  # if tokenizer type is ModelandTokenizer, get device and ignore the passed device
+    calculate_offsets = return_offsets_mapping and (
+        isinstance(tokenizer, ModelandTokenizer) and "llama-3" in tokenizer.name.lower()
+    )
 
+    tokenizer = unwrap_tokenizer(tokenizer)
     prompts = [prompts] if isinstance(prompts, str) else prompts
     if add_bos_token:
         prompts = [maybe_prefix_bos(tokenizer, p) for p in prompts]
@@ -449,5 +491,19 @@ def prepare_input(
         padding="longest",
         return_offsets_mapping=return_offsets_mapping,
     )
+
+    if calculate_offsets:
+        offsets = []
+        for i in range(len(prompts)):
+            tokenized = [tokenizer.decode(t) for t in inputs["input_ids"][i]]
+            offsets.append(
+                prepare_offset_mapping(
+                    string=prompts[i],
+                    tokenized=tokenized,
+                    special_tokens=tokenizer.all_special_tokens,
+                )
+            )
+        inputs["offset_mapping"] = torch.tensor(offsets)
+
     inputs = inputs.to(device)
     return inputs
