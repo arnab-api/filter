@@ -2,7 +2,7 @@
 
 import pathlib
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal, Optional, Sequence
 
 import numpy
 import torch
@@ -44,6 +44,7 @@ class PredictedToken(DataClassJsonMixin):
 
     token: str
     prob: float
+    token_id: Optional[int] = None
 
     def __str__(self) -> str:
         return f'"{self.token}" (p={self.prob:.3f})'

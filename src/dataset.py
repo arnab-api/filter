@@ -26,6 +26,31 @@ class RelationSample(DataClassJsonMixin):
         return f"{self.subject} -> {self.object}"
 
 
+@dataclass(frozen=False)
+class InContextQuery(DataClassJsonMixin):
+    """A query with a subject and object, and a context in which to embed it."""
+
+    subject: str
+    cf_description: str
+    answer: str
+
+    template: str = (
+        "Assume an alternative universe where <subj> is in <loc>. In that universe, <subj> is located in the city of"
+    )
+
+    def set_template(self, template: str):
+        self.template = template
+
+    @property
+    def query(self) -> str:
+        return self.template.replace("<subj>", self.subject).replace(
+            "<loc>", self.cf_description
+        )
+
+    def __str__(self) -> str:
+        return f"{self.subject} -> {self.cf_description} | answer: {self.answer}"
+
+
 @dataclass(frozen=True)
 class RelationProperties(DataClassJsonMixin):
     """Some metadata about a relation."""

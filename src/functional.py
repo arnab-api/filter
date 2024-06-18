@@ -56,7 +56,9 @@ def logit_lens(
 
 
 def untuple(object: Any):
-    if isinstance(object, tuple) or "LanguageModelProxy" in str(type(object)):
+    if isinstance(object, tuple) or (
+        "LanguageModelProxy" in str(type(object)) and len(object) > 1
+    ):
         return object[0]
     return object
 
@@ -176,7 +178,7 @@ def predict_next_token(
             for k, v in inputs.items()
         }
 
-        with mt.trace(batch_inputs, scan=False):
+        with mt.trace(batch_inputs, scan=i == 0) as tr:
             batch_logits = mt.output.logits.save()
 
         batch_logits = batch_logits[:, -1, :]
@@ -189,6 +191,7 @@ def predict_next_token(
                     PredictedToken(
                         token=mt.tokenizer.decode(token_ids[j]),
                         prob=token_probs[j].item(),
+                        token_id=token_ids[j],
                     )
                     for j in range(k)
                 ]
@@ -212,6 +215,7 @@ def predict_next_token(
                         PredictedToken(
                             token=mt.tokenizer.decode(tok_id),
                             prob=prob_tok.item(),
+                            token_id=tok_id,
                         ),
                     )
                 )
@@ -247,19 +251,51 @@ def get_hs(
     layer_names = [layer_name for layer_name, _ in layer_and_index]
     layer_names = list(set(layer_names))
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
-    with mt.trace(input, scan=False):
+    with mt.trace(input, scan=True):
         for layer_name in layer_names:
             module = get_module_nnsight(mt, layer_name)
-            layer_states[layer_name] = untuple(module.output).save()
+            layer_states[layer_name] = module.output.save()
 
     hs = {}
 
     for layer_name, index in layer_and_index:
-        hs[(layer_name, index)] = layer_states[layer_name][:, index, :].squeeze()
+        hs[(layer_name, index)] = untuple(layer_states[layer_name])[
+            :, index, :
+        ].squeeze()
 
     if len(hs) == 1:
         return list(hs.values())[0]
     return hs
+
+
+@torch.inference_mode
+def get_all_module_states(
+    mt: ModelandTokenizer,
+    input: str | TokenizerOutput,
+    kind: Literal["residual", "mlp", "attention"] = "residual",
+) -> dict[tuple[str, int], torch.Tensor]:
+    if isinstance(input, TokenizerOutput):
+        if "offset_mapping" in input:
+            input.pop("offset_mapping")
+    else:
+        input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
+
+    layer_name_format = None
+    if kind == "residual":
+        layer_name_format = mt.layer_name_format
+    elif kind == "mlp":
+        layer_name_format = mt.mlp_module_name_format
+    elif kind == "attention":
+        layer_name_format = mt.attn_module_name_format
+    else:
+        raise ValueError(f"kind must be one of 'residual', 'mlp', 'attention'")
+
+    layer_and_index = []
+    for layer_idx in range(mt.n_layer):
+        for token_idx in range(input.input_ids.shape[1]):
+            layer_and_index.append((layer_name_format.format(layer_idx), token_idx))
+
+    return get_hs(mt, input, layer_and_index)
 
 
 def find_token_range(
