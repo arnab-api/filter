@@ -2,6 +2,7 @@ import os
 from typing import Literal, Optional
 
 import matplotlib.pyplot as plt
+import torch
 
 from src.trace import CausalTracingResult
 
@@ -83,4 +84,58 @@ def plot_trace_heatmap(
         if savepdf is not None:
             os.makedirs(os.path.dirname(savepdf), exist_ok=True)
             plt.savefig(savepdf, bbox_inches="tight", dpi=300)
+        plt.show()
+
+
+import matplotlib.pyplot as plt
+
+
+def visualize_attn_matrix(
+    attn_matrix: torch.Tensor,
+    tokens: list[str],
+    remove_eos: Optional[str] = None,
+    title: str | None = None,
+    color_scheme: str = "Blues",
+):
+    assert (
+        attn_matrix.shape[0] == attn_matrix.shape[1]
+    ), "Attention matrix must be square"
+    assert (
+        len(tokens) == attn_matrix.shape[-1]
+    ), "Tokens and attention matrix must have the same length"
+
+    start_idx = 0
+    if remove_eos:
+        start_idx = 1 if tokens[0] == remove_eos else 0
+
+    with plt.rc_context(
+        rc={
+            "font.family": "Times New Roman",
+            # "font.size": 13,
+        }
+    ):
+
+        img = plt.imshow(
+            attn_matrix[start_idx:, start_idx:],
+            cmap=color_scheme,
+            interpolation="nearest",
+        )
+        plt.colorbar(img, orientation="vertical")
+
+        plt.xticks(
+            range(len(tokens) - start_idx),
+            [f'" {t}"' for t in tokens[start_idx:]],
+            rotation=90,
+        )
+        plt.yticks(
+            range(len(tokens) - start_idx),
+            [f'" {t}"' for t in tokens[start_idx:]],
+        )
+
+        plt.ylabel("Query Token")
+        plt.xlabel("Key Token")
+
+        if title:
+            plt.title(title)
+
         plt.show()

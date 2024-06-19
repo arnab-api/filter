@@ -13,7 +13,10 @@ from src.utils.env_utils import DEFAULT_MODELS_DIR
 
 logger = logging.getLogger(__name__)
 
-# CACHEABLE_FUNCS = ["forward", "ssm", "selective_scan"]
+CACHEABLE_FUNCS = [
+    "forward",
+    # "ssm", "selective_scan" , # specific to Mamba models
+]
 
 
 class ModelandTokenizer(LanguageModel):
@@ -51,7 +54,7 @@ class ModelandTokenizer(LanguageModel):
         logger.info(
             f"loaded model <{model_key}> | size: {get_model_size(self._model)} | dtype: {determine_dtype(self._model)} | device: {self.device}"
         )
-        # self.cache_forwards()
+        self.cache_forwards()
 
     def parse_config(self) -> None:
         fields = {
@@ -107,26 +110,27 @@ class ModelandTokenizer(LanguageModel):
         ln_f = baukit.get_module(unwrap_model(self), self.final_layer_norm_name)
         return LMHead(final_layer_norm=ln_f, lm_head=lm_head)
 
-    # def cache_forwards(self):
-    #     """
-    #     Caches the forward pass of all the modules.
-    #     Usuful to reset the model to its original state after an overwrite.
-    #     """
-    #     self._module_forwards: dict = {}
-    #     for name, module in self.model.named_modules():
-    #         self._module_forwards[name] = {}
-    #         for func_name in CACHEABLE_FUNCS:
-    #             if hasattr(module, func_name):
-    #                 self._module_forwards[name][func_name] = getattr(module, func_name)
+    def cache_forwards(self):
+        """
+        Caches the forward pass of all the modules.
+        Usuful to reset the model to its original state after an overwrite.
+        """
+        self._module_forwards: dict = {}
+        for name, module in self._model.named_modules():
+            self._module_forwards[name] = {}
+            for func_name in CACHEABLE_FUNCS:
+                if hasattr(module, func_name):
+                    self._module_forwards[name][func_name] = getattr(module, func_name)
 
-    # def reset_forward(self) -> None:
-    #     """
-    #     Resets the forward pass of all the modules to their original state.
-    #     """
-    #     for name, module in self.model.named_modules():
-    #         for func_name in CACHEABLE_FUNCS:
-    #             if hasattr(module, func_name):
-    #                 setattr(module, func_name, self._module_forwards[name][func_name])
+    def reset_forward(self) -> None:
+        """
+        Resets the forward pass of all the modules to their original state.
+        """
+        for name, module in self._model.named_modules():
+            # print(name, hasattr(module, "forward"))
+            for func_name in CACHEABLE_FUNCS:
+                if hasattr(module, func_name):
+                    setattr(module, func_name, self._module_forwards[name][func_name])
 
     def __call__(self, *args, **kwargs) -> Any:
         """Call the model."""

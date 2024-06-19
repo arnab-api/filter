@@ -109,7 +109,6 @@ def calculate_indirect_effects(
     window_size: int = 1,
     kind: Literal["residual", "mlp", "attention"] = "residual",
 ) -> dict[tuple[str, int], float]:
-    # TODO: adapt this function to consider a window of states
     is_first = True
     indirect_effects = {loc: -1 for loc in locations}
     for loc in tqdm(locations):
@@ -206,7 +205,7 @@ def trace_important_states(
             corrupt_inputs.attention_mask[0],
         )
     ):
-        print(
+        logger.debug(
             f"{idx=} =>  [{a1}] {mt.tokenizer.decode(t1)} || [{a2}] {mt.tokenizer.decode(t2)}"
         )
 
