@@ -14,7 +14,7 @@ from src.functional import (
     get_all_module_states,
     get_module_nnsight,
     predict_next_token,
-    untuple,
+    guess_subject,
 )
 from src.models import ModelandTokenizer, is_llama_variant, prepare_input
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
@@ -135,7 +135,6 @@ class CausalTracingResult(DataClassJsonMixin):
     clean_input_toks: list[str]
     corrupt_input_toks: list[str]
     trace_start_idx: int
-    subj_end: int
     answer: PredictedToken
     low_score: float
     indirect_effects: torch.Tensor
@@ -150,6 +149,7 @@ def trace_important_states(
     clean_query: InContextQuery,
     corrupt_query: InContextQuery,
     kind: Literal["residual", "mlp", "attention"] = "residual",
+    trace_token_strategy: Literal["subj_query", "all"] = "subj_query",
     window_size: int = 1,
     normalize=True,
 ) -> CausalTracingResult:
@@ -164,38 +164,167 @@ def trace_important_states(
         prompts=corrupt_query.query, tokenizer=mt, return_offsets_mapping=True
     )
 
-    clean_subj_range = find_token_range(
-        string=clean_query.query,
-        substring=clean_query.subject,
-        tokenizer=mt.tokenizer,
-        occurrence=-1,
-        offset_mapping=clean_inputs["offset_mapping"][0],
-    )
-    corrupt_subj_range = find_token_range(
-        string=corrupt_query.query,
-        substring=corrupt_query.subject,
-        tokenizer=mt.tokenizer,
-        occurrence=-1,
-        offset_mapping=corrupt_inputs["offset_mapping"][0],
-    )
-    logger.debug(f"{clean_subj_range=} | {corrupt_subj_range=}")
+    if trace_token_strategy == "subj_query":
+        clean_subj_range = find_token_range(
+            string=clean_query.query,
+            substring=clean_query.subject,
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=clean_inputs["offset_mapping"][0],
+        )
+        corrupt_subj_range = find_token_range(
+            string=corrupt_query.query,
+            substring=corrupt_query.subject,
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=corrupt_inputs["offset_mapping"][0],
+        )
+        logger.debug(f"{clean_subj_range=} | {corrupt_subj_range=}")
 
-    # always insert 1 padding token
-    subj_end = max(clean_subj_range[1], corrupt_subj_range[1]) + 1
-    logger.debug(f"setting {subj_end=}")
+        # always insert 1 padding token
+        subj_end = max(clean_subj_range[1], corrupt_subj_range[1]) + 1
+        logger.debug(f"setting {subj_end=}")
 
-    clean_inputs = insert_padding_before_subj(
-        clean_inputs,
-        clean_subj_range,
-        subj_end,
-        pad_id=mt.tokenizer.pad_token_id,
-    )
-    corrupt_inputs = insert_padding_before_subj(
-        corrupt_inputs,
-        corrupt_subj_range,
-        subj_end,
-        pad_id=mt.tokenizer.pad_token_id,
-    )
+        clean_inputs = insert_padding_before_subj(
+            clean_inputs,
+            clean_subj_range,
+            subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+        corrupt_inputs = insert_padding_before_subj(
+            corrupt_inputs,
+            corrupt_subj_range,
+            subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+
+        clean_shift = subj_end - clean_subj_range[1]
+        clean_subj_range = (clean_subj_range[0] + clean_shift, subj_end)
+
+        corrupt_shift = subj_end - corrupt_subj_range[1]
+        corrupt_subj_range = (corrupt_subj_range[0] + corrupt_shift, subj_end)
+
+        logger.debug(f"<shifted> {clean_subj_range=} | {corrupt_subj_range=}")
+
+    elif trace_token_strategy == "all":
+        clean_subj_ranges = [
+            find_token_range(
+                string=clean_query.query,
+                substring=clean_query.subject,
+                tokenizer=mt.tokenizer,
+                occurrence=order,
+                offset_mapping=clean_inputs["offset_mapping"][0],
+            )
+            for order in [0, -1]
+        ]
+
+        corrupt_subj_ranges = [
+            find_token_range(
+                string=corrupt_query.query,
+                substring=corrupt_query.subject,
+                tokenizer=mt.tokenizer,
+                occurrence=order,
+                offset_mapping=corrupt_inputs["offset_mapping"][0],
+            )
+            for order in [0, -1]
+        ]
+
+        clean_cofa_range = find_token_range(
+            string=clean_query.query,
+            substring=guess_subject(clean_query.cf_description),
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=clean_inputs["offset_mapping"][0],
+        )
+
+        corrupt_cofa_range = find_token_range(
+            string=corrupt_query.query,
+            substring=guess_subject(corrupt_query.cf_description),
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=corrupt_inputs["offset_mapping"][0],
+        )
+
+        # align the subjects in the context
+        subj_end_in_context = (
+            max(clean_subj_ranges[0][1], corrupt_subj_ranges[0][1]) + 1
+        )
+        clean_inputs = insert_padding_before_subj(
+            clean_inputs,
+            clean_subj_ranges[0],
+            subj_end_in_context,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+        corrupt_inputs = insert_padding_before_subj(
+            corrupt_inputs,
+            corrupt_subj_ranges[0],
+            subj_end_in_context,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+
+        n_clean_pads = subj_end_in_context - clean_subj_ranges[0][1]
+        clean_subj_ranges[1] = (
+            clean_subj_ranges[1][0] + n_clean_pads,
+            clean_subj_ranges[1][1] + n_clean_pads,
+        )
+        clean_cofa_range = (
+            clean_cofa_range[0] + n_clean_pads,
+            clean_cofa_range[1] + n_clean_pads,
+        )
+
+        n_corrupt_pads = subj_end_in_context - corrupt_subj_ranges[0][1]
+        corrupt_subj_ranges[1] = (
+            corrupt_subj_ranges[1][0] + n_corrupt_pads,
+            corrupt_subj_ranges[1][1] + n_corrupt_pads,
+        )
+        corrupt_cofa_range = (
+            corrupt_cofa_range[0] + n_corrupt_pads,
+            corrupt_cofa_range[1] + n_corrupt_pads,
+        )
+
+        # align the counterfactuals in the context
+        cofa_ends_in_context = max(clean_cofa_range[1], corrupt_cofa_range[1]) + 1
+        clean_inputs = insert_padding_before_subj(
+            clean_inputs,
+            clean_cofa_range,
+            cofa_ends_in_context,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+        corrupt_inputs = insert_padding_before_subj(
+            corrupt_inputs,
+            corrupt_cofa_range,
+            cofa_ends_in_context,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+
+        n_clean_pads = cofa_ends_in_context - clean_cofa_range[1]
+        clean_subj_ranges[1] = (
+            clean_subj_ranges[1][0] + n_clean_pads,
+            clean_subj_ranges[1][1] + n_clean_pads,
+        )
+        n_corrupt_pads = cofa_ends_in_context - corrupt_cofa_range[1]
+        corrupt_subj_ranges[1] = (
+            corrupt_subj_ranges[1][0] + n_corrupt_pads,
+            corrupt_subj_ranges[1][1] + n_corrupt_pads,
+        )
+
+        # align the subjects in the query
+        subj_ends_in_query = max(clean_subj_ranges[1][1], corrupt_subj_ranges[1][1]) + 1
+        clean_inputs = insert_padding_before_subj(
+            clean_inputs,
+            clean_subj_ranges[1],
+            subj_ends_in_query,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+        corrupt_inputs = insert_padding_before_subj(
+            corrupt_inputs,
+            corrupt_subj_ranges[1],
+            subj_ends_in_query,
+            pad_id=mt.tokenizer.pad_token_id,
+        )
+
+    else:
+        raise ValueError("trace_token_strategy must be one of 'subj_query', 'all'")
 
     for idx, (t1, a1, t2, a2) in enumerate(
         zip(
@@ -209,16 +338,11 @@ def trace_important_states(
             f"{idx=} =>  [{a1}] {mt.tokenizer.decode(t1)} || [{a2}] {mt.tokenizer.decode(t2)}"
         )
 
-    clean_shift = subj_end - clean_subj_range[1]
-    clean_subj_range = (clean_subj_range[0] + clean_shift, subj_end)
-
-    corrupt_shift = subj_end - corrupt_subj_range[1]
-    corrupt_subj_range = (corrupt_subj_range[0] + corrupt_shift, subj_end)
-
-    logger.debug(f"<shifted> {clean_subj_range=} | {corrupt_subj_range=}")
-
     # trace start idx
-    trace_start_idx = min(clean_subj_range[0], corrupt_subj_range[0])
+    if trace_token_strategy == "subj_query":
+        trace_start_idx = min(clean_subj_range[0], corrupt_subj_range[0])
+    elif trace_token_strategy == "all":
+        trace_start_idx = 1
 
     # clean run
     clean_states = get_all_module_states(mt=mt, input=clean_inputs, kind=kind)
@@ -294,7 +418,6 @@ def trace_important_states(
             mt.tokenizer.decode(tok) for tok in corrupt_inputs.input_ids[0]
         ],
         trace_start_idx=trace_start_idx,
-        subj_end=subj_end,
         answer=answer,
         low_score=corrupt_probability,
         indirect_effects=indirect_effect_matrix,

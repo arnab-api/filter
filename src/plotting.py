@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Literal, Optional
 
@@ -5,6 +6,8 @@ import matplotlib.pyplot as plt
 import torch
 
 from src.trace import CausalTracingResult
+
+logger = logging.getLogger(__name__)
 
 
 def get_color_map(kind: Literal["residual", "mlp", "attention"] = "residual"):
@@ -34,10 +37,13 @@ def plot_trace_heatmap(
     scores = result.indirect_effects
     clean_tokens = replace_special_tokens(result.clean_input_toks)
     corrupt_tokens = replace_special_tokens(result.corrupt_input_toks)
-    tokens = clean_tokens[result.trace_start_idx :]
-    for t_idx in range(result.subj_end - result.trace_start_idx):
-        tokens[t_idx] = (
-            f"{clean_tokens[t_idx + result.trace_start_idx]}/{corrupt_tokens[t_idx + result.trace_start_idx]}"
+
+    tokens = []
+    for clean_tok, corrupt_tok in zip(
+        clean_tokens[result.trace_start_idx :], corrupt_tokens[result.trace_start_idx :]
+    ):
+        tokens.append(
+            f"{clean_tok}/{corrupt_tok}" if clean_tok != corrupt_tok else clean_tok
         )
 
     with plt.rc_context(
@@ -78,7 +84,7 @@ def plot_trace_heatmap(
 
         color_scale = plt.colorbar(heatmap)
         color_scale.ax.set_title(
-            f"p({result.answer.token.strip()})", y=-0.12, fontsize=10
+            f"p({result.answer.token.strip()})", y=-0.1, fontsize=10
         )
 
         if savepdf is not None:
@@ -139,3 +145,42 @@ def visualize_attn_matrix(
             plt.title(title)
 
         plt.show()
+
+
+from src.utils.typing import ArrayLike, PathLike
+
+
+def matrix_heatmap(
+    matrix: ArrayLike,
+    limit_dim: int = 100,
+    canvas: plt = plt,
+    save_path: PathLike | None = None,
+    title: str | None = None,
+    tick_gap: int | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+) -> None:
+    """Plot cross section of matrix as a heatmap."""
+
+    limit_dim = min(limit_dim, matrix.shape[0])
+
+    matrix = torch.stack([w[:limit_dim] for w in matrix[:limit_dim]]).cpu()
+    limit = max(abs(matrix.min().item()), abs(matrix.max().item()))
+    img = plt.imshow(
+        matrix, cmap="RdBu", interpolation="nearest", vmin=-limit, vmax=limit
+    )
+    canvas.colorbar(img, orientation="vertical")
+
+    if x_label is not None:
+        canvas.xlabel(x_label)
+    if y_label is not None:
+        canvas.ylabel(y_label)
+    if tick_gap is not None:
+        canvas.xticks(range(0, limit_dim, tick_gap), range(0, limit_dim, tick_gap))
+        canvas.yticks(range(0, limit_dim, tick_gap), range(0, limit_dim, tick_gap))
+
+    if title is not None:
+        canvas.title(title)
+    if save_path is not None:
+        canvas.savefig(str(save_path))
+    canvas.show()

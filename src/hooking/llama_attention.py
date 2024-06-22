@@ -147,11 +147,38 @@ def scaled_dot_product_attention(
     return attn_weight @ value
 
 
+def attn_per_head(
+    o_proj: torch.nn.modules.linear.Linear,
+    attn_output: torch.Tensor,
+):
+    b, n_head, q_len, h_dim = attn_output.size()
+    o_proj_weight_split = o_proj.weight.view(o_proj.out_features, n_head, h_dim)
+
+    per_head_contributions = []
+    for i in range(n_head):
+        attn_output_per_head = attn_output[:, i, :, :]  # shape: (b, q_len, h_dim)
+        attn_output_per_head = attn_output_per_head.to(
+            o_proj_weight_split[:, i, :].dtype
+        ).to(o_proj_weight_split[:, i, :].device)
+        projected_per_head = (
+            attn_output_per_head @ o_proj_weight_split[:, i, :].T
+        )  # shape: (b, q_len, out_features)
+        per_head_contributions.append(projected_per_head)
+
+    per_head_contributions = torch.stack(
+        per_head_contributions, dim=1
+    )  # shape: (b, n_head, q_len, out_features)
+    attn_output = per_head_contributions.sum(dim=1)  # shape: (b, q_len, out_features)
+
+    return attn_output, per_head_contributions
+
+
 def LlamaAttentionPatcher(
     block_name: Optional[str] = None,
     cut_attn_edges: Optional[dict[int, list[AttentionEdge]]] = None,
-    save_attn_matrices_for: Optional[list[int]] = None,
+    save_attn_for: Optional[list[int]] = None,
     attn_matrices: Optional[dict[int, torch.Tensor]] = None,
+    attn_contributions: Optional[dict[int, torch.Tensor]] = None,
 ) -> callable:
     """
     Wraps the forward method of the `LlamaSdpaAttention` class
@@ -164,11 +191,17 @@ def LlamaAttentionPatcher(
         attn_matrices: [head_idx, attn_matrix] to store the attention matrix for a specific head
     """
 
-    if save_attn_matrices_for is not None:
+    if save_attn_for is not None:
         assert (
-            attn_matrices is not None
-        ), "attn_matrices must be provided with save_attn_weights = True to store the attention matrices."
-        assert isinstance(attn_matrices, dict) and len(attn_matrices) == 0
+            attn_matrices is not None or attn_contributions is not None
+        ), "with save_attn_weights = True you need to provide attn_matrices or attn_contribution"
+        if attn_matrices is not None:
+            assert isinstance(attn_matrices, dict) and len(attn_matrices) == 0
+        if attn_contributions is not None:
+            assert isinstance(attn_contributions, dict) and len(attn_contributions) == 0
+
+    if attn_matrices is not None and attn_contributions is not None:
+        assert save_attn_for is not None
 
     def forward_patched(
         self,
@@ -205,9 +238,14 @@ def LlamaAttentionPatcher(
         bsz, q_len, _ = hidden_states.size()
 
         # ---------------------------------------------------------------------
-        if save_attn_matrices_for is not None:
-            for head_idx in save_attn_matrices_for:
-                attn_matrices[head_idx] = torch.zeros(bsz, q_len, q_len) - 1
+        if save_attn_for is not None:
+            for head_idx in save_attn_for:
+                if attn_matrices is not None:
+                    attn_matrices[head_idx] = torch.zeros(bsz, q_len, q_len) - 1
+                if attn_contributions is not None:
+                    attn_contributions[head_idx] = (
+                        torch.zeros(bsz, q_len, hidden_states.size(-1)) - 1
+                    )
         # ---------------------------------------------------------------------
 
         query_states = self.q_proj(hidden_states)
@@ -254,7 +292,7 @@ def LlamaAttentionPatcher(
         # in SDPA to support both torch.compile's dynamic shapes and full graph options. An inline conditional prevents dynamic shapes from compiling.
         is_causal = True if causal_mask is None and q_len > 1 else False
 
-        if cut_attn_edges is None and save_attn_matrices_for is None:
+        if cut_attn_edges is None and save_attn_for is None:
             # logger.info("defer to the default faster implementation")
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 query_states,
@@ -279,9 +317,23 @@ def LlamaAttentionPatcher(
                 store_attn_matrices=attn_matrices,
             )
 
+        # ---------------------------------------------------------------------
+        if attn_contributions is not None:
+            __attn_output, per_head_contribution = attn_per_head(
+                self.o_proj, attn_output
+            )
+            for head_idx in attn_contributions:
+                attn_contributions[head_idx] = per_head_contribution[:, head_idx, :, :]
+        # ---------------------------------------------------------------------
+
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(bsz, q_len, -1)
         attn_output = self.o_proj(attn_output)
+
+        if attn_contributions is not None:
+            logger.warning(
+                f"{torch.allclose(attn_output, __attn_output, atol=1e-3)=} | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
+            )
 
         return attn_output, None, past_key_value
 

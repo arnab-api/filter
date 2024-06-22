@@ -1,6 +1,7 @@
 import gc
 import logging
 from typing import Any, Literal, Optional, Union
+import re
 
 import torch
 from nnsight import LanguageModel
@@ -392,3 +393,9 @@ def find_token_range(
     assert token_end is not None
     assert token_start <= token_end
     return (token_start, token_end + 1)
+
+
+def guess_subject(prompt):
+    return re.search(r"(?!Wh(o|at|ere|en|ich|y) )([A-Z]\S*)(\s[A-Z][a-z']*)*", prompt)[
+        0
+    ].strip()
