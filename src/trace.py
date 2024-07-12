@@ -13,8 +13,8 @@ from src.functional import (
     find_token_range,
     get_all_module_states,
     get_module_nnsight,
-    predict_next_token,
     guess_subject,
+    predict_next_token,
 )
 from src.models import ModelandTokenizer, is_llama_variant, prepare_input
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput

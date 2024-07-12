@@ -67,6 +67,16 @@ class ModelandTokenizer(LanguageModel):
             "lm_head_name": None,
         }
 
+        if (
+            is_gpt_variant(self)
+            or is_llama_variant(self)
+            or is_gemma_variant(self)
+            or is_pythia_variant(self)
+        ) == False:
+            logger.error(
+                f"Unknown model type: {type(unwrap_model(self)).__name__}. Parsing may fail."
+            )
+
         fields["n_layer"] = len(determine_layers(self))
         fields["n_embd"] = determine_hidden_size(self)
         fields["embedder_name"] = determine_embedding_layer_path(self)
@@ -76,7 +86,7 @@ class ModelandTokenizer(LanguageModel):
 
         fields["attn_module_name_format"] = None
         fields["mlp_module_name_format"] = None
-        if is_llama_variant(self):
+        if is_llama_variant(self) or is_gemma_variant(self):
             fields["mlp_module_name_format"] = "model.layers.{}.mlp"
             fields["attn_module_name_format"] = "model.layers.{}.self_attn"
 
@@ -264,6 +274,20 @@ def is_llama_variant(mt: Model | ModelandTokenizer) -> bool:
     return False
 
 
+def is_gemma_variant(mt: Model | ModelandTokenizer) -> bool:
+    """Determine if model/tokenizer is gemma variant."""
+    if isinstance(mt, ModelandTokenizer) or isinstance(mt, LanguageModel):
+        mt = unwrap_model(mt)
+    if isinstance(mt, transformers.GemmaForCausalLM | transformers.Gemma2ForCausalLM):
+        return True
+    if hasattr(mt, "config"):
+        config = mt.config
+        if hasattr(config, "_name_or_path"):
+            name = config._name_or_path
+            return "gemma" in name.lower()
+    return False
+
+
 def any_parameter(model: ModelandTokenizer | Model) -> torch.nn.Parameter | None:
     """Get any example parameter for the model."""
     model = unwrap_model(model)
@@ -274,7 +298,7 @@ def determine_embedding_layer_path(model: ModelandTokenizer | Model) -> str:
     model = unwrap_model(model)
     if is_gpt_variant(model):
         return "transformer.wte"
-    elif isinstance(model, transformers.LlamaForCausalLM):
+    elif is_llama_variant(model) or is_gemma_variant(model):
         return "model.embed_tokens"
     elif is_pythia_variant(model):
         return "gpt_neox.embed_in"
@@ -286,7 +310,7 @@ def determine_final_layer_norm_path(model: ModelandTokenizer | Model) -> str:
     model = unwrap_model(model)
     if is_gpt_variant(model):
         return "transformer.ln_f"
-    elif isinstance(model, transformers.LlamaForCausalLM):
+    elif is_llama_variant(model) or is_gemma_variant(model):
         return "model.norm"
     elif is_pythia_variant(model):
         return "gpt_neox.final_layer_norm"
@@ -298,7 +322,7 @@ def determine_lm_head_path(model: ModelandTokenizer | Model) -> str:
     model = unwrap_model(model)
     if is_gpt_variant(model):
         return "lm_head"
-    elif isinstance(model, transformers.LlamaForCausalLM):
+    elif is_llama_variant(model) or is_gemma_variant(model):
         return "lm_head"
     elif is_pythia_variant(model):
         return "embed_out"
@@ -311,7 +335,7 @@ def determine_layers(model: ModelandTokenizer | Model) -> tuple[int, ...]:
     model = unwrap_model(model)
     assert isinstance(model, Model)
 
-    if is_gpt_variant(model) or is_llama_variant(model):
+    if is_gpt_variant(model) or is_llama_variant(model) or is_gemma_variant(model):
         n_layer = model.config.num_hidden_layers
     else:
         n_layer = model.config.n_layer
@@ -332,7 +356,7 @@ def determine_layer_name_format(
         if isinstance(model, transformers.GPTNeoXForCausalLM):
             return "gpt_neox.layers.{}"
         return "transformer.h.{}"
-    elif is_llama_variant(model):
+    elif is_llama_variant(model) or is_gemma_variant(model):
         return "model.layers.{}"
     elif is_pythia_variant(model):
         return "gpt_neox.layers.{}"

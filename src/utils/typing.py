@@ -22,6 +22,8 @@ Model = (
     | transformers.GPTJForCausalLM
     | transformers.GPTNeoXForCausalLM
     | transformers.LlamaForCausalLM
+    | transformers.Gemma2ForCausalLM
+    | transformers.GemmaForCausalLM
 )
 Tokenizer = transformers.PreTrainedTokenizerFast
 TokenizerOffsetMapping = Sequence[tuple[int, int]]
