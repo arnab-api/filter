@@ -512,7 +512,7 @@ def filter_bridge_samples_by_model_knowledge(
             f"{sample.entity_pair} <> {sample.bridge} | predicted: {predicted_bridge} => ({get_tick_marker(is_correct)})"
         )
         if is_correct:
-            filtered_samples.append(dataset[i])
+            filtered_samples.append(sample)
         if limit is not None and len(filtered_samples) >= limit:
             break
 

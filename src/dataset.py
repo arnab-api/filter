@@ -434,6 +434,7 @@ class BridgeRelation(DataClassJsonMixin):
         return self.examples[idx]
 
 
+@dataclass(frozen=False)
 class BridgeDataset(DataClassJsonMixin):
     relations: list[BridgeRelation]
     examples: list[BridgeSample]
@@ -443,18 +444,57 @@ class BridgeDataset(DataClassJsonMixin):
     query_template: str = "What is a common link between <entity1> and <entity2>?"
     _prefix: Optional[str] = None
 
-    def __init__(self, relations: list[BridgeRelation]):
+    def __init__(
+        self,
+        relations: list[BridgeRelation],
+        examples: Optional[list[BridgeSample]] = None,
+        icl_examples: Optional[list[BridgeSample]] = None,
+        query_instruction: Optional[str] = None,
+        query_template: Optional[str] = None,
+        _prefix: Optional[str] = None,
+    ):
         self.relations = relations
-        self.select_icl_examples(len(relations))
-        self.examples = []
-        for relation in relations:
-            self.examples.extend(relation.examples)
 
-        random.shuffle(self.examples)
+        if icl_examples is not None:
+            self.icl_examples = icl_examples
+        else:
+            self.select_icl_examples(len(relations))
+
+        if examples is not None:
+            self.examples = examples
+        else:
+            self.examples = []
+            for relation in relations:
+                self.examples.extend(relation.examples)
+            random.shuffle(self.examples)
+
+        if query_instruction is not None:
+            self.query_instruction = query_instruction
+
+        if query_template is not None:
+            self.query_template = query_template
+
+        if _prefix is not None:
+            self._prefix = _prefix
 
         logger.info(
             f"initialized bridge dataset with {len(self.relations)} relations and {len(self)} examples"
         )
+
+    # @classmethod
+    # def from_dict(dct: dict) -> "BridgeDataset":
+    #     relations = [BridgeRelation.from_dict(r) for r in dct["relations"]]
+    #     examples = [BridgeSample.from_dict(e) for e in dct["examples"]]
+    #     icl_examples = [BridgeSample.from_dict(e) for e in dct["icl_examples"]]
+    #     query_instruction = dct["query_instruction"]
+    #     query_template = dct["query_template"]
+    #     _prefix = dct["_prefix"]
+
+    #     return BridgeDataset()
+
+    #     logger.info(
+    #         f"loaded bridge dataset with {len(self.relations)} relations and {len(self)} examples"
+    #     )
 
     def __len__(self):
         return len(self.examples)
