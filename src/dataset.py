@@ -11,7 +11,7 @@ from typing import Optional, Sequence
 from dataclasses_json import DataClassJsonMixin
 from torch.utils.data import Dataset
 
-from src.utils.env_utils import DEFAULT_DATA_DIR
+from src.utils.env_utils import DEFAULT_DATA_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PathLike
 
 logger = logging.getLogger(__name__)
@@ -384,3 +384,150 @@ def load_dataset(*paths: PathLike) -> RelationDataset:
     relations = [Relation.from_dict(relation_dict) for relation_dict in relation_dicts]
 
     return RelationDataset(relations)
+
+
+# Bridge Dataset ----------------------------------- #
+@dataclass(frozen=False)
+class BridgeSample(DataClassJsonMixin):
+    bridge: str
+    entity_pair: list[str]
+    description: Optional[str] = None
+
+    def __post_init__(self):
+        assert (
+            len(self.entity_pair) == 2
+        ), f"entity_pair must have length 2, got {len(self.entity)} - {self.entity}"
+
+    def __str__(self):
+        return (
+            self.description
+            if self.description is not None
+            else f"{self.bridge} is a common link between {self.entity[0]} and {self.entity[1]}."
+        )
+
+
+@dataclass(frozen=False)
+class BridgeRelation(DataClassJsonMixin):
+    name: str
+    answer_template: str
+    swappable: bool
+    examples: list[BridgeSample] = field(default_factory=list)
+
+    def __post_init__(self):
+        assert "<bridge>" in self.answer_template
+        assert "<entity1>" in self.answer_template
+        assert "<entity2>" in self.answer_template
+        for example in self.examples:
+            example.description = (
+                self.answer_template.replace("<bridge>", example.bridge)
+                .replace("<entity1>", example.entity_pair[0])
+                .replace("<entity2>", example.entity_pair[1])
+            )
+        logger.info(
+            f"initialized bridge relation {self.name} with {len(self.examples)} examples"
+        )
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, idx):
+        return self.examples[idx]
+
+
+class BridgeDataset(DataClassJsonMixin):
+    relations: list[BridgeRelation]
+    examples: list[BridgeSample]
+    icl_examples: list[BridgeSample]
+
+    query_instruction: str = "Given two entities, find a common link between them."
+    query_template: str = "What is a common link between <entity1> and <entity2>?"
+    _prefix: Optional[str] = None
+
+    def __init__(self, relations: list[BridgeRelation]):
+        self.relations = relations
+        self.select_icl_examples(len(relations))
+        self.examples = []
+        for relation in relations:
+            self.examples.extend(relation.examples)
+
+        random.shuffle(self.examples)
+
+        logger.info(
+            f"initialized bridge dataset with {len(self.relations)} relations and {len(self)} examples"
+        )
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, idx):
+        sample = self.examples[idx]
+        return (
+            self.prefix
+            + self.query_template.replace("<entity1>", sample.entity_pair[0]).replace(
+                "<entity2>", sample.entity_pair[1]
+            )
+            + "\n"
+            + "A:",
+            sample.description,
+        )
+
+    def select_icl_examples(self, n: Optional[int] = None):
+        if n is None:
+            n = len(self.relations)
+        elif n < len(self.relations):
+            logger.warning(
+                f"selecting {n} examples from {len(self.relations)} relations"
+            )
+
+        self.icl_examples = []
+        r_idx = 0
+        while n > 0:
+            relation = self.relations[r_idx]
+            sample_idx = random.randint(0, len(relation) - 1)
+            self.icl_examples.append(relation[sample_idx])
+            relation.examples.pop(sample_idx)
+
+            r_idx = (r_idx + 1) % len(self.relations)
+            n -= 1
+
+        self._prefix = None
+
+    @property
+    def prefix(self):
+        if self._prefix is not None:
+            return self._prefix
+        ins = self.query_instruction + "\n#\n"
+        for sample in self.icl_examples:
+            ins += (
+                self.query_template.replace("<entity1>", sample.entity_pair[0]).replace(
+                    "<entity2>", sample.entity_pair[1]
+                )
+                + "\n"
+            )
+            ins += "A: " + str(sample) + "\n#\n"
+        return ins
+
+
+def load_bridge_relation(file_name: str) -> BridgeRelation:
+    with open(file_name, "r") as f:
+        data = json.load(f)
+    return BridgeRelation.from_dict(data)
+
+
+def load_bridge_relations() -> list[BridgeRelation]:
+    bridge_data_dir = os.path.join(DEFAULT_DATA_DIR, "bridge_dataset", "cleaned")
+    relations = []
+    for file_name in os.listdir(bridge_data_dir):
+        if file_name.endswith(".json"):
+            relations.append(
+                load_bridge_relation(os.path.join(bridge_data_dir, file_name))
+            )
+    return relations
+
+
+def load_bridge_dataset() -> BridgeDataset:
+    relations = load_bridge_relations()
+    return BridgeDataset(relations)
+
+
+# Bridge Dataset ----------------------------------- #

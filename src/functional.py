@@ -1,13 +1,20 @@
+import ctypes
 import gc
+import hashlib
+import json
 import logging
-from typing import Any, Literal, Optional, Union
+import os
 import re
+from typing import Any, Literal, Optional, Union
 
 import torch
 from nnsight import LanguageModel
+from openai import OpenAI
+from tqdm import tqdm
 
-from src.dataset import Relation
+from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant, prepare_input
+from src.utils.env_utils import GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -399,3 +406,119 @@ def guess_subject(prompt):
     return re.search(r"(?!Wh(o|at|ere|en|ich|y) )([A-Z]\S*)(\s[A-Z][a-z']*)*", prompt)[
         0
     ].strip()
+
+
+def predict_bridge_entity(
+    mt: ModelandTokenizer,
+    prompt: str,
+    search_span: int = 100,
+    separator: Literal["#", "-"] = "#",
+) -> str:
+    inputs = prepare_input(prompts=prompt, tokenizer=mt, add_bos_token=False)
+
+    bridge_entity = ""
+    while search_span > 0:
+        predicted_token = predict_next_token(mt=mt, inputs=inputs, k=1)[0][0]
+        if predicted_token.token.strip() == separator:
+            break
+
+        bridge_entity += predicted_token.token
+        # print(torch.tensor([predicted_token.token_id]).to(mt.device))
+        # print(inputs["input_ids"].device)
+        inputs["input_ids"] = torch.cat(
+            [
+                inputs["input_ids"],
+                torch.tensor([predicted_token.token_id])[None].to(mt.device),
+            ],
+            dim=1,
+        )
+        inputs["attention_mask"] = torch.cat(
+            [inputs["attention_mask"], torch.tensor([1])[None].to(mt.device)], dim=1
+        )
+        search_span -= 1
+
+        if search_span == 0:
+            logger.error(f"search span exceeded - found: {bridge_entity}")
+            return bridge_entity
+
+    return bridge_entity
+
+
+##################################################
+client = OpenAI(
+    api_key=os.getenv("OPENAI_KEY"),
+)
+MODEL_NAME = "gpt-4o"
+##################################################
+
+
+def ask_gpt4o(
+    query_sample: BridgeSample,
+    predicted_answer: str,
+):
+    prompt = f"""
+A smaller language model was asked the following question:
+"What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
+And the model gave the following answer:
+"{predicted_answer.strip()}"
+Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
+"""
+    hash_val = hashlib.md5(prompt.encode()).hexdigest()
+    if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
+        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
+        with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+            json_data = json.load(f)
+            return json_data["response"]
+
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_tokens=4000,
+    )
+    response = response.choices[0].message.content
+
+    with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "w") as f:
+        json.dump(
+            {
+                "prompt": prompt,
+                "response": response,
+                "model": MODEL_NAME,
+                "hash": hash_val,
+                "tempraure": 0,
+            },
+            f,
+        )
+
+    return response
+
+
+@torch.inference_mode()
+def filter_bridge_samples_by_model_knowledge(
+    mt: ModelandTokenizer, dataset: BridgeDataset, limit: Optional[int] = None
+) -> BridgeDataset:
+    filtered_samples = []
+    for i in tqdm(range(len(dataset))):
+        prompt, answer = dataset[i]
+        sample = dataset.examples[i]
+        predicted_bridge = predict_bridge_entity(mt, prompt)
+        # is_correct = is_nontrivial_prefix(sample.bridge.lower(), predicted_bridge) or is_nontrivial_prefix(predicted_bridge, sample.bridge)
+        is_correct = ask_gpt4o(sample, predicted_bridge).lower().startswith("yes")
+
+        logger.info(
+            f"{sample.entity_pair} <> {sample.bridge} | predicted: {predicted_bridge} => ({get_tick_marker(is_correct)})"
+        )
+        if is_correct:
+            filtered_samples.append(dataset[i])
+        if limit is not None and len(filtered_samples) >= limit:
+            break
+
+    logger.info(
+        f"filtered {len(filtered_samples)} samples out of {len(dataset)} with {len(dataset.icl_examples)} icl examples"
+    )
+
+    dataset.examples = filtered_samples
+    return dataset

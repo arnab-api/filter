@@ -1,6 +1,6 @@
 {
     "name": "sport_players",
-    "answer_template": "<bridge> - a sport where both players <entity1> and <entity2> are known for.",
+    "answer_template": "<bridge> - a sport where both <entity1> and <entity2> are known for.",
     "swappable": true,
     "examples": [
         {
