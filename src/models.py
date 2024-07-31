@@ -10,6 +10,7 @@ from nnsight import LanguageModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.utils.env_utils import DEFAULT_MODELS_DIR
+from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -514,7 +515,7 @@ def prepare_input(
     device: torch.device = "cpu",
     add_bos_token: bool = False,
     return_offsets_mapping=False,
-) -> torch.Tensor:
+) -> TokenizerOutput:
     """Prepare input for the model."""
     if isinstance(tokenizer, ModelandTokenizer):
         device = determine_device(

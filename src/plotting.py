@@ -102,6 +102,7 @@ def visualize_attn_matrix(
     remove_eos: Optional[str] = None,
     title: str | None = None,
     color_scheme: str = "Blues",
+    savepdf: str | None = None,
 ):
     assert (
         attn_matrix.shape[0] == attn_matrix.shape[1]
@@ -114,10 +115,11 @@ def visualize_attn_matrix(
     if remove_eos:
         start_idx = 1 if tokens[0] == remove_eos else 0
 
+    plt.rcParams["figure.dpi"] = 300
     with plt.rc_context(
         rc={
             "font.family": "Times New Roman",
-            # "font.size": 13,
+            "font.size": 2,
         }
     ):
 
@@ -125,6 +127,8 @@ def visualize_attn_matrix(
             attn_matrix[start_idx:, start_idx:],
             cmap=color_scheme,
             interpolation="nearest",
+            vmin=0,
+            vmax=attn_matrix[start_idx:, start_idx:].max().item(),
         )
         plt.colorbar(img, orientation="vertical")
 
@@ -143,6 +147,10 @@ def visualize_attn_matrix(
 
         if title:
             plt.title(title)
+
+        if savepdf is not None:
+            os.makedirs(os.path.dirname(savepdf), exist_ok=True)
+            plt.savefig(savepdf, bbox_inches="tight", dpi=300)
 
         plt.show()
 
