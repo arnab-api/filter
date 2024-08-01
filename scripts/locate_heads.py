@@ -6,7 +6,7 @@ import types
 from dataclasses import dataclass
 from typing import Optional
 
-import baukit
+import baukit  # type: ignore
 import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
@@ -41,21 +41,27 @@ class ExperimentResults(DataClassJsonMixin):
     top_heads: list[HeadAblationEffect]
 
 
-def get_ablation_effect_of_head(
+def get_ablation_effect_of_heads(
     mt: ModelandTokenizer,
     inputs: TokenizerOutput,
-    layer: int,
-    head: int,
+    heads: dict[int, list[int]],  # {layer: [head]}
     ablation_spec: list[AttentionEdge],
-) -> float:
+) -> torch.Tensor:
 
     mt.reset_forward()
-    module_name = mt.attn_module_name_format.format(layer)
-    attn_module = baukit.get_module(mt._model, module_name)
-    attn_module.forward = types.MethodType(
-        LlamaAttentionPatcher(cut_attn_edges={head: ablation_spec}), attn_module
-    )
+
+    for l in heads:
+        module_name = mt.attn_module_name_format.format(l)
+        attn_module = baukit.get_module(mt._model, module_name)
+        attn_module.forward = types.MethodType(
+            LlamaAttentionPatcher(
+                cut_attn_edges={h: ablation_spec for h in heads[l]},
+            ),
+            attn_module,
+        )
     output = mt._model(**inputs)
+
+    mt.reset_forward()
     return output.logits[:, -1, :].squeeze()
 
 
@@ -79,12 +85,14 @@ def get_ablation_results_for_all_heads(
 
     for layer in tqdm(range(mt.n_layer)):
         for head in range(mt.config.num_attention_heads):
-            ablated_logits = get_ablation_effect_of_head(
-                mt, inputs, layer, head, ablation_spec
+            ablated_logits = get_ablation_effect_of_heads(
+                mt, inputs, {layer: [head]}, ablation_spec
             )
             head_ablation_results[layer, head] = ablated_logits.softmax(dim=-1)[
                 base_prediction.token_id
             ].item()
+
+    mt.reset_forward()
 
     # normalize
     head_ablation_effects = (
@@ -98,9 +106,10 @@ def get_top_heads(
     dataset: BridgeDataset,
     save_dir: Optional[str] = None,
     limit: Optional[int] = None,
-) -> list[HeadAblationEffect]:
+) -> ExperimentResults:
 
-    os.makedirs(save_dir, exist_ok=True)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
 
     limit = limit or len(dataset)
 

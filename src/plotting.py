@@ -103,6 +103,7 @@ def visualize_attn_matrix(
     title: str | None = None,
     color_scheme: str = "Blues",
     savepdf: str | None = None,
+    start_idx: int = 0,
 ):
     assert (
         attn_matrix.shape[0] == attn_matrix.shape[1]
@@ -111,15 +112,14 @@ def visualize_attn_matrix(
         len(tokens) == attn_matrix.shape[-1]
     ), "Tokens and attention matrix must have the same length"
 
-    start_idx = 0
-    if remove_eos:
+    if remove_eos and start_idx == 0:
         start_idx = 1 if tokens[0] == remove_eos else 0
 
     plt.rcParams["figure.dpi"] = 300
     with plt.rc_context(
         rc={
             "font.family": "Times New Roman",
-            "font.size": 2,
+            # "font.size": 2,
         }
     ):
 
