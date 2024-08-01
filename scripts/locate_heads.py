@@ -64,6 +64,8 @@ def get_ablation_results_for_all_heads(
     question: str,
 ) -> torch.Tensor:
 
+    mt.reset_forward()
+
     inputs = prepare_input(prompts=question, tokenizer=mt, add_bos_token=False)
     base_prediction = predict_next_token(mt, inputs, k=1)[0][0]
     head_ablation_results = torch.zeros(mt.n_layer, mt.config.num_attention_heads) - 1
