@@ -444,18 +444,18 @@ def predict_bridge_entity(
     return bridge_entity
 
 
-##################################################
-client = OpenAI(
-    api_key=os.getenv("OPENAI_KEY"),
-)
-MODEL_NAME = "gpt-4o"
-##################################################
-
-
 def ask_gpt4o(
     query_sample: BridgeSample,
     predicted_answer: str,
 ):
+
+    ##################################################
+    client = OpenAI(
+        api_key=os.getenv("OPENAI_KEY"),
+    )
+    MODEL_NAME = "gpt-4o"
+    ##################################################
+
     prompt = f"""
 A smaller language model was asked the following question:
 "What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
