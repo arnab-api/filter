@@ -380,11 +380,14 @@ def find_token_range(
 
     if offset_mapping is None:
         assert tokenizer is not None
-        tokens = tokenizer(string, return_offsets_mapping=True, **kwargs)
+        tokens = prepare_input(
+            string, return_offsets_mapping=True, tokenizer=tokenizer, **kwargs
+        )
         offset_mapping = tokens.offset_mapping
 
     token_start, token_end = None, None
     for index, (token_char_start, token_char_end) in enumerate(offset_mapping):
+        # logger.debug(f"{index=} | token range: [{token_char_start}, {token_char_end}]")
         if token_char_start == token_char_end:
             # Skip special tokens # ! Is this the proper way of doing this?
             continue

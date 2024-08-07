@@ -487,7 +487,7 @@ def prepare_offset_mapping(string, tokenized, special_tokens):
         print(f"`{tokenizer.decode(token_id)}`, {offset=} | `{prompts[i][offset[0]:offset[1]]}`")
 
     """
-
+    # logger.debug(f"{special_tokens}")
     offset_mapping = []
     end = 0
     for token in tokenized:
