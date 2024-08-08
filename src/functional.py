@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
 import torch
@@ -240,11 +241,19 @@ def get_module_nnsight(model, layer_name):
     return layer
 
 
+@dataclass(frozen=False)
+class PatchSpec:
+    location: tuple[str, int]
+    patch: torch.Tensor
+    clean: Optional[torch.Tensor] = None
+
+
 @torch.inference_mode()
 def get_hs(
     mt: ModelandTokenizer,
     input: str | TokenizerOutput,
-    layer_and_index: tuple[str, int] | list[tuple[str, int]],
+    locations: tuple[str, int] | list[tuple[str, int]],
+    patches: Optional[PatchSpec | list[PatchSpec]] = None,
 ) -> dict[tuple[str, int], torch.Tensor]:
 
     if isinstance(input, TokenizerOutput):
@@ -253,20 +262,33 @@ def get_hs(
     else:
         input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
 
-    if isinstance(layer_and_index, tuple):
-        layer_and_index = [layer_and_index]
+    if isinstance(locations, tuple):
+        locations = [locations]
+    if patches is not None and isinstance(patches, PatchSpec):
+        patches = [patches]
 
-    layer_names = [layer_name for layer_name, _ in layer_and_index]
+    layer_names = [layer_name for layer_name, _ in locations]
     layer_names = list(set(layer_names))
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
     with mt.trace(input, scan=True):
+        if patches is not None:
+            for cur_patch in patches:
+                module_name, index = cur_patch.location
+                module = get_module_nnsight(mt, module_name)
+                current_state = (
+                    module.output
+                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    else module.output[0].save()
+                )
+                current_state[0, index, :] = cur_patch.patch
         for layer_name in layer_names:
             module = get_module_nnsight(mt, layer_name)
             layer_states[layer_name] = module.output.save()
 
     hs = {}
 
-    for layer_name, index in layer_and_index:
+    for layer_name, index in locations:
+        # print(layer_name, layer_states[layer_name].shape)
         hs[(layer_name, index)] = untuple(layer_states[layer_name])[
             :, index, :
         ].squeeze()
