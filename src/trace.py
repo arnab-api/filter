@@ -26,7 +26,8 @@ def insert_padding_before_subj(
     inp: TokenizerOutput,
     subj_range: tuple[int, int],
     subj_ends: int,
-    pad_id=int,
+    pad_id: int,
+    fill_attn_mask: bool = False,
 ):
     """
 
@@ -58,7 +59,7 @@ def insert_padding_before_subj(
             inp.attention_mask[:, : subj_range[0]],
             torch.full(
                 (1, pad_len),
-                0,
+                fill_attn_mask,
                 dtype=inp.attention_mask.dtype,
                 device=inp.attention_mask.device,
             ),
@@ -130,8 +131,6 @@ def calculate_indirect_effects(
 
 @dataclass
 class CausalTracingResult(DataClassJsonMixin):
-    clean_query: InContextQuery
-    corrupt_query: InContextQuery
     clean_input_toks: list[str]
     corrupt_input_toks: list[str]
     trace_start_idx: int
@@ -145,6 +144,160 @@ class CausalTracingResult(DataClassJsonMixin):
 
 @torch.inference_mode()
 def trace_important_states(
+    mt: ModelandTokenizer,
+    prompt_template: str,
+    clean_subj: str,
+    patched_subj: str,
+    clean_input: Optional[TokenizerOutput] = None,
+    patched_input: Optional[TokenizerOutput] = None,
+    kind: Literal["residual", "mlp", "attention"] = "residual",
+    window_size: int = 1,
+    normalize=True,
+) -> CausalTracingResult:
+
+    if clean_input is None:
+        clean_input = prepare_input(
+            prompts=prompt_template.format(clean_subj),
+            tokenizer=mt,
+            return_offsets_mapping=True,
+        )
+    if patched_input is None:
+        patched_input = prepare_input(
+            prompts=prompt_template.format(patched_subj),
+            tokenizer=mt,
+            return_offsets_mapping=True,
+        )
+
+    clean_subj_range = find_token_range(
+        string=prompt_template.format(clean_subj),
+        substring=clean_subj,
+        tokenizer=mt.tokenizer,
+        occurrence=-1,
+        offset_mapping=clean_input["offset_mapping"][0],
+    )
+    patched_subj_range = find_token_range(
+        string=prompt_template.format(patched_subj),
+        substring=patched_subj,
+        tokenizer=mt.tokenizer,
+        occurrence=-1,
+        offset_mapping=patched_input["offset_mapping"][0],
+    )
+
+    if clean_subj_range == patched_subj_range:
+        subj_start, subj_end = clean_subj_range
+    else:
+        subj_end = max(clean_subj_range[1], patched_subj_range[1])
+        clean_input = insert_padding_before_subj(
+            inp=clean_input,
+            subj_range=clean_subj_range,
+            subj_ends=subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+            fill_attn_mask=True,
+        )
+        patched_input = insert_padding_before_subj(
+            inp=patched_input,
+            subj_range=patched_subj_range,
+            subj_ends=subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+            fill_attn_mask=True,
+        )
+
+        clean_subj_shift = subj_end - clean_subj_range[1]
+        clean_subj_range = (clean_subj_range[0] + clean_subj_shift, subj_end)
+        patched_subj_shift = subj_end - patched_subj_range[1]
+        patched_subj_range = (patched_subj_range[0] + patched_subj_shift, subj_end)
+        subj_start = min(clean_subj_range[0], patched_subj_range[0])
+
+    trace_start_idx = 0
+    if (
+        clean_input.input_ids[0][0]
+        == patched_input.input_ids[0][0]
+        == mt.tokenizer.pad_token_id
+    ):
+        trace_start_idx = 1
+
+    # base run with the patched subject
+    patched_states = get_all_module_states(mt=mt, input=patched_input, kind=kind)
+    answer = predict_next_token(mt=mt, inputs=patched_input, k=1)[0][0]
+    base_probability = answer.prob
+    logger.debug(f"{answer=}")
+
+    # clean run
+    clean_answer, track_ans = predict_next_token(
+        mt=mt, inputs=clean_input, k=1, token_of_interest=answer.token
+    )
+    clean_answer = clean_answer[0][0]
+    low_probability = track_ans[0][1].prob
+    logger.debug(f"{clean_answer=}")
+    logger.debug(f"{track_ans=}")
+
+    logger.debug("---------- tracing important states ----------")
+
+    assert (
+        answer.token != clean_answer.token
+    ), "Answers in the clean and corrupt runs are the same"
+
+    layer_name_format = None
+    if kind == "residual":
+        layer_name_format = mt.layer_name_format
+    elif kind == "mlp":
+        layer_name_format = mt.mlp_module_name_format
+    elif kind == "attention":
+        layer_name_format = mt.attn_module_name_format
+    else:
+        raise ValueError(f"kind must be one of 'residual', 'mlp', 'attention'")
+
+    # calculate indirect effects in the patched run
+    locations = [
+        (layer_idx, token_idx)
+        for layer_idx in range(mt.n_layer)
+        for token_idx in range(trace_start_idx, clean_input.input_ids.size(1))
+    ]
+    indirect_effects = calculate_indirect_effects(
+        mt=mt,
+        locations=locations,
+        corrupted_input=clean_input,
+        clean_states=patched_states,
+        clean_ans_t=answer.token_id,
+        layer_name_format=layer_name_format,
+        window_size=window_size,
+        kind=kind,
+    )
+
+    indirect_effect_matrix = []
+    for token_idx in range(trace_start_idx, clean_input.input_ids.size(1)):
+        indirect_effect_matrix.append(
+            [
+                indirect_effects[(layer_idx, token_idx)]
+                for layer_idx in range(mt.n_layer)
+            ]
+        )
+
+    indirect_effect_matrix = torch.tensor(indirect_effect_matrix)
+    if normalize:
+        indirect_effect_matrix = (indirect_effect_matrix - low_probability) / (
+            base_probability - low_probability
+        )
+
+    return CausalTracingResult(
+        clean_input_toks=[
+            mt.tokenizer.decode(tok) for tok in patched_input.input_ids[0]
+        ],
+        corrupt_input_toks=[
+            mt.tokenizer.decode(tok) for tok in clean_input.input_ids[0]
+        ],
+        trace_start_idx=trace_start_idx,
+        answer=answer,
+        low_score=low_probability,
+        indirect_effects=indirect_effect_matrix,
+        normalized=normalize,
+        kind=kind,
+        window=window_size,
+    )
+
+
+@torch.inference_mode()
+def trace_important_states_ICQ(
     mt: ModelandTokenizer,
     clean_query: InContextQuery,
     corrupt_query: InContextQuery,
@@ -409,8 +562,6 @@ def trace_important_states(
         )
 
     return CausalTracingResult(
-        clean_query=clean_query,
-        corrupt_query=corrupt_query,
         clean_input_toks=[
             mt.tokenizer.decode(tok) for tok in clean_inputs.input_ids[0]
         ],

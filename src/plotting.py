@@ -69,6 +69,7 @@ def plot_trace_heatmap(
         ax.set_yticks([0.5 + i for i in range(len(scores))])
         ax.set_xticks([0.5 + i for i in range(0, scores.shape[1] - 6, 5)])
         ax.set_xticklabels(list(range(0, scores.shape[1] - 6, 5)))
+        # print(len(tokens))
         ax.set_yticklabels(tokens)
 
         if title is None:
@@ -84,7 +85,7 @@ def plot_trace_heatmap(
 
         color_scale = plt.colorbar(heatmap)
         color_scale.ax.set_title(
-            f"p({result.answer.token.strip()})", y=-0.1, fontsize=10
+            f"p({result.answer.token.strip()})", y=-0.12, fontsize=10
         )
 
         if savepdf is not None:
