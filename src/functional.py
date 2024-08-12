@@ -254,6 +254,7 @@ def get_hs(
     input: str | TokenizerOutput,
     locations: tuple[str, int] | list[tuple[str, int]],
     patches: Optional[PatchSpec | list[PatchSpec]] = None,
+    return_dict: bool = False,
 ) -> dict[tuple[str, int], torch.Tensor]:
 
     if isinstance(input, TokenizerOutput):
@@ -267,13 +268,29 @@ def get_hs(
     if patches is not None and isinstance(patches, PatchSpec):
         patches = [patches]
 
+    def is_an_attn_head(module_name) -> bool | tuple[int, int]:
+        attn_id = mt.attn_module_name_format.split(".")[-1]
+        if attn_id not in module_name:
+            return False
+        if module_name.endswith(attn_id):
+            return False
+
+        head_id = module_name.split(".")[-1]
+        layer_id = ".".join(module_name.split(".")[:-1])
+
+        return layer_id, int(head_id)
+
     layer_names = [layer_name for layer_name, _ in locations]
     layer_names = list(set(layer_names))
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
-    with mt.trace(input, scan=True):
+    with mt.trace(input, scan=True) as tracer:
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
+                if is_an_attn_head(module_name) != False:
+                    raise NotImplementedError(
+                        "patching not supported yet for attn heads"
+                    )
                 module = get_module_nnsight(mt, module_name)
                 current_state = (
                     module.output
@@ -281,9 +298,19 @@ def get_hs(
                     else module.output[0].save()
                 )
                 current_state[0, index, :] = cur_patch.patch
+
         for layer_name in layer_names:
-            module = get_module_nnsight(mt, layer_name)
-            layer_states[layer_name] = module.output.save()
+            if is_an_attn_head(layer_name) == False:
+                module = get_module_nnsight(mt, layer_name)
+                layer_states[layer_name] = module.output.save()
+            else:
+                attn_module_name, head_idx = is_an_attn_head(layer_name)
+                o_proj_name = attn_module_name + ".o_proj"
+                head_dim = mt.n_embd // mt.model.config.num_attention_heads
+                o_proj = get_module_nnsight(mt, o_proj_name)
+                layer_states[layer_name] = o_proj.input[0][0][
+                    :, :, head_idx * head_dim : (head_idx + 1) * head_dim
+                ].save()
 
     hs = {}
 
@@ -293,7 +320,8 @@ def get_hs(
             :, index, :
         ].squeeze()
 
-    if len(hs) == 1:
+    # print(f"==========> {len(hs)=}")
+    if len(hs) == 1 and not return_dict:
         return list(hs.values())[0]
     return hs
 
@@ -547,3 +575,15 @@ def filter_bridge_samples_by_model_knowledge(
 
     dataset.examples = filtered_samples
     return dataset
+
+
+def free_gpu_cache():
+    before = torch.cuda.memory_allocated()
+    gc.collect()
+    torch.cuda.empty_cache()
+    after = torch.cuda.memory_allocated()
+    freed = before - after
+
+    # logger.debug(
+    #     f"freed {models.bytes_to_human_readable(freed)} | before={models.bytes_to_human_readable(before)} -> after={models.bytes_to_human_readable(after)}"
+    # )

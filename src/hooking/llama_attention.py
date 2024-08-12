@@ -154,6 +154,9 @@ def attn_per_head(
     b, n_head, q_len, h_dim = attn_output.size()
     o_proj_weight_split = o_proj.weight.view(o_proj.out_features, n_head, h_dim)
 
+    print(f"{o_proj_weight_split.size()=}")
+    print(f"{attn_output.size()=}")
+
     per_head_contributions = []
     for i in range(n_head):
         attn_output_per_head = attn_output[:, i, :, :]  # shape: (b, q_len, h_dim)
