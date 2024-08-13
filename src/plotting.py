@@ -49,7 +49,7 @@ def plot_trace_heatmap(
     with plt.rc_context(
         rc={
             "font.family": "Times New Roman",
-            "font.size": 10,
+            "font.size": 6,
         }
     ):
         fig, ax = plt.subplots(figsize=(3.5, len(tokens) * 0.08 + 1.8), dpi=200)

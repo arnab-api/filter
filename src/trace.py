@@ -138,7 +138,7 @@ class CausalTracingResult(DataClassJsonMixin):
     low_score: float
     indirect_effects: torch.Tensor
     normalized: bool
-    kind: str
+    kind: Literal["residual", "mlp", "attention"] = "residual"
     window: int = 1
 
 
