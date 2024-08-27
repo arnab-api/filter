@@ -154,8 +154,8 @@ def attn_per_head(
     b, n_head, q_len, h_dim = attn_output.size()
     o_proj_weight_split = o_proj.weight.view(o_proj.out_features, n_head, h_dim)
 
-    print(f"{o_proj_weight_split.size()=}")
-    print(f"{attn_output.size()=}")
+    # print(f"{o_proj_weight_split.size()=}")
+    # print(f"{attn_output.size()=}")
 
     per_head_contributions = []
     for i in range(n_head):
@@ -346,9 +346,10 @@ def LlamaAttentionPatcher(
         attn_output = self.o_proj(attn_output)
 
         if attn_contributions is not None:
-            logger.warning(
-                f"{torch.allclose(attn_output, __attn_output, atol=1e-3)=} | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
-            )
+            if torch.allclose(attn_output, __attn_output, atol=1e-3) == False:
+                logger.warning(
+                    f"allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
+                )
 
         return attn_output, None, past_key_value
 
