@@ -200,7 +200,7 @@ def predict_next_token(
                     PredictedToken(
                         token=mt.tokenizer.decode(token_ids[j]),
                         prob=token_probs[j].item(),
-                        token_id=token_ids[j],
+                        token_id=token_ids[j].item(),
                     )
                     for j in range(k)
                 ]

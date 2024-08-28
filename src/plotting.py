@@ -46,6 +46,7 @@ def plot_trace_heatmap(
             f"{clean_tok}/{corrupt_tok}" if clean_tok != corrupt_tok else clean_tok
         )
 
+    plt.rcdefaults()
     with plt.rc_context(
         rc={
             "font.family": "Times New Roman",
