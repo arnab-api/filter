@@ -568,6 +568,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging_utils.configure(args)
+    logger.info(f"{args=}")
 
     kwargs = dict(
         model_name=args.model,
