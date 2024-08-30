@@ -33,6 +33,7 @@ def plot_trace_heatmap(
     model_name: Optional[str] = None,
     scale_range: Optional[tuple[float, float]] = None,
     title: Optional[str] = None,
+    color_map: Optional[str] = None,
 ):
     scores = result.indirect_effects
     clean_tokens = replace_special_tokens(result.clean_input_toks)
@@ -62,7 +63,7 @@ def plot_trace_heatmap(
 
         heatmap = ax.pcolor(
             scores,
-            cmap=get_color_map(result.kind),
+            cmap=get_color_map(result.kind) if color_map is None else color_map,
             **scale_kwargs,
         )
 
