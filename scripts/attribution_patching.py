@@ -4,28 +4,31 @@ import logging
 import os
 import types
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 import baukit  # type: ignore
+import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.dataset import BridgeDataset, BridgeSample
-from src.functional import predict_next_token
+from src.dataset import BridgeDataset, BridgeSample, load_bridge_relation
+from src.functional import (
+    PatchSpec,
+    find_token_range,
+    free_gpu_cache,
+    get_hs,
+    get_module_nnsight,
+    guess_subject,
+    predict_next_token,
+    prepare_input,
+    untuple,
+)
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
-from src.utils import env_utils, logging_utils
-from src.utils.typing import TokenizerOutput, PredictedToken
-from src.functional import get_module_nnsight, untuple, get_hs, PatchSpec
-from typing import Literal
-from dataclasses import dataclass
-from src.functional import free_gpu_cache
-from src.dataset import load_bridge_relation, BridgeDataset
-import numpy as np
 from src.trace import insert_padding_before_subj
-from src.functional import prepare_input, guess_subject
-from src.functional import find_token_range, get_hs
+from src.utils import env_utils, logging_utils
+from src.utils.typing import PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +365,8 @@ class AttributionPatchingResult(DataClassJsonMixin):
     corrupt_patch_ans: tuple[int, PredictedToken]
 
     query_start: int
+    subj_1_range: tuple[int, int]
+    subj_2_range: tuple[int, int]
     indirect_effects: dict[str, float]
 
 
@@ -463,6 +468,8 @@ def get_attribution_patching_results_for_icq_pair(
         patch_ans=patch_ans,
         corrupt_patch_ans=corrupt_rank,
         query_start=query_start,
+        subj_1_range=subj_1_range,
+        subj_2_range=subj_2_range,
         indirect_effects=results_processed,
     )
 
