@@ -12,7 +12,12 @@ import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.dataset import BridgeDataset, BridgeSample, load_bridge_relation
+from src.dataset import (
+    BridgeDataset,
+    BridgeRelation,
+    BridgeSample,
+    load_bridge_relation,
+)
 from src.functional import (
     PatchSpec,
     find_token_range,
@@ -231,6 +236,7 @@ def process_inputs(
             substring=subj,
             tokenizer=mt.tokenizer,
             offset_mapping=clean_offsets,
+            occurrence=-1,
         )
         for subj in clean_entity_pair
     ]
@@ -252,6 +258,7 @@ def process_inputs(
             substring=subj,
             tokenizer=mt.tokenizer,
             offset_mapping=patch_offsets,
+            occurance=-1,
         )
         for subj in patch_entity_pair
     ]
@@ -483,7 +490,8 @@ class ExperimentResults(DataClassJsonMixin):
 
 def cache_attribution_patching_results(
     model_name: str,
-    relation_file: str,
+    relation: str,
+    known_data_file: str,
     save_dir: Optional[str] = None,
     limit: Optional[int] = None,
 ):
@@ -496,19 +504,25 @@ def cache_attribution_patching_results(
             env_utils.DEFAULT_RESULTS_DIR,
             save_dir,
             mt.name.split("/")[-1],
-            relation_file.split("/")[0],
+            relation,
         )
         os.makedirs(save_dir, exist_ok=True)
 
-    data_dir = os.path.join(env_utils.DEFAULT_DATA_DIR, "bridge_dataset/cleaned/")
-    relation_file = (
-        f"{relation_file}.json"
-        if relation_file.endswith("json") == False
-        else relation_file
+    cached_known_dir = os.path.join(
+        env_utils.DEFAULT_DATA_DIR, "bridge_cached", mt.name.split("/")[-1]
     )
-    relation_icq = load_bridge_relation(os.path.join(data_dir, relation_file))
-    dataset = BridgeDataset(relations=[relation_icq])
+    with open(os.path.join(cached_known_dir, known_data_file), "r") as f:
+        json_data = json.load(f)
+    relation_icq = None
+    for rel in json_data["relations"]:
+        if rel["name"] == relation:
+            relation_icq = BridgeRelation.from_dict(rel)
+            break
+    assert (
+        relation_icq is not None
+    ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
 
+    dataset = BridgeDataset(relations=[relation_icq])
     experiment_results = ExperimentResults(
         model_name=mt.name,
         relation_name=relation_icq.name,
@@ -572,6 +586,11 @@ if __name__ == "__main__":
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--known_data",
+        type=str,
+        default="filtered_2024-07-30T17:30:08.336365.json",
+    )
 
     args = parser.parse_args()
     logging_utils.configure(args)
@@ -579,7 +598,8 @@ if __name__ == "__main__":
 
     kwargs = dict(
         model_name=args.model,
-        relation_file=args.relation,
+        relation=args.relation,
+        known_data_file=args.known_data,
         save_dir=args.save_dir,
         limit=args.limit if args.limit > 0 else None,
     )
