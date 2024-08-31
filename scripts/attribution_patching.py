@@ -589,7 +589,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--known_data",
         type=str,
-        default="filtered_2024-07-30T17:30:08.336365.json",
+        default="filtered_2024-08-30T23:00:20.070752.json",
     )
 
     args = parser.parse_args()
