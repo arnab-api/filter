@@ -32,7 +32,7 @@ from src.functional import (
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
 from src.trace import insert_padding_before_subj
-from src.utils import env_utils, logging_utils
+from src.utils import env_utils, logging_utils, experiment_utils
 from src.utils.typing import PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -523,6 +523,7 @@ def cache_attribution_patching_results(
     ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
 
     dataset = BridgeDataset(relations=[relation_icq])
+    logger.debug(f"{dataset.icl_examples=}")
     experiment_results = ExperimentResults(
         model_name=mt.name,
         relation_name=relation_icq.name,
@@ -559,6 +560,7 @@ def cache_attribution_patching_results(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     logging_utils.add_logging_args(parser)
+    experiment_utils.add_experiment_args(parser)
     parser.add_argument(
         "--model",
         type=str,
@@ -594,6 +596,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging_utils.configure(args)
+    experiment_utils.setup_experiment(args)
     logger.info(f"{args=}")
 
     kwargs = dict(

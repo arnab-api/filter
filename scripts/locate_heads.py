@@ -15,7 +15,7 @@ from src.dataset import BridgeDataset
 from src.functional import predict_next_token
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
-from src.utils import env_utils, logging_utils
+from src.utils import env_utils, logging_utils, experiment_utils
 from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -185,6 +185,7 @@ def run_experiment(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     logging_utils.add_logging_args(parser)
+    experiment_utils.add_experiment_args(parser)
     parser.add_argument(
         "--model",
         type=str,
@@ -209,6 +210,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging_utils.configure(args)
+    experiment_utils.setup_experiment(args)
 
     kwargs = dict(
         model_name=args.model,
