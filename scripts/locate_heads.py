@@ -11,7 +11,7 @@ import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.dataset import BridgeDataset
+from src.dataset import BridgeDataset, BridgeRelation
 from src.functional import predict_next_token
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
@@ -159,6 +159,7 @@ def get_top_heads(
 
 def run_experiment(
     model_name: str,
+    relation: str,
     known_data_file: str,
     save_dir: str,
     limit: Optional[int] = None,
@@ -169,7 +170,7 @@ def run_experiment(
     )
 
     save_dir = os.path.join(
-        env_utils.DEFAULT_RESULTS_DIR, save_dir, mt.name.split("/")[-1], save_dir
+        env_utils.DEFAULT_RESULTS_DIR, save_dir, mt.name.split("/")[-1], relation
     )
 
     cached_known_dir = os.path.join(
@@ -177,8 +178,19 @@ def run_experiment(
     )
     with open(os.path.join(cached_known_dir, known_data_file), "r") as f:
         json_data = json.load(f)
-    dataset = BridgeDataset.from_dict(json_data)
+    if relation == "all":
+        dataset = BridgeDataset.from_dict(json_data)
+    else:
+        for rel in json_data["relations"]:
+            if rel["name"] == relation:
+                relation_icq = BridgeRelation.from_dict(rel)
+                break
+        assert (
+            relation_icq is not None
+        ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        dataset = BridgeDataset(relations=[relation_icq])
 
+    logger.debug(f"{dataset.icl_examples=}")
     get_top_heads(mt, dataset, save_dir, limit)
 
 
@@ -207,6 +219,18 @@ if __name__ == "__main__":
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--relation",
+        type=str,
+        choices=[
+            "architect_building",
+            "movie_actor",
+            "sport_players",
+            "superpower_characters",
+            "all",
+        ],
+        default="all",
+    )
 
     args = parser.parse_args()
     logging_utils.configure(args)
@@ -214,6 +238,7 @@ if __name__ == "__main__":
 
     kwargs = dict(
         model_name=args.model,
+        relation=args.relation,
         known_data_file=args.known_data,
         save_dir=args.save_dir,
         limit=args.limit if args.limit > 0 else None,
