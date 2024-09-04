@@ -36,15 +36,15 @@ def plot_trace_heatmap(
     color_map: Optional[str] = None,
 ):
     scores = result.indirect_effects
-    clean_tokens = replace_special_tokens(result.clean_input_toks)
     corrupt_tokens = replace_special_tokens(result.corrupt_input_toks)
+    patch_tokens = replace_special_tokens(result.patch_input_toks)
 
     tokens = []
-    for clean_tok, corrupt_tok in zip(
-        clean_tokens[result.trace_start_idx :], corrupt_tokens[result.trace_start_idx :]
+    for corrupt_tok, patch_tok in zip(
+        corrupt_tokens[result.trace_start_idx :], patch_tokens[result.trace_start_idx :]
     ):
         tokens.append(
-            f"{clean_tok}/{corrupt_tok}" if clean_tok != corrupt_tok else clean_tok
+            f"{patch_tok}/{corrupt_tok}" if corrupt_tok != patch_tok else corrupt_tok
         )
 
     plt.rcdefaults()

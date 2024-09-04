@@ -1,4 +1,3 @@
-import ctypes
 import gc
 import hashlib
 import json
@@ -9,12 +8,12 @@ from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
 import torch
-from nnsight import LanguageModel
 from openai import OpenAI
 from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
-from src.models import ModelandTokenizer, is_llama_variant, prepare_input
+from src.models import ModelandTokenizer, is_llama_variant
+from src.tokens import prepare_input
 from src.utils.env_utils import GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
@@ -354,105 +353,6 @@ def get_all_module_states(
             layer_and_index.append((layer_name_format.format(layer_idx), token_idx))
 
     return get_hs(mt, input, layer_and_index)
-
-
-def find_token_range(
-    string: str,
-    substring: str,
-    tokenizer: Optional[Tokenizer] = None,
-    occurrence: int = 0,
-    offset_mapping: Optional[torch.Tensor] = None,
-    **kwargs: Any,
-) -> tuple[int, int]:
-    """Find index range of tokenized string containing tokens for substring.
-
-    The kwargs are forwarded to the tokenizer.
-
-    A simple example:
-
-        string = 'The batman is the night.'
-        substring = 'batman'
-        tokenizer = ...
-
-        # Example tokenization: ['the', 'bat', '##man', 'is', 'the', 'night']
-        assert find_token_range(string, substring, tokenizer) == (1, 3)
-
-    Args:
-        string: The string.
-        substring: The substring to find token range for.
-        tokenizer: The tokenizer. If not set, offset_mapping must be.
-        occurrence: The occurence of the substring to look for.
-            Zero indexed. Defaults to 0, the first occurrence.
-        offset_mapping: Precomputed offset mapping. If not set, tokenizer will be run.
-
-    Raises:
-        ValueError: If substring is not actually in string or if banned
-            kwargs are specified.
-
-    Returns:
-        Tuple[int, int]: The start (inclusive) and end (exclusive) token idx.
-    """
-    if tokenizer is None and offset_mapping is None:
-        raise ValueError("must set either tokenizer= or offset_mapping=")
-    if "return_offsets_mapping" in kwargs:
-        raise ValueError("cannot set return_offsets_mapping")
-    if substring not in string:
-        raise ValueError(f'"{substring}" not found in "{string}"')
-
-    # logger.debug(f"Found substring in string {string.count(substring)} times")
-
-    if occurrence < 0:
-        # If occurrence is negative, count from the right.
-        char_start = string.rindex(substring)
-        for _ in range(-1 - occurrence):
-            try:
-                char_start = string.rindex(substring, 0, char_start)
-            except ValueError as error:
-                raise ValueError(
-                    f"could not find {-occurrence} occurrences "
-                    f'of "{substring} in "{string}"'
-                ) from error
-    else:
-        char_start = string.index(substring)
-        for _ in range(occurrence):
-            try:
-                char_start = string.index(substring, char_start + 1)
-            except ValueError as error:
-                raise ValueError(
-                    f"could not find {occurrence + 1} occurrences "
-                    f'of "{substring} in "{string}"'
-                ) from error
-    char_end = char_start + len(substring)
-
-    # logger.debug(
-    #     f"char range: [{char_start}, {char_end}] => `{string[char_start:char_end]}`"
-    # )
-
-    if offset_mapping is None:
-        assert tokenizer is not None
-        tokens = prepare_input(
-            string, return_offsets_mapping=True, tokenizer=tokenizer, **kwargs
-        )
-        offset_mapping = tokens.offset_mapping
-
-    token_start, token_end = None, None
-    for index, (token_char_start, token_char_end) in enumerate(offset_mapping):
-        # logger.debug(f"{index=} | token range: [{token_char_start}, {token_char_end}]")
-        if token_char_start == token_char_end:
-            # Skip special tokens # ! Is this the proper way of doing this?
-            continue
-        if token_start is None:
-            if token_char_start <= char_start and token_char_end >= char_start:
-                token_start = index
-        if token_end is None:
-            if token_char_start <= char_end and token_char_end >= char_end:
-                token_end = index
-                break
-
-    assert token_start is not None
-    assert token_end is not None
-    assert token_start <= token_end
-    return (token_start, token_end + 1)
 
 
 def guess_subject(prompt):

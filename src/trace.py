@@ -10,64 +10,16 @@ from tqdm.auto import tqdm
 
 from src.dataset import InContextQuery, Relation
 from src.functional import (
-    find_token_range,
     get_all_module_states,
     get_module_nnsight,
     guess_subject,
     predict_next_token,
 )
-from src.models import ModelandTokenizer, is_llama_variant, prepare_input
+from src.models import ModelandTokenizer, is_llama_variant
+from src.tokens import find_token_range, insert_padding_before_subj, prepare_input
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
-
-
-def insert_padding_before_subj(
-    inp: TokenizerOutput,
-    subj_range: tuple[int, int],
-    subj_ends: int,
-    pad_id: int,
-    fill_attn_mask: bool = False,
-):
-    """
-
-    Inserts padding tokens before the subject in the query to balance the input tensor.
-
-    TEST:
-
-    for idx, (tok_id, attn_mask) in enumerate(zip(clean_inputs.input_ids[0], clean_inputs.attention_mask[0])):
-        print(f"{idx=} [{attn_mask}] | {mt.tokenizer.decode(tok_id)}")
-
-    """
-    pad_len = subj_ends - subj_range[1]
-    inp["input_ids"] = torch.cat(
-        [
-            inp.input_ids[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                pad_id,
-                dtype=inp.input_ids.dtype,
-                device=inp.input_ids.device,
-            ),
-            inp.input_ids[:, subj_range[0] :],
-        ],
-        dim=1,
-    )
-
-    inp["attention_mask"] = torch.cat(
-        [
-            inp.attention_mask[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                fill_attn_mask,
-                dtype=inp.attention_mask.dtype,
-                device=inp.attention_mask.device,
-            ),
-            inp.attention_mask[:, subj_range[0] :],
-        ],
-        dim=1,
-    )
-    return inp
 
 
 @torch.inference_mode()
@@ -76,13 +28,14 @@ def patched_run(
     inputs: TokenizerOutput,
     states: dict[tuple[str, int], torch.Tensor],
     scan: bool = False,
-    kind: Literal["residual", "mlp", "attention"] = "residual",
 ) -> torch.Tensor:
     with mt.trace(inputs, scan=scan) as trace:
         for location in states:
             layer_name, token_idx = location
             module = get_module_nnsight(mt, layer_name)
-            current_states = module.output if kind == "mlp" else module.output[0]
+            current_states = (
+                module.output if ("mlp" in layer_name) else module.output[0]
+            )
             current_states[0, token_idx, :] = states[location]
         logits = mt.output.logits[0][-1].save()
     return logits
@@ -102,28 +55,26 @@ def calculate_indirect_effects(
     mt: ModelandTokenizer,
     locations: list[tuple[int, int]],  # layer_idx, token_idx
     corrupted_input: TokenizerOutput,
-    clean_states: dict[
+    patch_states: dict[
         tuple[str, int], torch.Tensor
     ],  # expects the states to be in clean_states
-    clean_ans_t: int,
+    patch_ans_t: int,
     layer_name_format: str,
     window_size: int = 1,
-    kind: Literal["residual", "mlp", "attention"] = "residual",
 ) -> dict[tuple[str, int], float]:
     is_first = True
     indirect_effects = {loc: -1 for loc in locations}
     for loc in tqdm(locations):
         layer_names = get_window(layer_name_format, loc[0], window_size, mt.n_layer)
         token_idx = loc[1]
-        states = {(l, token_idx): clean_states[(l, token_idx)] for l in layer_names}
+        states = {(l, token_idx): patch_states[(l, token_idx)] for l in layer_names}
         affected_logits = patched_run(
             mt=mt,
             inputs=corrupted_input,
             states=states,
             scan=is_first,
-            kind=kind,
         )
-        prob = affected_logits.softmax(dim=-1)[clean_ans_t].item()
+        prob = affected_logits.softmax(dim=-1)[patch_ans_t].item()
         indirect_effects[loc] = prob
         is_first = False
     return indirect_effects
@@ -131,7 +82,7 @@ def calculate_indirect_effects(
 
 @dataclass
 class CausalTracingResult(DataClassJsonMixin):
-    clean_input_toks: list[str]
+    patch_input_toks: list[str]
     corrupt_input_toks: list[str]
     trace_start_idx: int
     answer: PredictedToken
@@ -257,8 +208,8 @@ def trace_important_states(
         mt=mt,
         locations=locations,
         corrupted_input=clean_input,
-        clean_states=patched_states,
-        clean_ans_t=answer.token_id,
+        patch_states=patched_states,
+        patch_ans_t=answer.token_id,
         layer_name_format=layer_name_format,
         window_size=window_size,
         kind=kind,
@@ -280,7 +231,7 @@ def trace_important_states(
         )
 
     return CausalTracingResult(
-        clean_input_toks=[
+        patch_input_toks=[
             mt.tokenizer.decode(tok) for tok in patched_input.input_ids[0]
         ],
         corrupt_input_toks=[
@@ -297,7 +248,7 @@ def trace_important_states(
 
 
 @torch.inference_mode()
-def trace_important_states_ICQ(
+def trace_important_states_RAG(
     mt: ModelandTokenizer,
     clean_query: InContextQuery,
     corrupt_query: InContextQuery,
@@ -539,8 +490,8 @@ def trace_important_states_ICQ(
         mt=mt,
         locations=locations,
         corrupted_input=corrupt_inputs,
-        clean_states=clean_states,
-        clean_ans_t=answer.token_id,
+        patch_states=clean_states,
+        patch_ans_t=answer.token_id,
         layer_name_format=layer_name_format,
         window_size=window_size,
         kind=kind,
@@ -562,7 +513,7 @@ def trace_important_states_ICQ(
         )
 
     return CausalTracingResult(
-        clean_input_toks=[
+        patch_input_toks=[
             mt.tokenizer.decode(tok) for tok in clean_inputs.input_ids[0]
         ],
         corrupt_input_toks=[

@@ -219,16 +219,6 @@ def untuple(object: Any):
 from src.utils.typing import Model, Tokenizer
 
 
-def maybe_prefix_bos(tokenizer, prompt: str) -> str:
-    """Prefix prompt with EOS token if model has no special start token."""
-    tokenizer = unwrap_tokenizer(tokenizer)
-    if hasattr(tokenizer, "bos_token"):
-        prefix = tokenizer.bos_token
-        if not prompt.startswith(prefix):
-            prompt = prefix + " " + prompt
-    return prompt
-
-
 def is_pythia_variant(model: Model | ModelandTokenizer) -> bool:
     """Determine if model is pythia variant."""
     if isinstance(model, ModelandTokenizer) or isinstance(model, LanguageModel):
@@ -467,89 +457,3 @@ def determine_dtype(model: ModelandTokenizer | Model) -> torch.dtype | None:
     """Determine dtype of model."""
     parameter = any_parameter(model)
     return parameter.dtype if parameter is not None else None
-
-
-def prepare_offset_mapping(string, tokenized, special_tokens):
-    """LLaMA3 tokenizer in Huggingface is buggy. This function is a workaround for the bug."""
-    """
-    <Test>
-    
-    prompts = ["The Eiffle Tower is located in", "The Space Needle is located in"]
-    inp = prepare_input(
-        prompts = prompts,
-        tokenizer=mt,
-        return_offsets_mapping=True,
-        device="cuda"
-    )
-
-    i=1 # <to be changed>
-    for token_id, offset in zip(inp["input_ids"][i], inp["offset_mapping"][i]):
-        print(f"`{tokenizer.decode(token_id)}`, {offset=} | `{prompts[i][offset[0]:offset[1]]}`")
-
-    """
-    # logger.debug(f"{special_tokens}")
-    offset_mapping = []
-    end = 0
-    for token in tokenized:
-        if token in special_tokens:
-            offset_mapping.append((end, end))
-            continue
-        # print(f"{string[end:].find(token)} | {end=}, {token=}, {string[end:]}")
-        next_tok_idx = string[end:].find(token)
-        assert next_tok_idx != -1, f"{token} not found in {string[end:]}"
-        assert next_tok_idx in [
-            0,
-            1,
-        ], f"{token} not found at the beginning of the string"
-
-        start = end
-        end = start + string[end:].find(token) + len(token)
-        offset_mapping.append((start, end))
-    return offset_mapping
-
-
-def prepare_input(
-    prompts: str | list[str],
-    tokenizer: ModelandTokenizer | Tokenizer,
-    n_gen_per_prompt: int = 1,
-    device: torch.device = "cpu",
-    add_bos_token: bool = False,
-    return_offsets_mapping=False,
-) -> TokenizerOutput:
-    """Prepare input for the model."""
-    if isinstance(tokenizer, ModelandTokenizer):
-        device = determine_device(
-            tokenizer
-        )  # if tokenizer type is ModelandTokenizer, get device and ignore the passed device
-    calculate_offsets = return_offsets_mapping and (
-        isinstance(tokenizer, ModelandTokenizer) and "llama-3" in tokenizer.name.lower()
-    )
-
-    tokenizer = unwrap_tokenizer(tokenizer)
-    prompts = [prompts] if isinstance(prompts, str) else prompts
-    if add_bos_token:
-        prompts = [maybe_prefix_bos(tokenizer, p) for p in prompts]
-    prompts = [p for p in prompts for _ in range(n_gen_per_prompt)]
-
-    inputs = tokenizer(
-        prompts,
-        return_tensors="pt",
-        padding="longest",
-        return_offsets_mapping=return_offsets_mapping,
-    )
-
-    if calculate_offsets:
-        offsets = []
-        for i in range(len(prompts)):
-            tokenized = [tokenizer.decode(t) for t in inputs["input_ids"][i]]
-            offsets.append(
-                prepare_offset_mapping(
-                    string=prompts[i],
-                    tokenized=tokenized,
-                    special_tokens=tokenizer.all_special_tokens,
-                )
-            )
-        inputs["offset_mapping"] = torch.tensor(offsets)
-
-    inputs = inputs.to(device)
-    return inputs
