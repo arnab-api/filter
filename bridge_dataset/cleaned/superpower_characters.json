@@ -191,6 +191,377 @@
                 "Superman",
                 "Homelander"
             ]
+        },
+        {
+            "bridge": "billionaire",
+            "entity_pair": [
+                "Batman",
+                "Iron Man"
+            ]
+        },
+        {
+            "bridge": "telekinetic",
+            "entity_pair": [
+                "Jean Grey",
+                "Eleven"
+            ]
+        },
+        {
+            "bridge": "shapeshifter",
+            "entity_pair": [
+                "Mystique",
+                "Beast Boy"
+            ]
+        },
+        {
+            "bridge": "super soldier",
+            "entity_pair": [
+                "Captain America",
+                "Winter Soldier"
+            ]
+        },
+        {
+            "bridge": "archer",
+            "entity_pair": [
+                "Hawkeye",
+                "Green Arrow"
+            ]
+        },
+        {
+            "bridge": "spider-powered",
+            "entity_pair": [
+                "Spider-Man",
+                "Spider-Gwen"
+            ]
+        },
+        {
+            "bridge": "genius inventor",
+            "entity_pair": [
+                "Tony Stark",
+                "Reed Richards"
+            ]
+        },
+        {
+            "bridge": "weather manipulation",
+            "entity_pair": [
+                "Storm",
+                "Thor"
+            ]
+        },
+        {
+            "bridge": "super strength",
+            "entity_pair": [
+                "Hulk",
+                "All Might"
+            ]
+        },
+        {
+            "bridge": "aquatic",
+            "entity_pair": [
+                "Aquaman",
+                "Namor"
+            ]
+        },
+        {
+            "bridge": "elastic powers",
+            "entity_pair": [
+                "Mr. Fantastic",
+                "Elastigirl"
+            ]
+        },
+        {
+            "bridge": "energy projection",
+            "entity_pair": [
+                "Cyclops",
+                "Starfire"
+            ]
+        },
+        {
+            "bridge": "size-changing",
+            "entity_pair": [
+                "Ant-Man",
+                "Atom"
+            ]
+        },
+        {
+            "bridge": "sonic powers",
+            "entity_pair": [
+                "Black Canary",
+                "Banshee"
+            ]
+        },
+        {
+            "bridge": "fire manipulation",
+            "entity_pair": [
+                "Human Torch",
+                "Zuko"
+            ]
+        },
+        {
+            "bridge": "ice powers",
+            "entity_pair": [
+                "Iceman",
+                "Elsa"
+            ]
+        },
+        {
+            "bridge": "metal manipulation",
+            "entity_pair": [
+                "Magneto",
+                "Toph Beifong"
+            ]
+        },
+        {
+            "bridge": "plant manipulation",
+            "entity_pair": [
+                "Poison Ivy",
+                "Swamp Thing"
+            ]
+        },
+        {
+            "bridge": "energy absorption",
+            "entity_pair": [
+                "Rogue",
+                "Kevin Levin"
+            ]
+        },
+        {
+            "bridge": "time manipulation",
+            "entity_pair": [
+                "Doctor Strange",
+                "Dialga"
+            ]
+        },
+        {
+            "bridge": "reality warping",
+            "entity_pair": [
+                "Scarlet Witch",
+                "Franklin Richards"
+            ]
+        },
+        {
+            "bridge": "cosmic awareness",
+            "entity_pair": [
+                "Silver Surfer",
+                "Captain Marvel"
+            ]
+        },
+        {
+            "bridge": "psychic",
+            "entity_pair": [
+                "Professor X",
+                "Martian Manhunter"
+            ]
+        },
+        {
+            "bridge": "super intelligence",
+            "entity_pair": [
+                "Bruce Banner",
+                "Lex Luthor"
+            ]
+        },
+        {
+            "bridge": "electricity manipulation",
+            "entity_pair": [
+                "Static Shock",
+                "Misaka Mikoto"
+            ]
+        },
+        {
+            "bridge": "gravity manipulation",
+            "entity_pair": [
+                "Graviton",
+                "Ochaco Uraraka"
+            ]
+        },
+        {
+            "bridge": "teleportation",
+            "entity_pair": [
+                "Nightcrawler",
+                "Goku"
+            ]
+        },
+        {
+            "bridge": "force field",
+            "entity_pair": [
+                "Invisible Woman",
+                "Violet Parr"
+            ]
+        },
+        {
+            "bridge": "energy construct",
+            "entity_pair": [
+                "Green Lantern",
+                "Star Sapphire"
+            ]
+        },
+        {
+            "bridge": "super speed",
+            "entity_pair": [
+                "Sonic the Hedgehog",
+                "The Flash"
+            ]
+        },
+        {
+            "bridge": "symbiote host",
+            "entity_pair": [
+                "Venom",
+                "Carnage"
+            ]
+        },
+        {
+            "bridge": "radiation powers",
+            "entity_pair": [
+                "Firestorm",
+                "Captain Atom"
+            ]
+        },
+        {
+            "bridge": "technopathy",
+            "entity_pair": [
+                "Cyborg",
+                "Ultron"
+            ]
+        },
+        {
+            "bridge": "density manipulation",
+            "entity_pair": [
+                "Vision",
+                "Martian Manhunter"
+            ]
+        },
+        {
+            "bridge": "super hearing",
+            "entity_pair": [
+                "Superman",
+                "Black Bolt"
+            ]
+        },
+        {
+            "bridge": "flight",
+            "entity_pair": [
+                "Wonder Woman",
+                "Captain Marvel"
+            ]
+        },
+        {
+            "bridge": "immortality",
+            "entity_pair": [
+                "Vandal Savage",
+                "Apocalypse"
+            ]
+        },
+        {
+            "bridge": "cloning",
+            "entity_pair": [
+                "Multiple Man",
+                "Naruto Uzumaki"
+            ]
+        },
+        {
+            "bridge": "energy vampire",
+            "entity_pair": [
+                "Rogue",
+                "Parasite"
+            ]
+        },
+        {
+            "bridge": "super breath",
+            "entity_pair": [
+                "Superman",
+                "Iceman"
+            ]
+        },
+        {
+            "bridge": "pheromone control",
+            "entity_pair": [
+                "Poison Ivy",
+                "Daken"
+            ]
+        },
+        {
+            "bridge": "portal creation",
+            "entity_pair": [
+                "Doctor Strange",
+                "Rick Sanchez"
+            ]
+        },
+        {
+            "bridge": "luck manipulation",
+            "entity_pair": [
+                "Domino",
+                "Nagito Komaeda"
+            ]
+        },
+        {
+            "bridge": "dream manipulation",
+            "entity_pair": [
+                "Sandman",
+                "Freddy Krueger"
+            ]
+        },
+        {
+            "bridge": "animal communication",
+            "entity_pair": [
+                "Aquaman",
+                "Beast"
+            ]
+        },
+        {
+            "bridge": "super intelligence",
+            "entity_pair": [
+                "Brainiac",
+                "Brainiac 5"
+            ]
+        },
+        {
+            "bridge": "energy absorption",
+            "entity_pair": [
+                "Sebastian Shaw",
+                "Kevin Levin"
+            ]
+        },
+        {
+            "bridge": "precognition",
+            "entity_pair": [
+                "Spider-Man",
+                "Paul Atreides"
+            ]
+        },
+        {
+            "bridge": "size increase",
+            "entity_pair": [
+                "Giant-Man",
+                "Mount Lady"
+            ]
+        },
+        {
+            "bridge": "intangibility",
+            "entity_pair": [
+                "Kitty Pryde",
+                "Danny Phantom"
+            ]
+        },
+        {
+            "bridge": "super smell",
+            "entity_pair": [
+                "Wolverine",
+                "Kiba Inuzuka"
+            ]
+        },
+        {
+            "bridge": "elasticity",
+            "entity_pair": [
+                "Plastic Man",
+                "Luffy"
+            ]
+        },
+        {
+            "bridge": "mind control",
+            "entity_pair": [
+                "Purple Man",
+                "Lelouch vi Britannia"
+            ]
         }
     ]
 }

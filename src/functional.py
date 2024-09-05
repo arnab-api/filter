@@ -460,7 +460,7 @@ def ask_claude(
 
     response = client.messages.create(
         model="claude-3-5-sonnet-20240620",
-        max_tokens=1000,
+        max_tokens=4000,
         temperature=0,
         system="You are a helpful assistant.",
         messages=[

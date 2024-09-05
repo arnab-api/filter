@@ -149,6 +149,160 @@
                 "Tokyo Metropolitan Government Building",
                 "St. Mary's Cathedral"
             ]
+        },
+        {
+            "bridge": "Le Corbusier",
+            "entity_pair": [
+                "Villa Savoye",
+                "Notre Dame du Haut"
+            ]
+        },
+        {
+            "bridge": "I.M. Pei",
+            "entity_pair": [
+                "Louvre Pyramid",
+                "Bank of China Tower"
+            ]
+        },
+        {
+            "bridge": "Norman Foster",
+            "entity_pair": [
+                "The Gherkin",
+                "Apple Park"
+            ]
+        },
+        {
+            "bridge": "Renzo Piano",
+            "entity_pair": [
+                "The Shard",
+                "Centre Georges Pompidou"
+            ]
+        },
+        {
+            "bridge": "Santiago Calatrava",
+            "entity_pair": [
+                "City of Arts and Sciences",
+                "World Trade Center Transportation Hub"
+            ]
+        },
+        {
+            "bridge": "Frank Gehry",
+            "entity_pair": [
+                "Walt Disney Concert Hall",
+                "Guggenheim Museum Bilbao"
+            ]
+        },
+        {
+            "bridge": "Mies van der Rohe",
+            "entity_pair": [
+                "Farnsworth House",
+                "Seagram Building"
+            ]
+        },
+        {
+            "bridge": "Antoni Gaud\u00ed",
+            "entity_pair": [
+                "Sagrada Fam\u00edlia",
+                "Casa Mil\u00e0"
+            ]
+        },
+        {
+            "bridge": "Rem Koolhaas",
+            "entity_pair": [
+                "Seattle Central Library",
+                "CCTV Headquarters"
+            ]
+        },
+        {
+            "bridge": "Tadao Ando",
+            "entity_pair": [
+                "Church of the Light",
+                "Chichu Art Museum"
+            ]
+        },
+        {
+            "bridge": "Eero Saarinen",
+            "entity_pair": [
+                "Gateway Arch",
+                "TWA Flight Center"
+            ]
+        },
+        {
+            "bridge": "Oscar Niemeyer",
+            "entity_pair": [
+                "Cathedral of Bras\u00edlia",
+                "United Nations Secretariat Building"
+            ]
+        },
+        {
+            "bridge": "Daniel Libeskind",
+            "entity_pair": [
+                "Jewish Museum Berlin",
+                "Royal Ontario Museum"
+            ]
+        },
+        {
+            "bridge": "Richard Rogers",
+            "entity_pair": [
+                "Centre Pompidou",
+                "Lloyd's building"
+            ]
+        },
+        {
+            "bridge": "Jean Nouvel",
+            "entity_pair": [
+                "Louvre Abu Dhabi",
+                "Torre Agbar"
+            ]
+        },
+        {
+            "bridge": "Herzog & de Meuron",
+            "entity_pair": [
+                "Beijing National Stadium",
+                "Tate Modern"
+            ]
+        },
+        {
+            "bridge": "Bjarke Ingels Group",
+            "entity_pair": [
+                "VIA 57 West",
+                "CopenHill"
+            ]
+        },
+        {
+            "bridge": "SOM (Skidmore Owings & Merrill)",
+            "entity_pair": [
+                "Burj Khalifa",
+                "One World Trade Center"
+            ]
+        },
+        {
+            "bridge": "Kengo Kuma",
+            "entity_pair": [
+                "Japan National Stadium",
+                "V&A Dundee"
+            ]
+        },
+        {
+            "bridge": "SANAA",
+            "entity_pair": [
+                "New Museum",
+                "Rolex Learning Center"
+            ]
+        },
+        {
+            "bridge": "Moshe Safdie",
+            "entity_pair": [
+                "Marina Bay Sands",
+                "Habitat 67"
+            ]
+        },
+        {
+            "bridge": "Adrian Smith",
+            "entity_pair": [
+                "Burj Khalifa",
+                "Jeddah Tower"
+            ]
         }
     ]
 }
