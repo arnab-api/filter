@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
 import torch
+from anthropic import Anthropic
 from openai import OpenAI
 from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import prepare_input
-from src.utils.env_utils import GPT_4O_CACHE_DIR
+from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -398,10 +399,8 @@ def predict_bridge_entity(
 
 
 def ask_gpt4o(
-    query_sample: BridgeSample,
-    predicted_answer: str,
-):
-
+    prompt: str,
+) -> str:
     ##################################################
     client = OpenAI(
         api_key=os.getenv("OPENAI_KEY"),
@@ -409,13 +408,6 @@ def ask_gpt4o(
     MODEL_NAME = "gpt-4o"
     ##################################################
 
-    prompt = f"""
-A smaller language model was asked the following question:
-"What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
-And the model gave the following answer:
-"{predicted_answer.strip()}"
-Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
-"""
     hash_val = hashlib.md5(prompt.encode()).hexdigest()
     if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
         logger.debug(f"found cached gpt4o response for {hash_val} - loading")
@@ -449,9 +441,81 @@ Is it correct? Your answer should start with "Yes" or "No". If the answer is "Ye
     return response
 
 
+def ask_claude(
+    prompt: str,
+) -> str:
+    ##################################################
+    client = Anthropic(
+        api_key=os.getenv("CLAUDE_KEY"),
+    )
+    MODEL_NAME = "claude-3-5-sonnet-20240620"
+    ##################################################
+
+    hash_val = hashlib.md5(prompt.encode()).hexdigest()
+    if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
+        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
+        with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+            json_data = json.load(f)
+            return json_data["response"]
+
+    response = client.messages.create(
+        model="claude-3-5-sonnet-20240620",
+        max_tokens=1000,
+        temperature=0,
+        system="You are a helpful assistant.",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt,
+                    }
+                ],
+            }
+        ],
+    )
+    response = response.content[0].text
+
+    with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "w") as f:
+        json.dump(
+            {
+                "prompt": prompt,
+                "response": response,
+                "model": MODEL_NAME,
+                "hash": hash_val,
+                "tempraure": 0,
+            },
+            f,
+        )
+
+    return response
+
+
+ASK_MODEL = {"gpt4o": ask_gpt4o, "claude": ask_claude}
+
+
+def verify_bridge_response(
+    query_sample: BridgeSample,
+    predicted_answer: str,
+    model: str = "claude",
+) -> str:
+    prompt = f"""
+A smaller language model was asked the following question:
+"What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
+And the model gave the following answer:
+"{predicted_answer.strip()}"
+Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
+"""
+    return ASK_MODEL[model](prompt)
+
+
 @torch.inference_mode()
 def filter_bridge_samples_by_model_knowledge(
-    mt: ModelandTokenizer, dataset: BridgeDataset, limit: Optional[int] = None
+    mt: ModelandTokenizer,
+    dataset: BridgeDataset,
+    limit: Optional[int] = None,
+    powerful_LM: str = "claude",
 ) -> BridgeDataset:
     filtered_samples = []
     for i in tqdm(range(len(dataset))):
@@ -459,7 +523,11 @@ def filter_bridge_samples_by_model_knowledge(
         sample = dataset.examples[i]
         predicted_bridge = predict_bridge_entity(mt, prompt)
         # is_correct = is_nontrivial_prefix(sample.bridge.lower(), predicted_bridge) or is_nontrivial_prefix(predicted_bridge, sample.bridge)
-        is_correct = ask_gpt4o(sample, predicted_bridge).lower().startswith("yes")
+        is_correct = (
+            verify_bridge_response(sample, predicted_bridge, powerful_LM)
+            .lower()
+            .startswith("yes")
+        )
 
         logger.info(
             f"{sample.entity_pair} <> {sample.bridge} | predicted: {predicted_bridge} => ({get_tick_marker(is_correct)})"
