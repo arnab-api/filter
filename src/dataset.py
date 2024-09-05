@@ -14,7 +14,6 @@ from torch.utils.data import Dataset
 from src.utils.env_utils import DEFAULT_DATA_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PathLike
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -531,6 +530,7 @@ class BridgeDataset(DataClassJsonMixin):
             r_idx = (r_idx + 1) % len(self.relations)
             n -= 1
 
+        random.shuffle(self.icl_examples)
         self._prefix = None
 
     @property

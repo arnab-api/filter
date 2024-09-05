@@ -47,6 +47,7 @@ class PredictedToken(DataClassJsonMixin):
 
     token: str
     prob: float
+    logit: Optional[float] = None
     token_id: Optional[int] = None
 
     def __str__(self) -> str:

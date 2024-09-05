@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import prepare_input
+from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
@@ -25,43 +25,104 @@ logger = logging.getLogger(__name__)
 def interpret_logits(
     tokenizer: ModelandTokenizer | Tokenizer,
     logits: torch.Tensor,
-    k: int = 10,
-    get_proba: bool = False,
-) -> list[tuple[str, float]]:
+    k: int = 5,
+) -> list[PredictedToken]:
     tokenizer = unwrap_tokenizer(tokenizer)
-    logits = torch.nn.functional.softmax(logits, dim=-1) if get_proba else logits
-    token_ids = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
-    logit_values = logits.topk(dim=-1, k=k).values.squeeze().tolist()
-    return [(tokenizer.decode(t), round(v, 3)) for t, v in zip(token_ids, logit_values)]
+    logits = logits.squeeze()
+    probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
+    top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
+
+    return [
+        PredictedToken(
+            token=tokenizer.decode(t),
+            prob=probs[t].item(),
+            logit=logits[t].item(),
+            token_id=t,
+        )
+        for t in top_k_indices
+    ]
 
 
 @torch.inference_mode()
 def logit_lens(
     mt: ModelandTokenizer,
     h: torch.Tensor,
-    after_layer_norm: bool = False,
     interested_tokens: list[int] = [],
-    get_proba: bool = False,
-    k: int = 10,
-) -> tuple[list[tuple[str, float]], dict]:
-    lm_head = mt.lm_head if not after_layer_norm else mt.lm_head.lm_head
-    h = untuple(h) if after_layer_norm else h
-    logits = lm_head(h)
-    logits = torch.nn.functional.softmax(logits, dim=-1) if get_proba else logits
-    # don't pass `get_proba` or softmax will be applied twice with `get_proba=True`
+    k: int = 5,
+) -> (
+    list[PredictedToken]
+    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
+):
+    with mt.trace(get_dummy_input(mt), scan=False, validate=False) as tr:
+        lnf = mt.model.norm
+        lnf.input = (h.view(1, 1, h.squeeze().shape[0]), lnf.input[1])
+        logits = mt.output.logits.save()
+    logits = logits.squeeze()
     candidates = interpret_logits(mt, logits, k=k)
     if len(interested_tokens) > 0:
         rank_tokens = logits.argsort(descending=True).tolist()
+        probs = torch.nn.functional.softmax(logits, dim=-1)
         interested_logits = {
-            t: {
-                "p": logits[t].item(),
-                "rank": rank_tokens.index(t) + 1,
-                "token": mt.tokenizer.decode(t),
-            }
+            t: (
+                rank_tokens.index(t) + 1,
+                PredictedToken(
+                    token=mt.tokenizer.decode(t),
+                    prob=probs[t].item(),
+                    logit=logits[t].item(),
+                    token_id=t,
+                ),
+            )
             for t in interested_tokens
         }
         return candidates, interested_logits
+    free_gpu_cache()
     return candidates
+
+
+@torch.inference_mode()
+def patchscope(
+    mt: ModelandTokenizer,
+    h: torch.Tensor,
+    layer_idx: 10,
+    interested_tokens: list[int] = [],
+    k: int = 5,
+) -> (
+    list[PredictedToken]
+    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
+):
+    placeholder = "placeholder"
+    copy_prompt = f"cat -> cat; hello -> hello; Microsoft -> Microsoft; copy -> copy; Python -> Python; {placeholder} ->"
+    input = prepare_input(
+        tokenizer=mt,
+        prompts=copy_prompt,
+        return_offsets_mapping=True,
+    )
+    placeholder_range = find_token_range(
+        string=copy_prompt,
+        substring=placeholder,
+        tokenizer=mt.tokenizer,
+        occurrence=-1,
+        offset_mapping=input["offset_mapping"][0],
+    )
+    placeholder_pos = placeholder_range[1] - 1
+    input.pop("offset_mapping")
+
+    processed_h = get_hs(
+        mt=mt,
+        input=input,
+        locations=[(mt.layer_names[-1], -1)],
+        patches=PatchSpec(
+            location=(mt.layer_name_format(layer_idx), placeholder_pos),
+            patch=h,
+        ),
+        return_dict=False,
+    )
+    return logit_lens(
+        mt=mt,
+        h=processed_h,
+        interested_tokens=interested_tokens,
+        k=k,
+    )
 
 
 def untuple(object: Any):
@@ -555,3 +616,10 @@ def free_gpu_cache():
     # logger.debug(
     #     f"freed {models.bytes_to_human_readable(freed)} | before={models.bytes_to_human_readable(before)} -> after={models.bytes_to_human_readable(after)}"
     # )
+
+
+def get_dummy_input(
+    tokenizer: ModelandTokenizer | Tokenizer,
+):
+    dummy_prompt = "The quick brown fox"
+    return prepare_input(prompts=dummy_prompt, tokenizer=tokenizer)
