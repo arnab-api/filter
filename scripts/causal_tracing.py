@@ -56,10 +56,6 @@ def get_causal_tracing_results_for_bridge_pair(
     patch_entity_pair: tuple[str, str],
     kind_window_size: dict[str, int],
 ):
-    print(f"{clean_ques=}")
-    print(f"{clean_entity_pair=}")
-    print(f"{patch_ques=}")
-    print(f"{patch_entity_pair=}")
     inps = align_bridge_entities_in_query(
         mt=mt,
         clean_ques=clean_ques,
@@ -181,9 +177,9 @@ def cache_causal_tracing_results(
     )
     with open(os.path.join(cached_known_dir, known_data_file), "r") as f:
         json_data = json.load(f)
-    if relation == "all":
-        dataset = BridgeDataset.from_dict(json_data)
-    else:
+
+    dataset = BridgeDataset.from_dict(json_data)
+    if relation != "all":
         relation_icq = None
         for rel in json_data["relations"]:
             if rel["name"] == relation:
@@ -192,7 +188,8 @@ def cache_causal_tracing_results(
         assert (
             relation_icq is not None
         ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
-        dataset = BridgeDataset(relations=[relation_icq])
+        dataset.examples = relation_icq.examples
+        dataset.ensure_icl_not_in_examples()
 
     logger.debug(f"{dataset.icl_examples=}")
 

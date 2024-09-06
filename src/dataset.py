@@ -456,7 +456,9 @@ class BridgeRelation(DataClassJsonMixin):
                 continue
             if check_uniqueness_of_bridge_samples(unique_examples, example):
                 unique_examples.append(example)
-        logger.debug(f"filtered from {len(self.examples)} to {len(unique_examples)}")
+        logger.debug(
+            f"{self.name} -- filtered from {len(self.examples)} to {len(unique_examples)}"
+        )
         self.examples = unique_examples
 
 
@@ -558,6 +560,16 @@ class BridgeDataset(DataClassJsonMixin):
 
         random.shuffle(self.icl_examples)
         self._prefix = None
+
+    def ensure_icl_not_in_examples(self):
+        examples = []
+        for example in self.examples:
+            if check_uniqueness_of_bridge_samples(self.icl_examples, example):
+                examples.append(example)
+        self.examples = examples
+        logger.debug(
+            f"filtered dataset samples from {len(self.examples)} to {len(examples)}"
+        )
 
     @property
     def prefix(self):
