@@ -197,6 +197,7 @@ def filter_samples_by_model_knowledge(
         )
         if is_known:
             filtered_samples.append(sample)
+
         if limit is not None and len(filtered_samples) >= limit:
             break
 
@@ -579,12 +580,16 @@ def filter_bridge_samples_by_model_knowledge(
     powerful_LM: str = "claude",
 ) -> BridgeDataset:
     filtered_samples = []
+    filtered_relation_samples = {}
     for i in tqdm(range(len(dataset))):
         prompt, answer = dataset[i]
         sample = dataset.examples[i]
         predicted_bridge = predict_bridge_entity(mt, prompt)
         # is_correct = is_nontrivial_prefix(sample.bridge.lower(), predicted_bridge) or is_nontrivial_prefix(predicted_bridge, sample.bridge)
         is_correct = (
+            sample.bridge.strip().lower() == "none"
+            and predicted_bridge.strip().lower().startswith("none")
+        ) or (
             verify_bridge_response(sample, predicted_bridge, powerful_LM)
             .lower()
             .startswith("yes")
@@ -595,6 +600,9 @@ def filter_bridge_samples_by_model_knowledge(
         )
         if is_correct:
             filtered_samples.append(sample)
+            if sample.relation not in filtered_relation_samples:
+                filtered_relation_samples[sample.relation] = []
+            filtered_relation_samples[sample.relation].append(sample)
         if limit is not None and len(filtered_samples) >= limit:
             break
 
@@ -603,6 +611,9 @@ def filter_bridge_samples_by_model_knowledge(
     )
 
     dataset.examples = filtered_samples
+    for relation in dataset.relations:
+        relation.examples = filtered_relation_samples.get(relation.name, [])
+
     return dataset
 
 

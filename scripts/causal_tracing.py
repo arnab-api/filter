@@ -266,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--known_data",
         type=str,
-        default="filtered_2024-08-30T23:00:20.070752.json",
+        default="filtered_2024-09-06T00:58:32.777195.json",
     )
 
     args = parser.parse_args()

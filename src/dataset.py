@@ -392,6 +392,7 @@ class BridgeSample(DataClassJsonMixin):
     bridge: str
     entity_pair: list[str]
     description: Optional[str] = None
+    relation: Optional[str] = None
 
     def __post_init__(self):
         assert (
@@ -423,6 +424,8 @@ class BridgeRelation(DataClassJsonMixin):
                 .replace("<entity1>", example.entity_pair[0])
                 .replace("<entity2>", example.entity_pair[1])
             )
+        for sample in self.examples:
+            sample.relation = self.name
         logger.info(
             f"initialized bridge relation {self.name} with {len(self.examples)} examples"
         )
