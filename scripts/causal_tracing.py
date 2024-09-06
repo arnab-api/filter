@@ -249,6 +249,7 @@ if __name__ == "__main__":
             "movie_actor",
             "sport_players",
             "superpower_characters",
+            "none",
             "all",
         ],
         default="sport_players",
