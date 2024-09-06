@@ -407,6 +407,16 @@ class BridgeSample(DataClassJsonMixin):
         )
 
 
+def check_uniqueness_of_bridge_samples(
+    examples: list[BridgeSample],
+    sample: BridgeSample,
+):
+    for other in examples:
+        if set(sample.entity_pair) == set(other.entity_pair):
+            return False
+    return True
+
+
 @dataclass(frozen=False)
 class BridgeRelation(DataClassJsonMixin):
     name: str
@@ -424,6 +434,7 @@ class BridgeRelation(DataClassJsonMixin):
                 .replace("<entity1>", example.entity_pair[0])
                 .replace("<entity2>", example.entity_pair[1])
             )
+        self.check_uniqueness()
         for sample in self.examples:
             sample.relation = self.name
         logger.info(
@@ -435,6 +446,14 @@ class BridgeRelation(DataClassJsonMixin):
 
     def __getitem__(self, idx):
         return self.examples[idx]
+
+    def check_uniqueness(self):
+        unique_examples: list[BridgeSample] = []
+        for example in self.examples:
+            if check_uniqueness_of_bridge_samples(unique_examples, example):
+                unique_examples.append(example)
+        logger.debug(f"filtered from {len(self.examples)} to {len(unique_examples)}")
+        self.examples = unique_examples
 
 
 @dataclass(frozen=False)

@@ -106,13 +106,16 @@ def patchscope(
     )
     placeholder_pos = placeholder_range[1] - 1
     input.pop("offset_mapping")
+    logger.debug(
+        f"placeholder position: {placeholder_pos} | token: {mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}"
+    )
 
     processed_h = get_hs(
         mt=mt,
         input=input,
         locations=[(mt.layer_names[-1], -1)],
         patches=PatchSpec(
-            location=(mt.layer_name_format(layer_idx), placeholder_pos),
+            location=(mt.layer_name_format.format(layer_idx), placeholder_pos),
             patch=h,
         ),
         return_dict=False,
@@ -262,6 +265,7 @@ def predict_next_token(
                     PredictedToken(
                         token=mt.tokenizer.decode(token_ids[j]),
                         prob=token_probs[j].item(),
+                        logit=batch_logits[0][token_ids[j]].item(),
                         token_id=token_ids[j].item(),
                     )
                     for j in range(k)
@@ -355,7 +359,7 @@ def get_hs(
                     )
                 module = get_module_nnsight(mt, module_name)
                 current_state = (
-                    module.output
+                    module.output.save()
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )

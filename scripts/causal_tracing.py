@@ -56,6 +56,10 @@ def get_causal_tracing_results_for_bridge_pair(
     patch_entity_pair: tuple[str, str],
     kind_window_size: dict[str, int],
 ):
+    print(f"{clean_ques=}")
+    print(f"{clean_entity_pair=}")
+    print(f"{patch_ques=}")
+    print(f"{patch_entity_pair=}")
     inps = align_bridge_entities_in_query(
         mt=mt,
         clean_ques=clean_ques,
