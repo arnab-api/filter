@@ -450,6 +450,10 @@ class BridgeRelation(DataClassJsonMixin):
     def check_uniqueness(self):
         unique_examples: list[BridgeSample] = []
         for example in self.examples:
+            # will get confused when finding the position -- need to fix. But for now, it's fine
+            e1, e2 = example.entity_pair
+            if e1.startswith(e2) or e2.startswith(e1):
+                continue
             if check_uniqueness_of_bridge_samples(unique_examples, example):
                 unique_examples.append(example)
         logger.debug(f"filtered from {len(self.examples)} to {len(unique_examples)}")
