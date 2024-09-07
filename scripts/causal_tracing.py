@@ -189,7 +189,7 @@ def cache_causal_tracing_results(
             relation_icq is not None
         ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
         dataset.examples = relation_icq.examples
-        dataset.ensure_icl_not_in_examples()
+    dataset.ensure_icl_not_in_examples()
 
     logger.debug(f"{dataset.icl_examples=}")
 

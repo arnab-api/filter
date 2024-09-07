@@ -509,6 +509,9 @@ class BridgeDataset(DataClassJsonMixin):
             f"initialized bridge dataset with {len(self.relations)} relations and {len(self)} examples"
         )
 
+    def __post_init__(self):
+        self.ensure_icl_not_in_examples()
+
     # @classmethod
     # def from_dict(dct: dict) -> "BridgeDataset":
     #     relations = [BridgeRelation.from_dict(r) for r in dct["relations"]]
@@ -564,12 +567,17 @@ class BridgeDataset(DataClassJsonMixin):
     def ensure_icl_not_in_examples(self):
         examples = []
         for example in self.examples:
+            e1, e2 = example.entity_pair
+            if e1.startswith(e2) or e2.startswith(e1):
+                continue
             if check_uniqueness_of_bridge_samples(self.icl_examples, example):
                 examples.append(example)
-        self.examples = examples
+
         logger.debug(
             f"filtered dataset samples from {len(self.examples)} to {len(examples)}"
         )
+
+        self.examples = examples
 
     @property
     def prefix(self):
