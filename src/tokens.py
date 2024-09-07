@@ -115,7 +115,7 @@ def prepare_input(
 def find_token_range(
     string: str,
     substring: str,
-    tokenizer: Optional[Tokenizer] = None,
+    tokenizer: Optional[ModelandTokenizer | Tokenizer] = None,
     occurrence: int = 0,
     offset_mapping: Optional[torch.Tensor] = None,
     **kwargs: Any,
@@ -189,7 +189,7 @@ def find_token_range(
         tokens = prepare_input(
             string, return_offsets_mapping=True, tokenizer=tokenizer, **kwargs
         )
-        offset_mapping = tokens.offset_mapping
+        offset_mapping = tokens.offset_mapping[0]
 
     token_start, token_end = None, None
     for index, (token_char_start, token_char_end) in enumerate(offset_mapping):
@@ -205,6 +205,7 @@ def find_token_range(
                 token_end = index
                 break
 
+    print(f"{substring=}, {occurrence=} | {token_start=}, {token_end=}")
     assert token_start is not None
     assert token_end is not None
     assert token_start <= token_end
@@ -275,7 +276,7 @@ def align_bridge_entities_in_query(
         find_token_range(
             string=clean_ques,
             substring=subj,
-            tokenizer=mt.tokenizer,
+            tokenizer=mt,
             offset_mapping=clean_offsets,
             occurrence=-1,
         )
@@ -297,9 +298,9 @@ def align_bridge_entities_in_query(
         find_token_range(
             string=patch_ques,
             substring=subj,
-            tokenizer=mt.tokenizer,
+            tokenizer=mt,
             offset_mapping=patch_offsets,
-            occurance=-1,
+            occurrence=-1,
         )
         for subj in patch_entity_pair
     ]
