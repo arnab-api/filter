@@ -53,12 +53,13 @@ def logit_lens(
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    with mt.trace(get_dummy_input(mt), scan=False, validate=False) as tr:
-        lnf = mt.model.norm
-        lnf.input = (h.view(1, 1, h.squeeze().shape[0]), lnf.input[1])
+    with mt.trace(get_dummy_input(mt), scan=True, validate=True) as trace:
+        lnf = get_module_nnsight(mt, mt.final_layer_norm_name)
+        lnf.input = h.view(1, 1, h.squeeze().shape[0])
         logits = mt.output.logits.save()
+
     logits = logits.squeeze()
-    candidates = interpret_logits(mt, logits, k=k)
+    candidates = interpret_logits(tokenizer=mt, logits=logits, k=k)
     if len(interested_tokens) > 0:
         rank_tokens = logits.argsort(descending=True).tolist()
         probs = torch.nn.functional.softmax(logits, dim=-1)

@@ -113,11 +113,11 @@ class ModelandTokenizer(LanguageModel):
                 )
             setattr(self, key, value)
 
-    @property
-    def lm_head(self) -> torch.nn.Sequential:
-        lm_head = baukit.get_module(unwrap_model(self), self.lm_head_name)
-        ln_f = baukit.get_module(unwrap_model(self), self.final_layer_norm_name)
-        return LMHead(final_layer_norm=ln_f, lm_head=lm_head)
+    # @property
+    # def lm_head(self) -> torch.nn.Sequential:
+    #     lm_head = baukit.get_module(unwrap_model(self), self.lm_head_name)
+    #     ln_f = baukit.get_module(unwrap_model(self), self.final_layer_norm_name)
+    #     return LMHead(final_layer_norm=ln_f, lm_head=lm_head)
 
     def cache_forwards(self):
         """

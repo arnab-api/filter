@@ -14,8 +14,9 @@ from tqdm import tqdm
 from src.dataset import BridgeDataset, BridgeRelation
 from src.functional import predict_next_token
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
-from src.models import ModelandTokenizer, prepare_input
-from src.utils import env_utils, logging_utils, experiment_utils
+from src.models import ModelandTokenizer
+from src.tokens import prepare_input
+from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)

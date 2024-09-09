@@ -90,7 +90,11 @@ def cache_activations(
         for layer_name in all_layers:
             # print(f"{layer_name=} | {cache['outputs'][layer_name].size()}")
             cache["outputs"][layer_name] = (
-                cache["outputs"][layer_name].cpu().numpy().astype(np.float16)
+                cache["outputs"][layer_name]
+                .mean(dim=1)
+                .cpu()
+                .numpy()
+                .astype(np.float32)
             )
         cache_path = os.path.join(cache_dir, f"{doc_index}")
         np.savez_compressed(cache_path, allow_pickle=True, **cache)
@@ -122,13 +126,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--limit",
         type=int,
-        default=20,
+        default=200,
     )
 
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="cache_states",
+        default="cache_states/mean",
     )
 
     args = parser.parse_args()

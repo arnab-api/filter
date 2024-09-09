@@ -338,6 +338,7 @@ def LlamaAttentionPatcher(
                 self.o_proj, attn_output
             )
             for head_idx in attn_contributions:
+                # print(f">>> {head_idx=} | {type(head_idx)}")
                 attn_contributions[head_idx] = per_head_contribution[:, head_idx, :, :]
         # ---------------------------------------------------------------------
 
