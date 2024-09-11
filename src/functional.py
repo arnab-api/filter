@@ -96,7 +96,7 @@ def patchscope(
     input = prepare_input(
         tokenizer=mt,
         prompts=copy_prompt,
-        return_offsets_mapping=True,
+        return_offset_mapping=True,
     )
     placeholder_range = find_token_range(
         string=copy_prompt,
@@ -260,13 +260,15 @@ def predict_next_token(
         batch_probs = batch_logits.float().softmax(dim=-1)
         batch_topk = batch_probs.topk(k=k, dim=-1)
 
-        for token_ids, token_probs in zip(batch_topk.indices, batch_topk.values):
+        for batch_order, (token_ids, token_probs) in enumerate(
+            zip(batch_topk.indices, batch_topk.values)
+        ):
             predictions.append(
                 [
                     PredictedToken(
                         token=mt.tokenizer.decode(token_ids[j]),
                         prob=token_probs[j].item(),
-                        logit=batch_logits[0][token_ids[j]].item(),
+                        logit=batch_logits[batch_order][token_ids[j]].item(),
                         token_id=token_ids[j].item(),
                     )
                     for j in range(k)
@@ -291,6 +293,7 @@ def predict_next_token(
                         PredictedToken(
                             token=mt.tokenizer.decode(tok_id),
                             prob=prob_tok.item(),
+                            logit=batch_logits[j - i][tok_id].item(),
                             token_id=tok_id,
                         ),
                     )

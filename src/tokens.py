@@ -71,14 +71,14 @@ def prepare_input(
     n_gen_per_prompt: int = 1,
     device: torch.device = "cpu",
     add_bos_token: bool = False,
-    return_offsets_mapping=False,
+    return_offset_mapping=False,
 ) -> TokenizerOutput:
     """Prepare input for the model."""
     if isinstance(tokenizer, ModelandTokenizer):
         device = determine_device(
             tokenizer
         )  # if tokenizer type is ModelandTokenizer, get device and ignore the passed device
-    calculate_offsets = return_offsets_mapping and (
+    calculate_offsets = return_offset_mapping and (
         isinstance(tokenizer, ModelandTokenizer) and "llama-3" in tokenizer.name.lower()
     )
 
@@ -92,7 +92,7 @@ def prepare_input(
         prompts,
         return_tensors="pt",
         padding="longest",
-        return_offsets_mapping=return_offsets_mapping,
+        return_offsets_mapping=return_offset_mapping,
     )
 
     if calculate_offsets:
@@ -187,7 +187,7 @@ def find_token_range(
     if offset_mapping is None:
         assert tokenizer is not None
         tokens = prepare_input(
-            string, return_offsets_mapping=True, tokenizer=tokenizer, **kwargs
+            string, return_offset_mapping=True, tokenizer=tokenizer, **kwargs
         )
         offset_mapping = tokens.offset_mapping[0]
 
@@ -268,7 +268,7 @@ def align_bridge_entities_in_query(
     patch_entity_pair: tuple[str, str],
 ) -> tuple[TokenizerOutput, TokenizerOutput, int]:
     clean_inputs = prepare_input(
-        prompts=clean_ques, tokenizer=mt, return_offsets_mapping=True
+        prompts=clean_ques, tokenizer=mt, return_offset_mapping=True
     )
 
     clean_offsets = clean_inputs.pop("offset_mapping")[0]
@@ -291,7 +291,7 @@ def align_bridge_entities_in_query(
     logger.debug(f"{'='*50}")
 
     patch_inputs = prepare_input(
-        prompts=patch_ques, tokenizer=mt, return_offsets_mapping=True
+        prompts=patch_ques, tokenizer=mt, return_offset_mapping=True
     )
     patch_offsets = patch_inputs.pop("offset_mapping")[0]
     patch_subj_ranges = [

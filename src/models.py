@@ -135,6 +135,7 @@ class ModelandTokenizer(LanguageModel):
         """
         Resets the forward pass of all the modules to their original state.
         """
+        logger.debug("Resetting default forward pass of all modules")
         for name, module in self._model.named_modules():
             # print(name, hasattr(module, "forward"))
             for func_name in CACHEABLE_FUNCS:

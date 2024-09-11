@@ -110,13 +110,13 @@ def trace_important_states(
         clean_input = prepare_input(
             prompts=prompt_template.format(clean_subj),
             tokenizer=mt,
-            return_offsets_mapping=True,
+            return_offset_mapping=True,
         )
     if patched_input is None:
         patched_input = prepare_input(
             prompts=prompt_template.format(patched_subj),
             tokenizer=mt,
-            return_offsets_mapping=True,
+            return_offset_mapping=True,
         )
 
     clean_subj_range = find_token_range(
@@ -262,10 +262,10 @@ def trace_important_states_RAG(
     ), "Queries do not have the same template"
 
     clean_inputs = prepare_input(
-        prompts=clean_query.query, tokenizer=mt, return_offsets_mapping=True
+        prompts=clean_query.query, tokenizer=mt, return_offset_mapping=True
     )
     corrupt_inputs = prepare_input(
-        prompts=corrupt_query.query, tokenizer=mt, return_offsets_mapping=True
+        prompts=corrupt_query.query, tokenizer=mt, return_offset_mapping=True
     )
 
     if trace_token_strategy == "subj_query":

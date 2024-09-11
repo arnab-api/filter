@@ -1,0 +1,417 @@
+{
+  "model_name": "Meta-Llama-3-8B-Instruct",
+  "relation_name": "sports_players",
+  "focus_strategy": "subj",
+  "sweep_results": [
+    {
+      "question": "Given two entities, find a common link between them.\n#\nWhat is a common link between Michelle Williams and Marilyn Monroe?\nA: My Week with Marilyn - a movie where Michelle Williams played the role of Marilyn Monroe.\n#\nWhat is a common link between Fallingwater and Guggenheim Museum?\nA: Frank Lloyd Wright - who was the architect of both buildings Fallingwater and Guggenheim Museum.\n#\nWhat is a common link between Roger Federer and Rafael Nadal?\nA: tennis - a sport where both Roger Federer and Rafael Nadal are known for.\n#\nWhat is a common link between Charles Darwin and Flamenco?\nA: none - there is no connection between Charles Darwin and Flamenco.\n#\nWhat is a common link between Mr. Fantastic and Elastigirl?\nA: elastic powers - an attribute that both characters Mr. Fantastic and Elastigirl possess.\n#\nWhat is a common link between Jonah Lomu and Richie McCaw?\nA:",
+      "entity_pair": [
+        "Jonah Lomu",
+        "Richie McCaw"
+      ],
+      "answer": {
+        "token": " rugby",
+        "prob": 0.38151416182518005,
+        "logit": 20.859375,
+        "token_id": 47550
+      },
+      "tokens": [
+        "<|begin_of_text|>",
+        "Given",
+        " two",
+        " entities",
+        ",",
+        " find",
+        " a",
+        " common",
+        " link",
+        " between",
+        " them",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Michelle",
+        " Williams",
+        " and",
+        " Marilyn",
+        " Monroe",
+        "?\n",
+        "A",
+        ":",
+        " My",
+        " Week",
+        " with",
+        " Marilyn",
+        " -",
+        " a",
+        " movie",
+        " where",
+        " Michelle",
+        " Williams",
+        " played",
+        " the",
+        " role",
+        " of",
+        " Marilyn",
+        " Monroe",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Falling",
+        "water",
+        " and",
+        " G",
+        "ugg",
+        "enheim",
+        " Museum",
+        "?\n",
+        "A",
+        ":",
+        " Frank",
+        " Lloyd",
+        " Wright",
+        " -",
+        " who",
+        " was",
+        " the",
+        " architect",
+        " of",
+        " both",
+        " buildings",
+        " Falling",
+        "water",
+        " and",
+        " G",
+        "ugg",
+        "enheim",
+        " Museum",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Roger",
+        " Feder",
+        "er",
+        " and",
+        " Rafael",
+        " Nad",
+        "al",
+        "?\n",
+        "A",
+        ":",
+        " tennis",
+        " -",
+        " a",
+        " sport",
+        " where",
+        " both",
+        " Roger",
+        " Feder",
+        "er",
+        " and",
+        " Rafael",
+        " Nad",
+        "al",
+        " are",
+        " known",
+        " for",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Charles",
+        " Darwin",
+        " and",
+        " Flam",
+        "enco",
+        "?\n",
+        "A",
+        ":",
+        " none",
+        " -",
+        " there",
+        " is",
+        " no",
+        " connection",
+        " between",
+        " Charles",
+        " Darwin",
+        " and",
+        " Flam",
+        "enco",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Mr",
+        ".",
+        " Fantastic",
+        " and",
+        " El",
+        "ast",
+        "ig",
+        "irl",
+        "?\n",
+        "A",
+        ":",
+        " elastic",
+        " powers",
+        " -",
+        " an",
+        " attribute",
+        " that",
+        " both",
+        " characters",
+        " Mr",
+        ".",
+        " Fantastic",
+        " and",
+        " El",
+        "ast",
+        "ig",
+        "irl",
+        " possess",
+        ".\n",
+        "#\n",
+        "What",
+        " is",
+        " a",
+        " common",
+        " link",
+        " between",
+        " Jonah",
+        " L",
+        "omu",
+        " and",
+        " Richie",
+        " McC",
+        "aw",
+        "?\n",
+        "A",
+        ":"
+      ],
+      "block_edges": [
+        {
+          "q_idx": 5,
+          "k_idx": 7
+        }
+      ],
+      "effects": {
+        "31": {
+          "token": " rugby",
+          "prob": 0.3842708170413971,
+          "logit": null,
+          "token_id": 47550
+        },
+        "30": {
+          "token": " rugby",
+          "prob": 0.3716249465942383,
+          "logit": null,
+          "token_id": 47550
+        },
+        "29": {
+          "token": " rugby",
+          "prob": 0.24584180116653442,
+          "logit": null,
+          "token_id": 47550
+        },
+        "28": {
+          "token": " rugby",
+          "prob": 0.1961749792098999,
+          "logit": null,
+          "token_id": 47550
+        },
+        "27": {
+          "token": " rugby",
+          "prob": 0.2064814418554306,
+          "logit": null,
+          "token_id": 47550
+        },
+        "26": {
+          "token": " rugby",
+          "prob": 0.17622460424900055,
+          "logit": null,
+          "token_id": 47550
+        },
+        "25": {
+          "token": " rugby",
+          "prob": 0.17911142110824585,
+          "logit": null,
+          "token_id": 47550
+        },
+        "24": {
+          "token": " rugby",
+          "prob": 0.18604600429534912,
+          "logit": null,
+          "token_id": 47550
+        },
+        "23": {
+          "token": " rugby",
+          "prob": 0.1806797981262207,
+          "logit": null,
+          "token_id": 47550
+        },
+        "22": {
+          "token": " rugby",
+          "prob": 0.20175610482692719,
+          "logit": null,
+          "token_id": 47550
+        },
+        "21": {
+          "token": " rugby",
+          "prob": 0.17557594180107117,
+          "logit": null,
+          "token_id": 47550
+        },
+        "20": {
+          "token": " rugby",
+          "prob": 0.19269020855426788,
+          "logit": null,
+          "token_id": 47550
+        },
+        "19": {
+          "token": " rugby",
+          "prob": 0.10748310387134552,
+          "logit": null,
+          "token_id": 47550
+        },
+        "18": {
+          "token": " rugby",
+          "prob": 0.11674533039331436,
+          "logit": null,
+          "token_id": 47550
+        },
+        "17": {
+          "token": " rugby",
+          "prob": 0.05358590558171272,
+          "logit": null,
+          "token_id": 47550
+        },
+        "16": {
+          "token": " rugby",
+          "prob": 0.06146729737520218,
+          "logit": null,
+          "token_id": 47550
+        },
+        "15": {
+          "token": " rugby",
+          "prob": 0.003364705480635166,
+          "logit": null,
+          "token_id": 47550
+        },
+        "14": {
+          "token": " rugby",
+          "prob": 0.002763889729976654,
+          "logit": null,
+          "token_id": 47550
+        },
+        "13": {
+          "token": " rugby",
+          "prob": 0.0034202877432107925,
+          "logit": null,
+          "token_id": 47550
+        },
+        "12": {
+          "token": " rugby",
+          "prob": 0.004323331639170647,
+          "logit": null,
+          "token_id": 47550
+        },
+        "11": {
+          "token": " rugby",
+          "prob": 0.01104138046503067,
+          "logit": null,
+          "token_id": 47550
+        },
+        "10": {
+          "token": " rugby",
+          "prob": 0.0017427165294066072,
+          "logit": null,
+          "token_id": 47550
+        },
+        "9": {
+          "token": " rugby",
+          "prob": 0.0003248085267841816,
+          "logit": null,
+          "token_id": 47550
+        },
+        "8": {
+          "token": " rugby",
+          "prob": 0.00032397560426034033,
+          "logit": null,
+          "token_id": 47550
+        },
+        "7": {
+          "token": " rugby",
+          "prob": 0.0008723382488824427,
+          "logit": null,
+          "token_id": 47550
+        },
+        "6": {
+          "token": " rugby",
+          "prob": 0.0007766146445646882,
+          "logit": null,
+          "token_id": 47550
+        },
+        "5": {
+          "token": " rugby",
+          "prob": 0.0032041470985859632,
+          "logit": null,
+          "token_id": 47550
+        },
+        "4": {
+          "token": " rugby",
+          "prob": 0.0018507452914491296,
+          "logit": null,
+          "token_id": 47550
+        },
+        "3": {
+          "token": " rugby",
+          "prob": 0.0011310233967378736,
+          "logit": null,
+          "token_id": 47550
+        },
+        "2": {
+          "token": " rugby",
+          "prob": 0.0009697724599391222,
+          "logit": null,
+          "token_id": 47550
+        },
+        "1": {
+          "token": " rugby",
+          "prob": 0.002137900097295642,
+          "logit": null,
+          "token_id": 47550
+        },
+        "0": {
+          "token": " rugby",
+          "prob": 0.001012858236208558,
+          "logit": null,
+          "token_id": 47550
+        }
+      }
+    }
+  ]
+}
