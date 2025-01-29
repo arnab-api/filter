@@ -16,6 +16,25 @@ from src.utils.typing import Tokenizer, TokenizerOutput
 logger = logging.getLogger(__name__)
 
 
+import logging
+import os
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional, overload
+
+import baukit
+import torch
+import transformers
+from nnsight import LanguageModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from src.models import ModelandTokenizer, determine_device, unwrap_tokenizer
+from src.utils.env_utils import DEFAULT_MODELS_DIR
+from src.utils.tokenization_utils import set_padding_side
+from src.utils.typing import Tokenizer, TokenizerOutput
+
+logger = logging.getLogger(__name__)
+
+
 def maybe_prefix_bos(tokenizer, prompt: str) -> str:
     """Prefix prompt with EOS token if model has no special start token."""
     tokenizer = unwrap_tokenizer(tokenizer)
@@ -47,12 +66,13 @@ def prepare_offset_mapping(string, tokenized, special_tokens):
     # logger.debug(f"{special_tokens}")
     offset_mapping = []
     end = 0
+    # print(tokenized)
     for token in tokenized:
-        if token in special_tokens:
-            offset_mapping.append((end, end))
-            continue
         # print(f"{string[end:].find(token)} | {end=}, {token=}, {string[end:]}")
         next_tok_idx = string[end:].find(token)
+        if token in special_tokens and next_tok_idx == -1:
+            offset_mapping.append((end, end))
+            continue
         assert next_tok_idx != -1, f"{token} not found in {string[end:]}"
         assert next_tok_idx in [
             0,
@@ -71,16 +91,21 @@ def prepare_input(
     n_gen_per_prompt: int = 1,
     device: torch.device = "cpu",
     add_bos_token: bool = False,
-    return_offset_mapping=False,
+    return_offsets_mapping=False,
+    padding: str = "longest",
+    padding_side: Optional[Literal["left", "right"]] = None,
+    **kwargs,
 ) -> TokenizerOutput:
     """Prepare input for the model."""
     if isinstance(tokenizer, ModelandTokenizer):
         device = determine_device(
             tokenizer
         )  # if tokenizer type is ModelandTokenizer, get device and ignore the passed device
-    calculate_offsets = return_offset_mapping and (
-        isinstance(tokenizer, ModelandTokenizer) and "llama-3" in tokenizer.name.lower()
-    )
+    # calculate_offsets = return_offsets_mapping and (
+    #     isinstance(tokenizer, ModelandTokenizer) and "llama-3" in tokenizer.name.lower()
+    # )
+    # tokenizer versions 20+ fixed the bug with llama tokenizers. no need to calculate offsets ourselves
+    calculate_offsets = False
 
     tokenizer = unwrap_tokenizer(tokenizer)
     prompts = [prompts] if isinstance(prompts, str) else prompts
@@ -88,12 +113,16 @@ def prepare_input(
         prompts = [maybe_prefix_bos(tokenizer, p) for p in prompts]
     prompts = [p for p in prompts for _ in range(n_gen_per_prompt)]
 
-    inputs = tokenizer(
-        prompts,
-        return_tensors="pt",
-        padding="longest",
-        return_offsets_mapping=return_offset_mapping,
-    )
+    padding_side = padding_side or tokenizer.padding_side
+
+    with set_padding_side(tokenizer, padding_side):
+        inputs = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=padding,
+            return_offsets_mapping=return_offsets_mapping,
+            **kwargs,
+        )
 
     if calculate_offsets:
         offsets = []
@@ -110,6 +139,13 @@ def prepare_input(
 
     inputs = inputs.to(device)
     return inputs
+
+
+def find_all_single_token_positions(input_ids, token_ids_to_find):
+    bools = torch.zeros_like(input_ids, dtype=torch.bool)
+    for token_id in token_ids_to_find:
+        bools |= input_ids == token_id
+    return torch.argwhere(bools)
 
 
 def find_token_range(
@@ -187,7 +223,7 @@ def find_token_range(
     if offset_mapping is None:
         assert tokenizer is not None
         tokens = prepare_input(
-            string, return_offset_mapping=True, tokenizer=tokenizer, **kwargs
+            string, return_offsets_mapping=True, tokenizer=tokenizer, **kwargs
         )
         offset_mapping = tokens.offset_mapping[0]
 
@@ -206,10 +242,60 @@ def find_token_range(
                 break
 
     # print(f"{substring=}, {occurrence=} | {token_start=}, {token_end=}")
-    assert token_start is not None
+    assert (
+        token_start is not None
+    ), "Are you working with Llama-3? Try passing the ModelandTokenizer object as the tokenizer"
     assert token_end is not None
     assert token_start <= token_end
     return (token_start, token_end + 1)
+
+
+def insert_padding_before_subj(
+    inp: TokenizerOutput,
+    subj_range: tuple[int, int],
+    subj_ends: int,
+    pad_id: int,
+    fill_attn_mask: bool = False,
+):
+    """
+
+    Inserts padding tokens before the subject in the query to balance the input tensor.
+
+    TEST:
+
+    for idx, (tok_id, attn_mask) in enumerate(zip(clean_inputs.input_ids[0], clean_inputs.attention_mask[0])):
+        print(f"{idx=} [{attn_mask}] | {mt.tokenizer.decode(tok_id)}")
+
+    """
+    pad_len = subj_ends - subj_range[1]
+    inp["input_ids"] = torch.cat(
+        [
+            inp.input_ids[:, : subj_range[0]],
+            torch.full(
+                (1, pad_len),
+                pad_id,
+                dtype=inp.input_ids.dtype,
+                device=inp.input_ids.device,
+            ),
+            inp.input_ids[:, subj_range[0] :],
+        ],
+        dim=1,
+    )
+
+    inp["attention_mask"] = torch.cat(
+        [
+            inp.attention_mask[:, : subj_range[0]],
+            torch.full(
+                (1, pad_len),
+                fill_attn_mask,
+                dtype=inp.attention_mask.dtype,
+                device=inp.attention_mask.device,
+            ),
+            inp.attention_mask[:, subj_range[0] :],
+        ],
+        dim=1,
+    )
+    return inp
 
 
 def insert_padding_before_subj(

@@ -13,6 +13,7 @@ ENV_RESULTS_DIR = "RELATIONS_RESULTS_DIR"
 ENV_HPARAMS_DIR = "RELATIONS_HPARAMS_DIR"
 GPT_4O_CACHE_DIR = "GPT4O_CACHE_DIR"
 CLAUDE_CACHE_DIR = "CLAUDE_CACHE_DIR"
+WIMBD_CONFIG = "WIMBD_CONFIG"
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ try:
         DEFAULT_HPARAMS_DIR = os.path.join(PROJECT_ROOT, config["HPARAMS_DIR"])
         GPT_4O_CACHE_DIR = os.path.join(PROJECT_ROOT, config["GPT4O_CACHE_DIR"])
         CLAUDE_CACHE_DIR = os.path.join(PROJECT_ROOT, config["CLAUDE_CACHE_DIR"])
+        WIMBD_CONFIG = os.path.join(PROJECT_ROOT, config["WIMBD_CONFIG"])
 
         for dir in [
             DEFAULT_MODELS_DIR,
@@ -53,6 +55,7 @@ Other defaults are set to:
     DEFAULT_HPARAMS_DIR = "hparams"
     GPT_4O_CACHE_DIR = "gpt4o_cache"
     CLAUDE_CACHE_DIR = "claude_cache"
+    WIMBD_CONFIG = "es_config_dolma_1_7_2.yml"
 
 PathLike = Union[str, pathlib.Path]
 
