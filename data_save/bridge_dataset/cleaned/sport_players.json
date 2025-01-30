@@ -1,0 +1,434 @@
+{
+    "name": "sport_players",
+    "answer_template": "<bridge> - a sport where both <entity1> and <entity2> are known for.",
+    "swappable": true,
+    "examples": [
+        {
+            "bridge": "basketball",
+            "entity_pair": [
+                "Michael Jordan",
+                "LeBron James"
+            ]
+        },
+        {
+            "bridge": "tennis",
+            "entity_pair": [
+                "Roger Federer",
+                "Rafael Nadal"
+            ]
+        },
+        {
+            "bridge": "cricket",
+            "entity_pair": [
+                "Michael Vaughan",
+                "Sourav Ganguly"
+            ]
+        },
+        {
+            "bridge": "soccer",
+            "entity_pair": [
+                "Lionel Messi",
+                "Cristiano Ronaldo"
+            ]
+        },
+        {
+            "bridge": "golf",
+            "entity_pair": [
+                "Tiger Woods",
+                "Phil Mickelson"
+            ]
+        },
+        {
+            "bridge": "baseball",
+            "entity_pair": [
+                "Babe Ruth",
+                "Hank Aaron"
+            ]
+        },
+        {
+            "bridge": "hockey",
+            "entity_pair": [
+                "Wayne Gretzky",
+                "Mario Lemieux"
+            ]
+        },
+        {
+            "bridge": "boxing",
+            "entity_pair": [
+                "Muhammad Ali",
+                "Mike Tyson"
+            ]
+        },
+        {
+            "bridge": "swimming",
+            "entity_pair": [
+                "Michael Phelps",
+                "Ryan Lochte"
+            ]
+        },
+        {
+            "bridge": "athletics",
+            "entity_pair": [
+                "Usain Bolt",
+                "Carl Lewis"
+            ]
+        },
+        {
+            "bridge": "american football",
+            "entity_pair": [
+                "Tom Brady",
+                "Peyton Manning"
+            ]
+        },
+        {
+            "bridge": "rugby",
+            "entity_pair": [
+                "Jonah Lomu",
+                "Richie McCaw"
+            ]
+        },
+        {
+            "bridge": "cycling",
+            "entity_pair": [
+                "Lance Armstrong",
+                "Eddy Merckx"
+            ]
+        },
+        {
+            "bridge": "formula 1",
+            "entity_pair": [
+                "Michael Schumacher",
+                "Lewis Hamilton"
+            ]
+        },
+        {
+            "bridge": "skiing",
+            "entity_pair": [
+                "Lindsey Vonn",
+                "Mikaela Shiffrin"
+            ]
+        },
+        {
+            "bridge": "gymnastics",
+            "entity_pair": [
+                "Simone Biles",
+                "Nadia Comaneci"
+            ]
+        },
+        {
+            "bridge": "figure skating",
+            "entity_pair": [
+                "Yuzuru Hanyu",
+                "Evgeni Plushenko"
+            ]
+        },
+        {
+            "bridge": "badminton",
+            "entity_pair": [
+                "Lin Dan",
+                "Lee Chong Wei"
+            ]
+        },
+        {
+            "bridge": "volleyball",
+            "entity_pair": [
+                "Karch Kiraly",
+                "Giba"
+            ]
+        },
+        {
+            "bridge": "surfing",
+            "entity_pair": [
+                "Kelly Slater",
+                "Andy Irons"
+            ]
+        },
+        {
+            "bridge": "wrestling",
+            "entity_pair": [
+                "Hulk Hogan",
+                "The Rock"
+            ]
+        },
+        {
+            "bridge": "table tennis",
+            "entity_pair": [
+                "Ma Long",
+                "Zhang Jike"
+            ]
+        },
+        {
+            "bridge": "chess",
+            "entity_pair": [
+                "Garry Kasparov",
+                "Magnus Carlsen"
+            ]
+        },
+        {
+            "bridge": "cricket",
+            "entity_pair": [
+                "Sachin Tendulkar",
+                "Brian Lara"
+            ]
+        },
+        {
+            "bridge": "golf",
+            "entity_pair": [
+                "Tiger Woods",
+                "Jack Nicklaus"
+            ]
+        },
+        {
+            "bridge": "swimming",
+            "entity_pair": [
+                "Michael Phelps",
+                "Ian Thorpe"
+            ]
+        },
+        {
+            "bridge": "ice hockey",
+            "entity_pair": [
+                "Wayne Gretzky",
+                "Mario Lemieux"
+            ]
+        },
+        {
+            "bridge": "table tennis",
+            "entity_pair": [
+                "Jan-Ove Waldner",
+                "Ma Long"
+            ]
+        },
+        {
+            "bridge": "cycling",
+            "entity_pair": [
+                "Eddy Merckx",
+                "Lance Armstrong"
+            ]
+        },
+        {
+            "bridge": "rugby",
+            "entity_pair": [
+                "Jonah Lomu",
+                "Dan Carter"
+            ]
+        },
+        {
+            "bridge": "skiing",
+            "entity_pair": [
+                "Lindsey Vonn",
+                "Ingemar Stenmark"
+            ]
+        },
+        {
+            "bridge": "basketball",
+            "entity_pair": [
+                "Kobe Bryant",
+                "Magic Johnson"
+            ]
+        },
+        {
+            "bridge": "tennis",
+            "entity_pair": [
+                "Serena Williams",
+                "Steffi Graf"
+            ]
+        },
+        {
+            "bridge": "cricket",
+            "entity_pair": [
+                "Virat Kohli",
+                "Steve Smith"
+            ]
+        },
+        {
+            "bridge": "soccer",
+            "entity_pair": [
+                "Pel\u00e9",
+                "Diego Maradona"
+            ]
+        },
+        {
+            "bridge": "golf",
+            "entity_pair": [
+                "Phil Mickelson",
+                "Rory McIlroy"
+            ]
+        },
+        {
+            "bridge": "baseball",
+            "entity_pair": [
+                "Barry Bonds",
+                "Ken Griffey Jr."
+            ]
+        },
+        {
+            "bridge": "boxing",
+            "entity_pair": [
+                "Floyd Mayweather",
+                "Manny Pacquiao"
+            ]
+        },
+        {
+            "bridge": "swimming",
+            "entity_pair": [
+                "Katie Ledecky",
+                "Federica Pellegrini"
+            ]
+        },
+        {
+            "bridge": "athletics",
+            "entity_pair": [
+                "Allyson Felix",
+                "Jackie Joyner-Kersee"
+            ]
+        },
+        {
+            "bridge": "ice hockey",
+            "entity_pair": [
+                "Sidney Crosby",
+                "Alexander Ovechkin"
+            ]
+        },
+        {
+            "bridge": "volleyball",
+            "entity_pair": [
+                "Kerri Walsh Jennings",
+                "Misty May-Treanor"
+            ]
+        },
+        {
+            "bridge": "table tennis",
+            "entity_pair": [
+                "Zhang Jike",
+                "Timo Boll"
+            ]
+        },
+        {
+            "bridge": "badminton",
+            "entity_pair": [
+                "Carolina Mar\u00edn",
+                "Saina Nehwal"
+            ]
+        },
+        {
+            "bridge": "cycling",
+            "entity_pair": [
+                "Chris Froome",
+                "Alberto Contador"
+            ]
+        },
+        {
+            "bridge": "rugby",
+            "entity_pair": [
+                "Richie McCaw",
+                "Brian O'Driscoll"
+            ]
+        },
+        {
+            "bridge": "formula 1",
+            "entity_pair": [
+                "Ayrton Senna",
+                "Alain Prost"
+            ]
+        },
+        {
+            "bridge": "gymnastics",
+            "entity_pair": [
+                "Kohei Uchimura",
+                "Vitaly Scherbo"
+            ]
+        },
+        {
+            "bridge": "skiing",
+            "entity_pair": [
+                "Marcel Hirscher",
+                "Alberto Tomba"
+            ]
+        },
+        {
+            "bridge": "figure skating",
+            "entity_pair": [
+                "Tessa Virtue",
+                "Scott Moir"
+            ]
+        },
+        {
+            "bridge": "basketball",
+            "entity_pair": [
+                "Stephen Curry",
+                "Kevin Durant"
+            ]
+        },
+        {
+            "bridge": "tennis",
+            "entity_pair": [
+                "Novak Djokovic",
+                "Andy Murray"
+            ]
+        },
+        {
+            "bridge": "cricket",
+            "entity_pair": [
+                "Shane Warne",
+                "Muttiah Muralitharan"
+            ]
+        },
+        {
+            "bridge": "soccer",
+            "entity_pair": [
+                "Zinedine Zidane",
+                "Ronaldinho"
+            ]
+        },
+        {
+            "bridge": "golf",
+            "entity_pair": [
+                "Arnold Palmer",
+                "Gary Player"
+            ]
+        },
+        {
+            "bridge": "baseball",
+            "entity_pair": [
+                "Derek Jeter",
+                "Ichiro Suzuki"
+            ]
+        },
+        {
+            "bridge": "boxing",
+            "entity_pair": [
+                "Sugar Ray Leonard",
+                "Roberto Dur\u00e1n"
+            ]
+        },
+        {
+            "bridge": "swimming",
+            "entity_pair": [
+                "Ryan Lochte",
+                "Caeleb Dressel"
+            ]
+        },
+        {
+            "bridge": "athletics",
+            "entity_pair": [
+                "Mo Farah",
+                "Haile Gebrselassie"
+            ]
+        },
+        {
+            "bridge": "ice hockey",
+            "entity_pair": [
+                "Jarom\u00edr J\u00e1gr",
+                "Patrick Roy"
+            ]
+        },
+        {
+            "bridge": "volleyball",
+            "entity_pair": [
+                "Sergey Tetyukhin",
+                "Gilberto Godoy Filho"
+            ]
+        }
+    ]
+}

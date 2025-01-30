@@ -17,6 +17,7 @@ from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +326,7 @@ def get_hs(
     locations: tuple[str, int] | list[tuple[str, int]],
     patches: Optional[PatchSpec | list[PatchSpec]] = None,
     return_dict: bool = False,
-) -> dict[tuple[str, int], torch.Tensor]:
+) -> torch.Tensor | dict[tuple[str, int], torch.Tensor]:
 
     if isinstance(input, TokenizerOutput):
         if "offset_mapping" in input:
@@ -353,7 +354,7 @@ def get_hs(
     layer_names = [layer_name for layer_name, _ in locations]
     layer_names = list(set(layer_names))
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
-    with mt.trace(input, scan=True) as tracer:
+    with mt.trace(input, scan=False) as tracer:
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
@@ -367,7 +368,7 @@ def get_hs(
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
-                current_state[0, index, :] = cur_patch.patch
+                current_state[:, index, :] = cur_patch.patch
 
         for layer_name in layer_names:
             if is_an_attn_head(layer_name) == False:
@@ -385,8 +386,10 @@ def get_hs(
     hs = {}
 
     for layer_name, index in locations:
-        # print(layer_name, layer_states[layer_name].shape)
-        hs[(layer_name, index)] = untuple(layer_states[layer_name])[
+        # print(
+        #     layer_name, layer_states[layer_name].shape, type(layer_states[layer_name])
+        # )
+        hs[(layer_name, index)] = untuple(layer_states[layer_name].value)[
             :, index, :
         ].squeeze()
 
@@ -518,7 +521,7 @@ def ask_claude(
     client = Anthropic(
         api_key=os.getenv("CLAUDE_KEY"),
     )
-    MODEL_NAME = "claude-3-5-sonnet-20240620"
+    MODEL_NAME = "claude-3-5-sonnet-20241022"
     ##################################################
 
     hash_val = hashlib.md5(prompt.encode()).hexdigest()
@@ -562,7 +565,7 @@ def ask_claude(
     return response
 
 
-ASK_MODEL = {"gpt4o": ask_gpt4o, "claude": ask_claude}
+ASK_ORACLE_MODEL = {"gpt4o": ask_gpt4o, "claude": ask_claude}
 
 
 def verify_bridge_response(
@@ -577,7 +580,7 @@ And the model gave the following answer:
 "{predicted_answer.strip()}"
 Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
 """
-    return ASK_MODEL[model](prompt)
+    return ASK_ORACLE_MODEL[model](prompt)
 
 
 @torch.inference_mode()
@@ -642,3 +645,37 @@ def get_dummy_input(
 ):
     dummy_prompt = "The quick brown fox"
     return prepare_input(prompts=dummy_prompt, tokenizer=tokenizer)
+
+
+# useful for saving with jsons
+def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = False):
+    if isinstance(inp, list):
+        return [detensorize(i) for i in inp]
+    if isinstance(inp, dict) == False:
+        try:
+            cls = type(inp)
+            inp = inp.__dict__
+        except:
+            return inp
+    else:
+        cls = None
+
+    inp = copy.deepcopy(inp)
+    for k in inp:
+        if isinstance(inp[k], torch.Tensor):
+            if len(inp[k].shape) == 0:
+                inp[k] = inp[k].item()
+            else:
+                inp[k] = inp[k].tolist() if to_numpy == False else inp[k].cpu().numpy()
+        else:
+            inp[k] = detensorize(inp[k])
+
+    free_gpu_cache()
+
+    if cls is None:
+        return inp
+    else:
+        if cls != TokenizerOutput:
+            return cls(**inp)
+        else:
+            return cls(data=inp)

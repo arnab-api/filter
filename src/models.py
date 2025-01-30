@@ -49,6 +49,8 @@ class ModelandTokenizer(LanguageModel):
 
         self._model.eval()
         self.tokenizer = tokenizer if tokenizer is not None else self.tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token  # for generation
+        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.device = determine_device(self._model)
         self.parse_config()
 
