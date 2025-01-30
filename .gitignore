@@ -148,4 +148,6 @@ es_config_dolma_1_7_2.yml
 *iframe*
 
 # debug logs
+logs/
 *.out
+*.log
