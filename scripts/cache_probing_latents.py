@@ -122,12 +122,17 @@ def cache_probing_latents(
         if lm_answer.startswith("None"):
             is_correct = False
         else:
-            is_correct = check_if_answer_is_correct(
-                answer=lm_answer,
-                keywords=keywords,
-                oracle_model="claude",
-                entities=entity_pair,
-            )
+            #! don't let weird API issues crash the script. debug using the logs later
+            try:
+                is_correct = check_if_answer_is_correct(
+                    answer=lm_answer,
+                    keywords=keywords,
+                    oracle_model="claude",
+                    entities=entity_pair,
+                )
+            except Exception as e:
+                logger.error(f"Error: {e}")
+                is_correct = False
 
         logger.info(f"({get_tick_marker(is_correct)}) {lm_answer=}")
 
