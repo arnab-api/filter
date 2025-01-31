@@ -1,3 +1,4 @@
+import copy
 import gc
 import hashlib
 import json
@@ -17,7 +18,6 @@ from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
-import copy
 
 logger = logging.getLogger(__name__)
 

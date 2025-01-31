@@ -9,14 +9,11 @@ from nnsight import LanguageModel
 from tqdm.auto import tqdm
 
 from src.dataset import InContextQuery, Relation
-from src.functional import (
-    get_all_module_states,
-    get_module_nnsight,
-    guess_subject,
-    predict_next_token,
-)
+from src.functional import (get_all_module_states, get_module_nnsight,
+                            guess_subject, predict_next_token)
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import find_token_range, insert_padding_before_subj, prepare_input
+from src.tokens import (find_token_range, insert_padding_before_subj,
+                        prepare_input)
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)

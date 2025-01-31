@@ -1,27 +1,27 @@
 import argparse
+import hashlib
+import itertools
+import json
 import logging
 import os
-import json
+import random
 
 import numpy as np
 import torch
 import transformers
-import itertools
-import random
 from tqdm import tqdm
-from src.utils.typing import TokenizerOutput
 
-from src.functional import free_gpu_cache, get_tick_marker, get_hs, detensorize
+from src.functional import detensorize, free_gpu_cache, get_hs, get_tick_marker
 from src.models import ModelandTokenizer
-from src.utils import env_utils, experiment_utils, logging_utils
 from src.probing.utils import (
-    ProbingPrompt,
     ProbingLatents,
-    prepare_probing_input,
-    get_lm_generated_answer,
+    ProbingPrompt,
     check_if_answer_is_correct,
+    get_lm_generated_answer,
+    prepare_probing_input,
 )
-import hashlib
+from src.utils import env_utils, experiment_utils, logging_utils
+from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 

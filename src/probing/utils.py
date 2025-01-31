@@ -1,22 +1,14 @@
+import copy
 import logging
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 import torch
+from dataclasses_json import DataClassJsonMixin
 
-
+from src.functional import ASK_ORACLE_MODEL
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
-import copy
-from typing import Optional, Literal
-from src.functional import ASK_ORACLE_MODEL
-
-
-from dataclasses import dataclass
-from dataclasses_json import DataClassJsonMixin
-from src.tokens import find_token_range
-from typing import Optional
-from src.tokens import prepare_input
 from src.utils.typing import ArrayLike
 
 logger = logging.getLogger(__name__)
@@ -41,9 +33,13 @@ def prepare_probing_input(
     answer_marker: str = "\nA:",
     question_marker: str = "\nQ:",
     block_separator: str = "\n#",
+    is_a_reasoning_model: bool = False,
 ) -> ProbingPrompt:
 
     prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}"""
+    if is_a_reasoning_model:
+        thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Put your answer within \\boxed{}."
+        prompt = f"{prompt}\n{thinking_instructions}\n<think>"
 
     tokenized = prepare_input(prompts=prompt, tokenizer=mt, return_offsets_mapping=True)
     offset_mapping = tokenized.pop("offset_mapping")[0]
@@ -85,6 +81,7 @@ def get_lm_generated_answer(
     mt: ModelandTokenizer,
     prompt: ProbingPrompt,
     block_separator: str = "\n#",
+    is_a_reasoning_model: bool = False,
 ):
     with mt.generate(
         prompt.tokenized,
@@ -92,7 +89,7 @@ def get_lm_generated_answer(
         #     input_ids=prompt.tokenized.input_ids,
         #     attention_mask=prompt.tokenized.attention_mask,
         # ),
-        max_new_tokens=50,
+        max_new_tokens=50 if is_a_reasoning_model == False else 1000,
         do_sample=False,
         output_scores=True,
         return_dict_in_generate=True,
@@ -103,8 +100,17 @@ def get_lm_generated_answer(
         output.sequences[0][prompt.tokenized["input_ids"].shape[-1] :],
         skip_special_tokens=False,
     ).strip()
-    if block_separator in generation:
-        generation = generation.split(block_separator)[0].strip()
+
+    print(generation)
+
+    if is_a_reasoning_model == False:
+        if block_separator in generation:
+            generation = generation.split(block_separator)[0].strip()
+    else:
+        if "\\boxed{" in generation:
+            generation = generation.split("\\boxed{")[1].split("}")[0].strip()
+            if "{" in generation:
+                generation = generation.split("{")[1].split("}")[0].strip()
 
     return generation
 

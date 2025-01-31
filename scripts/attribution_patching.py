@@ -32,7 +32,7 @@ from src.functional import (
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
 from src.trace import insert_padding_before_subj
-from src.utils import env_utils, logging_utils, experiment_utils
+from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
