@@ -10,6 +10,12 @@ import yaml
 np.random.seed(123456)
 ######################################################
 
+PROJECT_ROOT = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-1])
+with open(os.path.join(PROJECT_ROOT, "env.yml"), "r") as f:
+    config = yaml.safe_load(f)
+    username = config["BAULAB_USER"]
+    password = config["BAULAB_PASS"]
+
 
 class MachineConfig:
     name: str
@@ -21,11 +27,30 @@ class MachineConfig:
 
 
 MACHINES = [
-    # MachineConfig(name="local"),
-    MachineConfig(name="umibozu"),
+    MachineConfig(name="local"),
+    # MachineConfig(name="umibozu"),
+    # MachineConfig(name="tokyo"),
+    # MachineConfig(name="osaka"),
+    # MachineConfig(name="hamada"),
+    # MachineConfig(name="karasuno"),
+    # MachineConfig(name="kumamoto"),
+    # MachineConfig(name="fukuyama"),
+    # MachineConfig(name="sendai"),
+    # MachineConfig(name="andromeda"),
+    # MachineConfig(name="ei"),
+    # MachineConfig(name="kobe"),
+    # MachineConfig(name="macondo"),
+    # MachineConfig(name="hokkaido"),
+    # MachineConfig(name="karakuri"),
+    # MachineConfig(name="bippu"),
+    # MachineConfig(name="hawaii"),
+    # MachineConfig(name="kyoto", cuda_options=[0, 1]),
     # MachineConfig(name="saitama", cuda_options=[0, 1]),
     # MachineConfig(
     #     name="nagoya.research.khoury.northeastern.edu", cuda_options=list(range(8))
+    # ),
+    # MachineConfig(
+    #     name="hakone", cuda_options=list(range(8))
     # ),
 ]
 
@@ -35,12 +60,6 @@ for machine in MACHINES:
     for cuda_option in machine.cuda_options:
         WORKERS.append((machine.name, cuda_option))
 
-PROJECT_ROOT = "/".join(os.path.dirname(os.path.abspath(__file__)).split("/")[:-1])
-with open(os.path.join(PROJECT_ROOT, "env.yml"), "r") as f:
-    config = yaml.safe_load(f)
-    username = config["BAULAB_USER"]
-    password = config["BAULAB_PASS"]
-
 print(f"WORKERS ({len(WORKERS)}): {WORKERS}")
 
 # --------------------------------------------------------------------------------
@@ -49,7 +68,7 @@ PROBE_CLASSES = [
     # "atheletes/baseball",
     # "atheletes/basketball",
     # "atheletes/cricket",
-    # "atheletes/golf",
+    "atheletes/golf",
     # "atheletes/soccer",
     # "atheletes/tennis",
     # "profession/actors",
