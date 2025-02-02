@@ -10,6 +10,9 @@ from src.functional import ASK_ORACLE_MODEL
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
 from src.utils.typing import ArrayLike
+import os
+from tqdm import tqdm
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +170,8 @@ class ProbingLatents(DataClassJsonMixin):
 
     @staticmethod
     def from_npz(npz_file):
+        if isinstance(npz_file, str):
+            npz_file = np.load(npz_file, allow_pickle=True)
         prompt = ProbingPrompt(
             prompt=npz_file["prompt"].item(),
             entities=npz_file["entities"].tolist(),
@@ -202,3 +207,36 @@ class ProbingLatents(DataClassJsonMixin):
             latents=latents,
             lm_answer=lm_answer,
         )
+
+
+def load_probing_activations(
+    token_query_pos: int,
+    latent_root: str,
+    layers: list[str],
+    limit: int = None,
+):
+    classes = os.listdir(latent_root)
+    activations = {cls: [] for cls in classes}
+    for cls in classes:
+        cls_dir = os.path.join(latent_root, cls)
+        npz_files = os.listdir(cls_dir)
+        if limit is not None:
+            npz_files = npz_files[:limit]
+        logger.info(f"{cls=} ... loading {len(npz_files)} latents ...")
+
+        for npz in tqdm(npz_files, mininterval=5):
+            npz_path = os.path.join(cls_dir, npz)
+            latents_npz = np.load(npz_path, allow_pickle=True)
+            cached_latents = ProbingLatents.from_npz(latents_npz)
+            cur_activations = {}
+            for layer in layers:
+                location = (
+                    layer,
+                    list(range(*cached_latents.prompt.query_range))[token_query_pos],
+                )
+                cur_activations[layer] = cached_latents.latents[location]
+            activations[cls].append(cur_activations)
+            if limit is not None and len(activations[cls]) >= limit:
+                break
+
+    return activations
