@@ -21,8 +21,8 @@ class MachineConfig:
 
 
 MACHINES = [
-    MachineConfig(name="local"),
-    # MachineConfig(name="umibozu"),
+    # MachineConfig(name="local"),
+    MachineConfig(name="umibozu"),
     # MachineConfig(name="saitama", cuda_options=[0, 1]),
     # MachineConfig(
     #     name="nagoya.research.khoury.northeastern.edu", cuda_options=list(range(8))
@@ -55,7 +55,7 @@ PROBE_CLASSES = [
     # "profession/actors",
     "profession/chefs",
     # "profession/musicians",
-    # "profession/politicians",
+    "profession/politicians",
     # "profession/scientists",
     # "profession/writers",
 ]
@@ -119,7 +119,8 @@ for exp_name in exp_name_2_cmd:
 
     ### copy the job script to the remote machine .remote_jobs with a new file name
     file_name = str(time.ctime()).replace(" ", "_") + "___" + exp_name + ".sh"
-    file_path = os.path.join("~/Codes/Projects/retrieval/.remote_jobs/", file_name)
+    project_path = "~/Codes/Projects/retrieval/"
+    file_path = os.path.join(project_path, ".remote_jobs/", file_name)
 
     # copy the job script to the remote machine and then run it
     if machine != "local":
@@ -127,13 +128,13 @@ for exp_name in exp_name_2_cmd:
             f"sshpass -p {password} scp {job_path}/{exp_name}.sh {username}@{machine}:{file_path}"
         )
         os.system(
-            f"sshpass -p {password} ssh {username}@{machine} 'screen -dmS {exp_name} bash {file_path}'"
+            f"sshpass -p {password} ssh {username}@{machine} 'screen -dmS {exp_name} bash -i {file_path}'"
         )
     else:
         os.system(f"cp {job_path}/{exp_name}.sh {file_path}")
         os.system(f"screen -dmS {exp_name} bash {file_path}")
 
-    print(f"submitted {exp_name} to {machine} with cmd: {cmd}")
+    print(f"submitted {exp_name} to {machine} with script {file_path}")
 
 
 print("------------------------------------------------------------------")

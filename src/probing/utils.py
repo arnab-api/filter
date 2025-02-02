@@ -141,7 +141,7 @@ def check_if_answer_is_correct(
 Your answer should start with "Yes" or "No". If the answer is "No", please provide your reasoning. Otherwise, just say "Yes".
 \n\n{answer}"""
         oracle_response = ASK_ORACLE_MODEL[oracle_model](prompt=question)
-        logger.debug(f"{oracle_response=}")
+        logger.info(f"{oracle_response=}")
         return oracle_response.startswith("Yes")
 
     return False
