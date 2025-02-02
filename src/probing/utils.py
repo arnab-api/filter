@@ -101,13 +101,15 @@ def get_lm_generated_answer(
         skip_special_tokens=False,
     ).strip()
 
-    print(generation)
+    # print(generation)
 
     if is_a_reasoning_model == False:
         if block_separator in generation:
             generation = generation.split(block_separator)[0].strip()
     else:
         if "\\boxed{" in generation:
+            monologue = generation.split("<think>")[-1].split("</think>")[0].strip()
+            logger.debug(f"{monologue=}")
             generation = generation.split("\\boxed{")[1].split("}")[0].strip()
             if "{" in generation:
                 generation = generation.split("{")[1].split("}")[0].strip()

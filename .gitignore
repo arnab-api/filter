@@ -155,5 +155,9 @@ logs/
 
 # Ignore everything in the folder
 .remote_jobs/*
+
 # But keep the .gitkeep file
 !.remote_jobs/.gitkeep
+!.logs/.gitkeep
+!.logs/llama-3b/.gitkeep
+!.logs/llama-8b/.gitkeep
