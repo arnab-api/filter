@@ -175,6 +175,7 @@ def matrix_heatmap(
     tick_gap: int | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
+    tick_labels: list[str] | None = None,
 ) -> None:
     """Plot cross section of matrix as a heatmap."""
 
@@ -194,6 +195,9 @@ def matrix_heatmap(
     if tick_gap is not None:
         canvas.xticks(range(0, limit_dim, tick_gap), range(0, limit_dim, tick_gap))
         canvas.yticks(range(0, limit_dim, tick_gap), range(0, limit_dim, tick_gap))
+    if tick_labels is not None:
+        canvas.xticks(range(limit_dim), tick_labels, rotation=90)
+        canvas.yticks(range(limit_dim), tick_labels)
 
     if title is not None:
         canvas.title(title)
