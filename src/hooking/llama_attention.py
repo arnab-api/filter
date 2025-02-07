@@ -49,33 +49,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     return q_embed, k_embed
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
-    """Applies Rotary Position Embedding to the query and key tensors.
-
-    Args:
-        q (`torch.Tensor`): The query tensor.
-        k (`torch.Tensor`): The key tensor.
-        cos (`torch.Tensor`): The cosine part of the rotary embedding.
-        sin (`torch.Tensor`): The sine part of the rotary embedding.
-        position_ids (`torch.Tensor`, *optional*):
-            Deprecated and unused.
-        unsqueeze_dim (`int`, *optional*, defaults to 1):
-            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
-            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
-            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
-            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
-            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
-            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
-    Returns:
-        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
-    """
-    cos = cos.unsqueeze(unsqueeze_dim)
-    sin = sin.unsqueeze(unsqueeze_dim)
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
-
-
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
     This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
@@ -127,6 +100,7 @@ def scaled_dot_product_attention(
     attn_weight = query @ key.transpose(-2, -1) * scale_factor
     attn_weight += attn_bias.to(attn_weight.dtype).to(attn_weight.device)
 
+    # print(attn_weight.size())
     # ---------------------------------------------------------------------
     if cut_attn_edges is not None:
         for head_idx, edges in cut_attn_edges.items():
@@ -176,6 +150,68 @@ def attn_per_head(
     return attn_output, per_head_contributions
 
 
+def sdpa_attention_forward(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    dropout: float = 0.0,
+    scaling: Optional[float] = None,
+    is_causal: Optional[bool] = None,
+    **kwargs,
+) -> Tuple[torch.Tensor, None]:
+    if hasattr(module, "num_key_value_groups"):
+        key = repeat_kv(key, module.num_key_value_groups)
+        value = repeat_kv(value, module.num_key_value_groups)
+
+    cut_attn_edges = kwargs.get("cut_attn_edges", None)
+    attn_matrices = kwargs.get("store_attn_matrices", None)
+
+    causal_mask = attention_mask
+    if attention_mask is not None:
+        causal_mask = causal_mask[:, :, :, : key.shape[-2]]
+
+    # SDPA with memory-efficient backend is bugged with non-contiguous inputs and custom attn_mask for some torch versions
+    # Reference: https://github.com/pytorch/pytorch/issues/112577.
+    query = query.contiguous()
+    key = key.contiguous()
+    value = value.contiguous()
+
+    # We dispatch to SDPA's Flash Attention or Efficient kernels via this `is_causal` if statement instead of an inline conditional assignment
+    # in SDPA to support both torch.compile's dynamic shapes and full graph options. An inline conditional prevents dynamic shapes from compiling.
+    if is_causal is None:
+        is_causal = causal_mask is None and query.shape[2] > 1
+
+    if cut_attn_edges is None and attn_matrices is None:
+        # defer to the default faster implementation
+        attn_output = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=causal_mask,
+            dropout_p=dropout,
+            scale=scaling,
+            is_causal=is_causal,
+        )
+    else:
+        # need to use slower custom implementation, should give numerically similar results
+        attn_output = scaled_dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_mask=causal_mask,
+            dropout_p=dropout,
+            is_causal=is_causal,
+            cut_attn_edges=cut_attn_edges,
+            store_attn_matrices=attn_matrices,
+        )
+
+    attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, None
+
+
 def LlamaAttentionPatcher(
     block_name: Optional[str] = None,
     cut_attn_edges: Optional[dict[int, list[AttentionEdge]]] = None,
@@ -209,75 +245,44 @@ def LlamaAttentionPatcher(
     def forward_patched(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Any] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value=None,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
 
         # logger.debug(f"LlamaAttentionPatcher <> {block_name}")
 
-        if output_attentions:
+        if kwargs.get("output_attentions", True):
             raise NotImplementedError(
                 "LlamaAttentionPatcher does not support output_attentions=True."
             )
-            # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
-            logger.warning_once(
-                "LlamaModel is using LlamaSdpaAttention, but `torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to the manual attention implementation, "
-                'but specifying the manual implementation will be required from Transformers version v5.0.0 onwards. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
-            )
-            return super().forward(
-                hidden_states=hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                cache_position=cache_position,
-                position_embeddings=position_embeddings,
-            )
 
-        bsz, q_len, _ = hidden_states.size()
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+        # print(f"{hidden_shape=} | {input_shape=} | {hidden_states.shape}")
+
+        batch_size, q_len = input_shape
+        d_model = hidden_states.size(-1)
 
         # ---------------------------------------------------------------------
         if save_attn_for is not None:
+            # initialize the attn_matrices and attn_contributions with -1
             for head_idx in save_attn_for:
                 if attn_matrices is not None:
-                    attn_matrices[head_idx] = torch.zeros(bsz, q_len, q_len) - 1
+                    attn_matrices[head_idx] = torch.zeros(batch_size, q_len, q_len) - 1
                 if attn_contributions is not None:
                     attn_contributions[head_idx] = (
-                        torch.zeros(bsz, q_len, hidden_states.size(-1)) - 1
+                        torch.zeros(batch_size, q_len, d_model) - 1
                     )
         # ---------------------------------------------------------------------
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
-        query_states = query_states.view(
-            bsz, q_len, self.num_heads, self.head_dim
-        ).transpose(1, 2)
-        key_states = key_states.view(
-            bsz, q_len, self.num_key_value_heads, self.head_dim
-        ).transpose(1, 2)
-        value_states = value_states.view(
-            bsz, q_len, self.num_key_value_heads, self.head_dim
-        ).transpose(1, 2)
-
-        if position_embeddings is None:
-            logger.warning_once(
-                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-                "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.45 `position_ids` will be "
-                "removed and `position_embeddings` will be mandatory."
-            )
-            cos, sin = self.rotary_emb(value_states, position_ids)
-        else:
-            cos, sin = position_embeddings
-
+        cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin
         )
@@ -289,48 +294,30 @@ def LlamaAttentionPatcher(
                 key_states, value_states, self.layer_idx, cache_kwargs
             )
 
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
+        assert (
+            self.config._attn_implementation == "sdpa"
+        ), "NotImplementedError: LlamaAttentionPatcher only supports 'sdpa' implementation"
+        attention_interface = sdpa_attention_forward
 
-        causal_mask = attention_mask
-        if attention_mask is not None:
-            causal_mask = causal_mask[:, :, :, : key_states.shape[-2]]
+        kwargs.update(
+            {
+                "cut_attn_edges": cut_attn_edges,
+                "store_attn_matrices": attn_matrices,
+            }
+        )
 
-        # SDPA with memory-efficient backend is currently (torch==2.1.2) bugged with non-contiguous inputs with custom attn_mask,
-        # Reference: https://github.com/pytorch/pytorch/issues/112577.
-        if query_states.device.type == "cuda" and causal_mask is not None:
-            query_states = query_states.contiguous()
-            key_states = key_states.contiguous()
-            value_states = value_states.contiguous()
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
 
-        # We dispatch to SDPA's Flash Attention or Efficient kernels via this `is_causal` if statement instead of an inline conditional assignment
-        # in SDPA to support both torch.compile's dynamic shapes and full graph options. An inline conditional prevents dynamic shapes from compiling.
-        is_causal = True if causal_mask is None and q_len > 1 else False
-
-        if cut_attn_edges is None and save_attn_for is None:
-            # logger.info("defer to the default faster implementation")
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                query_states,
-                key_states,
-                value_states,
-                attn_mask=causal_mask,
-                dropout_p=self.attention_dropout if self.training else 0.0,
-                is_causal=is_causal,
-            )
-        else:
-            # logger.warning(
-            #     "need to use slower custom implementation, should give numerically identical results"
-            # )
-            attn_output = scaled_dot_product_attention(
-                query_states,
-                key_states,
-                value_states,
-                attn_mask=causal_mask,
-                dropout_p=self.attention_dropout if self.training else 0.0,
-                is_causal=is_causal,
-                cut_attn_edges=cut_attn_edges,
-                store_attn_matrices=attn_matrices,
-            )
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
 
         # ---------------------------------------------------------------------
         if attn_contributions is not None:
@@ -342,8 +329,6 @@ def LlamaAttentionPatcher(
                 attn_contributions[head_idx] = per_head_contribution[:, head_idx, :, :]
         # ---------------------------------------------------------------------
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(bsz, q_len, -1)
         attn_output = self.o_proj(attn_output)
 
         if attn_contributions is not None:
@@ -352,6 +337,6 @@ def LlamaAttentionPatcher(
                     f"allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
                 )
 
-        return attn_output, None, past_key_value
+        return attn_output, attn_weights
 
     return forward_patched

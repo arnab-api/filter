@@ -17,7 +17,7 @@ from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
-from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
+from src.utils.typing import ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,27 @@ def logit_lens(
         return candidates, interested_logits
     free_gpu_cache()
     return candidates
+
+
+@torch.inference_mode()
+def forward_pass_to_vocab(
+    mt: ModelandTokenizer, h: torch.Tensor, layer_name: str, **kwargs
+):
+    inputs = mt.tokenizer(
+        mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
+    )
+    with mt.trace(inputs) as tr:
+        module = get_module_nnsight(mt, layer_name)
+        module.output[0][0, :] = h
+        logits = mt.output.logits[0, -1].save()
+
+    free_gpu_cache()
+
+    return interpret_logits(
+        tokenizer=mt,
+        logits=logits,
+        **kwargs,
+    )
 
 
 @torch.inference_mode()
@@ -223,6 +244,55 @@ def release_cache():
         # freed = before - after # ! the effect of empty_cache() is not immediate
 
 
+@dataclass(frozen=False)
+class PatchSpec:
+    location: tuple[str, int]
+    patch: torch.Tensor
+    clean: Optional[torch.Tensor] = None
+
+
+def generate_with_patch(
+    mt: ModelandTokenizer,
+    inputs: str | TokenizerOutput,
+    n_gen_per_prompt: int = 5,
+    max_new_tokens: int = 20,
+    patches: Optional[list[PatchSpec]] = None,
+    use_kv_cache: bool = True,
+    do_sample: bool = True,
+) -> list[str]:
+    if isinstance(inputs, TokenizerOutput):
+        if "offset_mapping" in inputs:
+            inputs.pop("offset_mapping")
+    else:
+        inputs = prepare_input(
+            prompts=[inputs],
+            tokenizer=mt,
+            n_gen_per_prompt=n_gen_per_prompt,
+        )
+
+    with mt.generate(
+        inputs,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+        output_scores=True,
+        return_dict_in_generate=True,
+        use_cache=use_kv_cache,
+    ) as gen_trace:
+        if patches is not None:
+            for cur_patch in patches:
+                module_name, index = cur_patch.location
+                module = get_module_nnsight(mt, module_name)
+                current_state = (
+                    module.output.save()
+                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    else module.output[0].save()
+                )
+                current_state[:, index, :] = cur_patch.patch
+        gen_out = mt.generator.output.save()
+
+    return mt.tokenizer.batch_decode(gen_out.sequences, skip_special_tokens=True)
+
+
 @torch.inference_mode()
 def predict_next_token(
     mt: ModelandTokenizer,
@@ -230,13 +300,14 @@ def predict_next_token(
     k: int = 5,
     batch_size: int = 8,
     token_of_interest: Optional[Union[Union[str, int], list[Union[str, int]]]] = None,
+    patches: Optional[PatchSpec | list[PatchSpec]] = None,
 ):
     """Predict the next token(s) given the input."""
     if isinstance(inputs, TokenizerOutput):
         if "offset_mapping" in inputs:
             inputs.pop("offset_mapping")
     else:
-        inputs = prepare_input(prompts=inputs, tokenizer=mt.tokenizer)
+        inputs = [inputs] if isinstance(inputs, str) else inputs
     if token_of_interest is not None:
         token_of_interest = (
             [token_of_interest]
@@ -244,17 +315,65 @@ def predict_next_token(
             else token_of_interest
         )
     if token_of_interest is not None:
-        assert len(token_of_interest) == len(inputs["input_ids"])
+        print(f"{len(token_of_interest)=} | {len(inputs)=}")
+        assert len(token_of_interest) == (
+            len(inputs["input_ids"])
+            if isinstance(inputs, TokenizerOutput)
+            else len(inputs)
+        )
         track_interesting_tokens = []
 
-    predictions = []
-    for i in range(0, len(inputs["input_ids"]), batch_size):
-        batch_inputs = {
-            k: v[i : i + batch_size] if isinstance(v, list) else v
-            for k, v in inputs.items()
-        }
+    if patches is not None and isinstance(patches, PatchSpec):
+        patches = [patches]
+        logger.warning(
+            "passed `patches`, not supported for batched predictions yet. will give weird results."
+        )
 
-        with mt.trace(batch_inputs, scan=i == 0) as tr:
+    predictions = []
+    is_tokenized = isinstance(inputs, TokenizerOutput)
+    total_len = len(inputs["input_ids"]) if is_tokenized else len(inputs)
+    for i in range(0, total_len, batch_size):
+        if is_tokenized == False:
+            batch_inputs = prepare_input(
+                tokenizer=mt,
+                prompts=inputs[i : i + batch_size],
+                padding_side="left",
+            )
+        else:
+            batch_inputs = {
+                k: v[i : i + batch_size] if isinstance(v, ArrayLike) else v
+                for k, v in inputs.items()
+            }
+
+        # print(i, i + batch_size, batch_inputs["input_ids"].shape)
+
+        def is_an_attn_head(module_name) -> bool | tuple[int, int]:
+            attn_id = mt.attn_module_name_format.split(".")[-1]
+            if attn_id not in module_name:
+                return False
+            if module_name.endswith(attn_id):
+                return False
+
+            head_id = module_name.split(".")[-1]
+            layer_id = ".".join(module_name.split(".")[:-1])
+            return layer_id, int(head_id)
+
+        with mt.trace(batch_inputs, scan=False, validate=False) as tr:
+            # TODO: patching code is being repeated a couple of times. refactor it.
+            if patches is not None:
+                for cur_patch in patches:
+                    module_name, index = cur_patch.location
+                    if is_an_attn_head(module_name) != False:
+                        raise NotImplementedError(
+                            "patching not supported yet for attn heads"
+                        )
+                    module = get_module_nnsight(mt, module_name)
+                    current_state = (
+                        module.output.save()
+                        if ("mlp" in module_name or module_name == mt.embedder_name)
+                        else module.output[0].save()
+                    )
+                    current_state[:, index, :] = cur_patch.patch
             batch_logits = mt.output.logits.save()
 
         batch_logits = batch_logits[:, -1, :]
@@ -277,10 +396,11 @@ def predict_next_token(
             )
 
         if token_of_interest is not None:
-            _t_idx = 1 if is_llama_variant(mt) else 0
             for j in range(i, i + batch_inputs["input_ids"].shape[0]):
                 tok_id = (
-                    mt.tokenizer(token_of_interest[j]).input_ids[_t_idx]
+                    mt.tokenizer(
+                        token_of_interest[j], add_special_tokens=False
+                    ).input_ids[0]
                     if type(token_of_interest[j]) == str
                     else token_of_interest[j]
                 )
@@ -299,10 +419,13 @@ def predict_next_token(
                         ),
                     )
                 )
-        if token_of_interest is not None:
-            return predictions, track_interesting_tokens
 
-        return predictions
+        free_gpu_cache()
+
+    if token_of_interest is not None:
+        return predictions, track_interesting_tokens
+
+    return predictions
 
 
 def get_module_nnsight(model, layer_name):
@@ -310,13 +433,6 @@ def get_module_nnsight(model, layer_name):
     for name in layer_name.split("."):
         layer = layer[int(name)] if name.isdigit() else getattr(layer, name)
     return layer
-
-
-@dataclass(frozen=False)
-class PatchSpec:
-    location: tuple[str, int]
-    patch: torch.Tensor
-    clean: Optional[torch.Tensor] = None
 
 
 @torch.inference_mode()

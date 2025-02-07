@@ -84,10 +84,15 @@ def plot_trace_heatmap(
             ax.set_xlabel(
                 f"center of interval of {result.window} restored {result.kind.upper()} layers"
             )
-
+        metric_marker = {
+            "prob": "p",
+            "logit": "lgt",
+        }
         color_scale = plt.colorbar(heatmap)
         color_scale.ax.set_title(
-            f"p({result.answer.token.strip()})", y=-0.12, fontsize=10
+            f"{metric_marker[result.metric]}({result.answer.token.strip()})",
+            y=-0.12,
+            fontsize=10,
         )
 
         if savepdf is not None:

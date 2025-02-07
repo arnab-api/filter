@@ -34,15 +34,17 @@ def prepare_probing_input(
     question_marker: str = "\nQ:",
     block_separator: str = "\n#",
     is_a_reasoning_model: bool = False,
+    answer_prefix: str = "",
+    return_offsets_mapping: bool = False,
 ) -> ProbingPrompt:
 
-    prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}"""
+    prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}{answer_prefix}"""
     if is_a_reasoning_model:
         thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Put your answer within \\boxed{}."
         prompt = f"{prompt}\n{thinking_instructions}\n<think>"
 
     tokenized = prepare_input(prompts=prompt, tokenizer=mt, return_offsets_mapping=True)
-    offset_mapping = tokenized.pop("offset_mapping")[0]
+    offset_mapping = tokenized["offset_mapping"][0]
 
     entity_ranges = tuple(
         [
@@ -64,14 +66,18 @@ def prepare_probing_input(
         tokenized.input_ids.shape[1],
     )
 
+    tokenized = dict(
+        input_ids=tokenized["input_ids"],
+        attention_mask=tokenized["attention_mask"],
+    )
+    if return_offsets_mapping:
+        tokenized["offset_mapping"] = [offset_mapping]
+
     return ProbingPrompt(
         prompt=prompt,
         entities=entities,
         model_key=mt.name.split("/")[-1],
-        tokenized=dict(
-            input_ids=tokenized["input_ids"],
-            attention_mask=tokenized["attention_mask"],
-        ),
+        tokenized=tokenized,
         entity_ranges=entity_ranges,
         query_range=query_range,
     )
@@ -119,7 +125,7 @@ def get_lm_generated_answer(
 
 def check_if_answer_is_correct(
     answer: str,
-    keywords: list[str],
+    keywords: list[str] = [],
     oracle_model: Optional[Literal["gpt4o", "claude"]] = "claude",
     entities: tuple[str, str] = None,
 ) -> bool:

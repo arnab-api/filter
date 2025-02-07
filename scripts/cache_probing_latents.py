@@ -13,13 +13,9 @@ from tqdm import tqdm
 
 from src.functional import detensorize, free_gpu_cache, get_hs, get_tick_marker
 from src.models import ModelandTokenizer
-from src.probing.utils import (
-    ProbingLatents,
-    ProbingPrompt,
-    check_if_answer_is_correct,
-    get_lm_generated_answer,
-    prepare_probing_input,
-)
+from src.probing.utils import (ProbingLatents, ProbingPrompt,
+                               check_if_answer_is_correct,
+                               get_lm_generated_answer, prepare_probing_input)
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import TokenizerOutput
 

@@ -230,9 +230,9 @@ def find_token_range(
     token_start, token_end = None, None
     for index, (token_char_start, token_char_end) in enumerate(offset_mapping):
         # logger.debug(f"{index=} | token range: [{token_char_start}, {token_char_end}]")
-        if token_char_start == token_char_end:
-            # Skip special tokens # ! Is this the proper way of doing this?
-            continue
+        # if token_char_start == token_char_end:
+        #     # Skip special tokens # ! Is this the proper way of doing this?
+        #     continue
         if token_start is None:
             if token_char_start <= char_start and token_char_end >= char_start:
                 token_start = index

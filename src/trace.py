@@ -58,6 +58,7 @@ def calculate_indirect_effects(
     patch_ans_t: int,
     layer_name_format: str,
     window_size: int = 1,
+    metric: Literal["logit", "prob"] = "prob",
 ) -> dict[tuple[str, int], float]:
     is_first = True
     indirect_effects = {loc: -1 for loc in locations}
@@ -71,8 +72,12 @@ def calculate_indirect_effects(
             states=states,
             scan=is_first,
         )
-        prob = affected_logits.softmax(dim=-1)[patch_ans_t].item()
-        indirect_effects[loc] = prob
+        value = (
+            affected_logits.softmax(dim=-1)[patch_ans_t].item()
+            if metric == "prob"
+            else affected_logits.squeeze()[patch_ans_t].item()
+        )
+        indirect_effects[loc] = value
         is_first = False
     return indirect_effects
 
@@ -88,6 +93,7 @@ class CausalTracingResult(DataClassJsonMixin):
     normalized: bool
     kind: Literal["residual", "mlp", "attention"] = "residual"
     window: int = 1
+    metric: Literal["logit", "prob"] = "prob"
 
 
 @torch.inference_mode()
@@ -101,6 +107,8 @@ def trace_important_states(
     kind: Literal["residual", "mlp", "attention"] = "residual",
     window_size: int = 1,
     normalize=True,
+    trace_start_marker: Optional[str] = None,
+    metric: Literal["logit", "prob"] = "prob",
 ) -> CausalTracingResult:
 
     if clean_input is None:
@@ -130,6 +138,14 @@ def trace_important_states(
         occurrence=-1,
         offset_mapping=patched_input["offset_mapping"][0],
     )
+    if trace_start_marker is not None:
+        trace_start_idx = find_token_range(
+            string=prompt_template.format(clean_subj),
+            substring=trace_start_marker,
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=clean_input["offset_mapping"][0],
+        )[0]
 
     if clean_subj_range == patched_subj_range:
         subj_start, subj_end = clean_subj_range
@@ -147,7 +163,7 @@ def trace_important_states(
             subj_range=patched_subj_range,
             subj_ends=subj_end,
             pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=True,
+            fill_attn_mask=False,
         )
 
         clean_subj_shift = subj_end - clean_subj_range[1]
@@ -156,18 +172,19 @@ def trace_important_states(
         patched_subj_range = (patched_subj_range[0] + patched_subj_shift, subj_end)
         subj_start = min(clean_subj_range[0], patched_subj_range[0])
 
-    trace_start_idx = 0
-    if (
-        clean_input.input_ids[0][0]
-        == patched_input.input_ids[0][0]
-        == mt.tokenizer.pad_token_id
-    ):
-        trace_start_idx = 1
+    if trace_start_marker is None:
+        trace_start_idx = 0
+        if (
+            clean_input.input_ids[0][0]
+            == patched_input.input_ids[0][0]
+            == mt.tokenizer.pad_token_id
+        ):
+            trace_start_idx = 1
 
     # base run with the patched subject
     patched_states = get_all_module_states(mt=mt, input=patched_input, kind=kind)
     answer = predict_next_token(mt=mt, inputs=patched_input, k=1)[0][0]
-    base_probability = answer.prob
+    base_score = answer.prob if metric == "prob" else answer.logit
     logger.debug(f"{answer=}")
 
     # clean run
@@ -175,7 +192,7 @@ def trace_important_states(
         mt=mt, inputs=clean_input, k=1, token_of_interest=answer.token
     )
     clean_answer = clean_answer[0][0]
-    low_probability = track_ans[0][1].prob
+    low_score = track_ans[0][1].prob if metric == "prob" else track_ans[0][1].logit
     logger.debug(f"{clean_answer=}")
     logger.debug(f"{track_ans=}")
 
@@ -209,7 +226,7 @@ def trace_important_states(
         patch_ans_t=answer.token_id,
         layer_name_format=layer_name_format,
         window_size=window_size,
-        kind=kind,
+        metric=metric,
     )
 
     indirect_effect_matrix = []
@@ -223,8 +240,9 @@ def trace_important_states(
 
     indirect_effect_matrix = torch.tensor(indirect_effect_matrix)
     if normalize:
-        indirect_effect_matrix = (indirect_effect_matrix - low_probability) / (
-            base_probability - low_probability
+        logger.info(f"{base_score=} | {low_score=}")
+        indirect_effect_matrix = (indirect_effect_matrix - low_score) / (
+            base_score - low_score
         )
 
     return CausalTracingResult(
@@ -236,11 +254,12 @@ def trace_important_states(
         ],
         trace_start_idx=trace_start_idx,
         answer=answer,
-        low_score=low_probability,
+        low_score=low_score,
         indirect_effects=indirect_effect_matrix,
         normalized=normalize,
         kind=kind,
         window=window_size,
+        metric=metric,
     )
 
 

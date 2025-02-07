@@ -26,6 +26,7 @@ class MachineConfig:
         self.cuda_options = cuda_options
 
 
+#! test the workers before running the jobs
 MACHINES = [
     MachineConfig(name="local"),
     # MachineConfig(name="umibozu"),
@@ -37,7 +38,6 @@ MACHINES = [
     # MachineConfig(name="fukuyama"),
     # MachineConfig(name="sendai"),
     # MachineConfig(name="andromeda"),
-    # MachineConfig(name="ei"),
     # MachineConfig(name="kobe"),
     # MachineConfig(name="macondo"),
     # MachineConfig(name="hokkaido"),

@@ -12,23 +12,11 @@ import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.dataset import (
-    BridgeDataset,
-    BridgeRelation,
-    BridgeSample,
-    load_bridge_relation,
-)
-from src.functional import (
-    PatchSpec,
-    find_token_range,
-    free_gpu_cache,
-    get_hs,
-    get_module_nnsight,
-    guess_subject,
-    predict_next_token,
-    prepare_input,
-    untuple,
-)
+from src.dataset import (BridgeDataset, BridgeRelation, BridgeSample,
+                         load_bridge_relation)
+from src.functional import (PatchSpec, find_token_range, free_gpu_cache,
+                            get_hs, get_module_nnsight, guess_subject,
+                            predict_next_token, prepare_input, untuple)
 from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
 from src.trace import insert_padding_before_subj
