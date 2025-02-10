@@ -49,6 +49,7 @@ def prepare_probing_input(
     tokenized = prepare_input(prompts=prompt, tokenizer=mt, return_offsets_mapping=True)
     offset_mapping = tokenized["offset_mapping"][0]
 
+    positions = [-1, -1] if entities[0] != entities[1] else [-2, -1]
     entity_ranges = tuple(
         [
             find_token_range(
@@ -56,9 +57,9 @@ def prepare_probing_input(
                 substring=entity,
                 tokenizer=mt,
                 offset_mapping=offset_mapping,
-                occurrence=-1,
+                occurrence=pos,
             )
-            for entity in entities
+            for entity, pos in zip(entities, positions)
         ]
     )
     query_len = prepare_input(

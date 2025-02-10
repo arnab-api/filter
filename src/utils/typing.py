@@ -54,3 +54,45 @@ class PredictedToken(DataClassJsonMixin):
 
     def __str__(self) -> str:
         return f'"{self.token}" (p={self.prob:.3f})'
+
+
+@dataclass(frozen=False, kw_only=True)
+class SVD:
+    U: torch.Tensor
+    S: torch.Tensor
+    Vh: torch.Tensor
+
+    def __post_init__(self):
+        assert self.U.shape[1] == self.S.shape[0]
+        assert self.S.shape[0] == self.Vh.shape[1]
+
+    @property
+    def shape(self):
+        return self.U.shape, self.S.shape, self.Vh.shape
+
+    def to_device(self, device: torch.device):
+        """in-place device change -- to save memory"""
+        self.U = self.U.to(device)
+        self.S = self.S.to(device)
+        self.Vh = self.Vh.to(device)
+        return self
+
+    def to_dtype(self, dtype: torch.dtype):
+        """in-place dtype change -- to save memory"""
+        self.U = self.U.to(dtype)
+        self.S = self.S.to(dtype)
+        self.Vh = self.Vh.to(dtype)
+        return self
+
+    @property
+    def dtype(self):
+        return self.U.dtype
+
+    @property
+    def device(self):
+        return self.U.device
+
+    @staticmethod
+    def calculate(matrix: torch.Tensor):
+        U, S, V = torch.svd(matrix)
+        return SVD(U=U, S=S, Vh=V)

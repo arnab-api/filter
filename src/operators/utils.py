@@ -1,0 +1,238 @@
+import copy
+import logging
+from typing import Optional
+
+import numpy as np
+import torch
+from tqdm import tqdm
+
+from src.functional import (
+    free_gpu_cache,
+    get_module_nnsight,
+    interpret_logits,
+    low_rank_pinv,
+)
+from src.models import ModelandTokenizer
+from src.utils.typing import SVD, TokenizerOutput
+from dataclasses import dataclass, field
+from src.functional import (
+    free_gpu_cache,
+    get_module_nnsight,
+    prepare_input,
+    find_token_range,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+@torch.inference_mode()
+def project_to_vocab(
+    mt: ModelandTokenizer,
+    h: torch.Tensor,
+    layer_name: str,
+    inputs: Optional[TokenizerOutput] = None,
+    placeholder_pos: int = 0,
+    **kwargs
+):
+    if inputs is None:
+        inputs = mt.tokenizer(
+            mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
+        )
+        placeholder_pos = 0
+
+    with mt.trace(inputs) as tr:
+        module = get_module_nnsight(mt, layer_name)
+        module.output[0][:, placeholder_pos, :] = h
+        logits = mt.output.logits[0, -1].save()
+
+    free_gpu_cache()
+
+    return interpret_logits(
+        tokenizer=mt,
+        logits=logits,
+        **kwargs,
+    )
+
+
+def module_output_has_extra_dim(mt, module_name):
+    return (
+        "mlp" not in module_name
+        or module_name != mt.embedder_name
+        or module_name != mt.lm_head_name
+    )
+
+
+def get_lm_head_row(mt: ModelandTokenizer, token: int):
+    lm_head = get_module_nnsight(mt, "lm_head")
+    return lm_head.weight[token].squeeze()
+
+
+@dataclass(frozen=False, kw_only=True)
+class Order1Approx:
+    jacobian: torch.Tensor
+    bias: torch.Tensor
+    calculated_at: torch.Tensor
+
+    inp_layer: str
+    out_layer: str = "lm_head"
+
+    beta: float = 1.0  # scaling factor / make the slope steeper
+
+    _svd: Optional[SVD] = None
+
+    def __post_init__(self):
+        # loaded in float16 to save memory
+        self.to_dtype(torch.float16)
+
+    @torch.inference_mode()
+    def __call__(self, h: torch.Tensor) -> torch.Tensor:
+        return (
+            self.beta * self.jacobian @ h.to(self.dtype).to(self.device) + self.bias
+        ).to(h.dtype)
+
+    @staticmethod
+    def load_from_npz(path: str):
+        data = np.load(path)
+        return Order1Approx(
+            jacobian=torch.Tensor(data["jacobian"]),
+            bias=torch.Tensor(data["bias"]),
+            calculated_at=torch.tensor(data["calculated_at"]),
+            inp_layer=data["inp_layer"].item(),
+            out_layer=data["out_layer"].item(),
+            beta=data["beta"].item(),
+        )
+
+    def to_device(self, device: torch.device):
+        self.jacobian = self.jacobian.to(device)
+        self.bias = self.bias.to(device)
+        self.calculated_at = self.calculated_at.to(device)
+        if self._svd is not None:
+            self._svd = self._svd.to_device(device)
+        return self
+
+    def to_dtype(self, dtype: torch.dtype):
+        self.jacobian = self.jacobian.to(dtype)
+        self.bias = self.bias.to(dtype)
+        self.calculated_at = self.calculated_at.to(dtype)
+        if self._svd is not None:
+            self._svd = self._svd.to_dtype(dtype)
+        return self
+
+    @property
+    def dtype(self):
+        return self.jacobian.dtype
+
+    @property
+    def device(self):
+        return self.jacobian.device
+
+    def jacobian_inv(self, rank: int = 1000):
+        if self._svd is None:
+            self._svd = SVD.calculate(self.jacobian.float())
+            self._svd.to_dtype(self.dtype).to_device(self.device)
+
+        return low_rank_pinv(
+            matrix=self.jacobian,
+            svd=self._svd,
+            rank=rank,
+        )
+
+
+def patch(
+    h: torch.Tensor,
+    mt: ModelandTokenizer,
+    inp_layer: str,
+    out_layer: str = "lm_head",
+) -> torch.Tensor:
+    dummy_tok = mt.tokenizer(
+        mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
+    )
+    with mt.trace(dummy_tok) as tr:
+        # perform the patching
+        inp_module = get_module_nnsight(mt, inp_layer)
+        inp_state = (
+            inp_module.output[0].save()
+            if module_output_has_extra_dim(mt, inp_layer)
+            else inp_module.output.save()
+        )
+        inp_state[...] = h.view(1, 1, h.squeeze().shape[0])
+        # inp_module.output[0][...] = h.view(1, 1, h.squeeze().shape[0])
+
+        out_module = get_module_nnsight(mt, out_layer)
+        out_state = (
+            out_module.output[0].save()
+            if module_output_has_extra_dim(mt, out_layer)
+            else out_module.output.save()
+        )
+
+    return out_state.value[-1].squeeze()
+
+
+def get_inputs_and_intervention_range(
+    mt: ModelandTokenizer,
+    prompt: str,
+    intervention_token: str,
+):
+    inputs = prepare_input(
+        prompts=[prompt],
+        tokenizer=mt,
+        return_offsets_mapping=True,
+        device=mt.device,
+    )
+
+    offset_mapping = inputs["offset_mapping"][0]
+    inputs.pop("offset_mapping")
+
+    subj_range = find_token_range(
+        string=prompt,
+        substring=intervention_token,
+        tokenizer=mt,
+        offset_mapping=offset_mapping,
+    )
+
+    return inputs, subj_range
+
+
+def order_1_approx(
+    mt: ModelandTokenizer,
+    h: torch.Tensor,
+    inp_layer: str,
+    out_layer: str = "lm_head",
+) -> Order1Approx:
+
+    def func(h: torch.Tensor) -> torch.Tensor:
+        return patch(h, mt, inp_layer, out_layer)
+
+    def calculate_jacobian(function, h):
+        h = h.to(mt.device)
+        h.requires_grad = True
+        h.retain_grad()
+        z_est = function(h)
+        jacobian = []
+
+        for idx in tqdm(range(z_est.shape[0])):
+            mt._model.zero_grad()
+            z_est[idx].backward(retain_graph=True)
+            jacobian.append(copy.deepcopy(h.grad))
+            h.grad.zero_()
+
+        jacobian = torch.stack(jacobian)
+
+        return jacobian
+
+    z = func(h)
+    # jacobian = torch.autograd.functional.jacobian(func, h, vectorize=False)
+    jacobian = calculate_jacobian(func, h)
+    bias = z - jacobian @ h
+
+    mt._model.zero_grad()
+    free_gpu_cache()
+
+    return Order1Approx(
+        jacobian=jacobian,
+        bias=bias,
+        calculated_at=h,
+        inp_layer=inp_layer,
+        out_layer=out_layer,
+    )

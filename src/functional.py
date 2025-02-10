@@ -17,7 +17,9 @@ from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
-from src.utils.typing import ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
+from src.utils.typing import ArrayLike, PredictedToken, Tokenizer, TokenizerOutput, SVD
+import numpy as np
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +29,17 @@ def interpret_logits(
     tokenizer: ModelandTokenizer | Tokenizer,
     logits: torch.Tensor,
     k: int = 5,
-) -> list[PredictedToken]:
+    interested_tokens: tuple[int] = (),
+) -> (
+    list[PredictedToken]
+    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
+):
     tokenizer = unwrap_tokenizer(tokenizer)
     logits = logits.squeeze()
     probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
 
-    return [
+    candidates = [
         PredictedToken(
             token=tokenizer.decode(t),
             prob=probs[t].item(),
@@ -43,24 +49,6 @@ def interpret_logits(
         for t in top_k_indices
     ]
 
-
-@torch.inference_mode()
-def logit_lens(
-    mt: ModelandTokenizer,
-    h: torch.Tensor,
-    interested_tokens: list[int] = [],
-    k: int = 5,
-) -> (
-    list[PredictedToken]
-    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
-):
-    with mt.trace(get_dummy_input(mt), scan=True, validate=True) as trace:
-        lnf = get_module_nnsight(mt, mt.final_layer_norm_name)
-        lnf.input = h.view(1, 1, h.squeeze().shape[0])
-        logits = mt.output.logits.save()
-
-    logits = logits.squeeze()
-    candidates = interpret_logits(tokenizer=mt, logits=logits, k=k)
     if len(interested_tokens) > 0:
         rank_tokens = logits.argsort(descending=True).tolist()
         probs = torch.nn.functional.softmax(logits, dim=-1)
@@ -68,7 +56,7 @@ def logit_lens(
             t: (
                 rank_tokens.index(t) + 1,
                 PredictedToken(
-                    token=mt.tokenizer.decode(t),
+                    token=tokenizer.decode(t),
                     prob=probs[t].item(),
                     logit=logits[t].item(),
                     token_id=t,
@@ -76,9 +64,41 @@ def logit_lens(
             )
             for t in interested_tokens
         }
+        # print(interested_logits)
+        interested_logits = {
+            k: v
+            for k, v in sorted(
+                interested_logits.items(), key=lambda x: x[1][1].prob, reverse=True
+            )
+        }
         return candidates, interested_logits
-    free_gpu_cache()
     return candidates
+
+
+@torch.inference_mode()
+def logit_lens(
+    mt: ModelandTokenizer,
+    h: torch.Tensor,
+    interested_tokens: tuple[int] = (),
+    k: int = 5,
+) -> (
+    list[PredictedToken]
+    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
+):
+    free_gpu_cache()
+    inputs = mt.tokenizer(
+        mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
+    )
+    with mt.trace(inputs) as trace:
+        lnf = get_module_nnsight(mt, mt.final_layer_norm_name)
+        lnf.input = h.view(1, 1, h.squeeze().shape[0])
+        logits = mt.output.logits.save()
+
+    logits = logits.squeeze()
+    free_gpu_cache()
+    return interpret_logits(
+        tokenizer=mt, logits=logits, k=k, interested_tokens=interested_tokens
+    )
 
 
 @torch.inference_mode()
@@ -315,7 +335,12 @@ def predict_next_token(
             else token_of_interest
         )
     if token_of_interest is not None:
-        print(f"{len(token_of_interest)=} | {len(inputs)=}")
+        # print(f"{len(token_of_interest)=} | {len(inputs)=}")
+        if isinstance(token_of_interest, ArrayLike) == False:
+            token_of_interest = [token_of_interest]
+        if isinstance(token_of_interest[0], ArrayLike) == False:
+            token_of_interest = [token_of_interest]
+
         assert len(token_of_interest) == (
             len(inputs["input_ids"])
             if isinstance(inputs, TokenizerOutput)
@@ -380,45 +405,38 @@ def predict_next_token(
         batch_probs = batch_logits.float().softmax(dim=-1)
         batch_topk = batch_probs.topk(k=k, dim=-1)
 
-        for batch_order, (token_ids, token_probs) in enumerate(
-            zip(batch_topk.indices, batch_topk.values)
-        ):
-            predictions.append(
-                [
-                    PredictedToken(
-                        token=mt.tokenizer.decode(token_ids[j]),
-                        prob=token_probs[j].item(),
-                        logit=batch_logits[batch_order][token_ids[j]].item(),
-                        token_id=token_ids[j].item(),
-                    )
-                    for j in range(k)
-                ]
-            )
-
+        batch_interested_token_indices = None
         if token_of_interest is not None:
+            batch_interested_token_indices = []
             for j in range(i, i + batch_inputs["input_ids"].shape[0]):
-                tok_id = (
+                batch_interested_token_indices.append(
                     mt.tokenizer(
-                        token_of_interest[j], add_special_tokens=False
-                    ).input_ids[0]
+                        token_of_interest[j],
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    ).input_ids[:, 0]
                     if type(token_of_interest[j]) == str
                     else token_of_interest[j]
                 )
-                probs = batch_probs[j]
-                order = probs.topk(dim=-1, k=probs.shape[-1]).indices.squeeze()
-                prob_tok = probs[tok_id]
-                rank = int(torch.where(order == tok_id)[0].item() + 1)
-                track_interesting_tokens.append(
-                    (
-                        rank,
-                        PredictedToken(
-                            token=mt.tokenizer.decode(tok_id),
-                            prob=prob_tok.item(),
-                            logit=batch_logits[j - i][tok_id].item(),
-                            token_id=tok_id,
-                        ),
-                    )
-                )
+
+        for batch_order, (token_ids, token_probs) in enumerate(
+            zip(batch_topk.indices, batch_topk.values)
+        ):
+            top_pred = interpret_logits(
+                tokenizer=mt,
+                logits=batch_logits[batch_order],
+                k=k,
+                interested_tokens=(
+                    batch_interested_token_indices[batch_order]
+                    if token_of_interest is not None
+                    else []
+                ),
+            )
+            if token_of_interest is not None:
+                track_interesting_tokens.append(top_pred[1])
+                top_pred = top_pred[0]
+
+            predictions.append(top_pred)
 
         free_gpu_cache()
 
@@ -763,6 +781,46 @@ def get_dummy_input(
     return prepare_input(prompts=dummy_prompt, tokenizer=tokenizer)
 
 
+def low_rank_approx(
+    matrix: torch.Tensor, rank: int, svd: SVD | None = None
+) -> torch.Tensor:
+    """Compute a low-rank approximation of a matrix.
+
+    Args:
+        matrix: The matrix to approximate.
+        rank: The rank of the approximation.
+
+    Returns:
+        The approximation.
+
+    """
+    if svd is None:
+        svd = SVD.calculate(matrix.float())
+    u, s, v = svd.U, svd.S, svd.Vh
+    matrix_approx = u[:, :rank] @ torch.diag(s[:rank]) @ v[:, :rank].T
+    return matrix_approx.to(matrix.dtype)
+
+
+def low_rank_pinv(
+    matrix: torch.Tensor, rank: int, svd: SVD | None = None
+) -> torch.Tensor:
+    """Compute a low-rank pseudo-inverse of a matrix.
+
+    Args:
+        matrix: The matrix to invert.
+        rank: The rank of the approximation.
+
+    Returns:
+        The pseudo-inverse.
+
+    """
+    if svd is None:
+        svd = SVD.calculate(matrix.float())
+    u, s, v = svd.U, svd.S, svd.Vh
+    matrix_pinv = v[:, :rank] @ torch.diag(1 / s[:rank]) @ u[:, :rank].T
+    return matrix_pinv.to(matrix.dtype)
+
+
 # useful for saving with jsons
 def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = False):
     if isinstance(inp, list):
@@ -795,3 +853,17 @@ def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = Fal
             return cls(**inp)
         else:
             return cls(data=inp)
+
+
+def save_object(obj, save_path):
+    """
+    saves an object as a npz file
+    assume that the obj is a dictionary
+    and does not have another custom object as a value
+    """
+    if isinstance(obj, dict) == False:
+        obj = detensorize(obj)
+    np.savez(
+        save_path,
+        **obj,
+    )
