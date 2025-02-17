@@ -7,14 +7,18 @@ import torch
 from dataclasses_json import DataClassJsonMixin
 from nnsight import LanguageModel
 from tqdm.auto import tqdm
+import numpy as np
 
 from src.dataset import InContextQuery, Relation
-from src.functional import (get_all_module_states, get_module_nnsight,
-                            guess_subject, predict_next_token)
+from src.functional import (
+    get_all_module_states,
+    get_module_nnsight,
+    guess_subject,
+    predict_next_token,
+)
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import (find_token_range, insert_padding_before_subj,
-                        prepare_input)
-from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput
+from src.tokens import find_token_range, insert_padding_before_subj, prepare_input
+from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput, PathLike
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,24 @@ class CausalTracingResult(DataClassJsonMixin):
     window: int = 1
     metric: Literal["logit", "prob"] = "prob"
 
+    def from_npz(file: np.lib.npyio.NpzFile | PathLike):
+        if isinstance(file, PathLike):
+            file = np.load(file, allow_pickle=True)
+        
+        return CausalTracingResult(
+            patch_input_toks=file["patch_input_toks"].tolist(),
+            corrupt_input_toks=file["corrupt_input_toks"].tolist(),
+            trace_start_idx=file["trace_start_idx"].item(),
+            answer=file["answer"].item(),
+            low_score=file["low_score"].item(),
+            indirect_effects=torch.tensor(file["indirect_effects"]),
+            normalized=file["normalized"].item(),
+            kind=file["kind"].item(),
+            window=file["window"].item(),
+            metric=file["metric"].item(),
+        )
+
+
 
 @torch.inference_mode()
 def trace_important_states(
@@ -156,7 +178,7 @@ def trace_important_states(
             subj_range=clean_subj_range,
             subj_ends=subj_end,
             pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=True,
+            fill_attn_mask=False,
         )
         patched_input = insert_padding_before_subj(
             inp=patched_input,
@@ -189,10 +211,11 @@ def trace_important_states(
 
     # clean run
     clean_answer, track_ans = predict_next_token(
-        mt=mt, inputs=clean_input, k=1, token_of_interest=answer.token
+        mt=mt, inputs=clean_input, k=1, token_of_interest=[answer.token_id]
     )
     clean_answer = clean_answer[0][0]
-    low_score = track_ans[0][1].prob if metric == "prob" else track_ans[0][1].logit
+    track_ans = track_ans[0][answer.token_id][1]
+    low_score = track_ans.prob if metric == "prob" else track_ans.logit
     logger.debug(f"{clean_answer=}")
     logger.debug(f"{track_ans=}")
 

@@ -38,6 +38,9 @@ def interpret_logits(
     logits = logits.squeeze()
     probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
+    if isinstance(top_k_indices, ArrayLike) == False:
+        top_k_indices = [top_k_indices]
+
 
     candidates = [
         PredictedToken(

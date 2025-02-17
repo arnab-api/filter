@@ -1,0 +1,90 @@
+{
+    "model_name": "meta-llama/Llama-3/18B",
+    "prefix": "Given two entities, find a common link or relation between them.\nIf both entities are individuals, the common link can be their profession, nationality, or any other attribute they share. Their relation can be if someone is the student/teacher of the other etc.\nSimilarly, if the entities are places, the common link can be the city, country, or any other attribute they share. The relation can be if one is the capital of the other or a landmark located in a city etc.\nIf there is no connection just answer \"None\".\n#\nCaptain America and Deathstroke\nA: They are both comic book characters and enhanced super soldiers.\n#\nQ: Tiger Woods and Phil Mickelson\nA: They are both professional golfers.\n#\nQ: Rome and Italy\nA: Rome is the capital city of Italy.\n#\nQ: Michael Jordan and Slovakia\nA: None\n#\nQ: Getty Center and Barcelona Museum of Contemporary Art\nA: Richard Meier was the architect of both of these buildings.\n\n",
+    "examples": [
+        {
+            "entity_pair": [
+                "Germany",
+                "Japan"
+            ],
+            "connection": "Axis powers in World War II."
+        },
+        {
+            "entity_pair": [
+                "Hugh Jackman",
+                "Ryan Reynolds"
+            ],
+            "connection": "X-men characters."
+        },
+        {
+            "entity_pair": [
+                "Bhutan",
+                "Tuvalu"
+            ],
+            "connection": "monarchies."
+        },
+        {
+            "entity_pair": [
+                "Vatican City",
+                "Mount Athos"
+            ],
+            "connection": "independent states."
+        },
+        {
+            "entity_pair": [
+                "Rosetta Stone",
+                "Dead Sea Scrolls"
+            ],
+            "connection": "ancient artifacts."
+        },
+        {
+            "entity_pair": [
+                "Leonardo da Vinci",
+                "Benjamin Franklin"
+            ],
+            "connection": "polymaths."
+        },
+        {
+            "entity_pair": [
+                "Daredevil",
+                "Toph Beifong"
+            ],
+            "connection": "blind."
+        },
+        {
+            "entity_pair": [
+                "Memento",
+                "Inception"
+            ],
+            "connection": "directed by Christopher Nolan."
+        },
+        {
+            "entity_pair": [
+                "Julius Caesar",
+                "Nepoleon Bonaparte"
+            ],
+            "connection": "military leaders."
+        },
+        {
+            "entity_pair": [
+                "The Godfather",
+                "Goodfellas"
+            ],
+            "connection": "mob movies."
+        },
+        {
+            "entity_pair": [
+                "The Green Mile",
+                "The Shawshank Redemption"
+            ],
+            "connection": "directed by Frank Darabont."
+        },
+        {
+            "entity_pair": [
+                "Christopher Columbus",
+                "Vasco da Gama"
+            ],
+            "connection": "explorers."
+        }
+    ]
+}
