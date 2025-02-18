@@ -40,7 +40,7 @@ class ModelandTokenizer(LanguageModel):
         else:
             model_key = get_full_model_path(model_key)
             self.__dict__ = LanguageModel(
-                model_key=model_key,
+                model_key,
                 torch_dtype=torch_dtype,
                 device_map="auto",
                 dispatch=True,
@@ -51,13 +51,17 @@ class ModelandTokenizer(LanguageModel):
         self.tokenizer = tokenizer if tokenizer is not None else self.tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token  # for generation
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        self.device = determine_device(self._model)
+        # self.device = determine_device(self._model)
         self.parse_config()
 
         logger.info(
             f"loaded model <{model_key}> | size: {get_model_size(self._model)} | dtype: {determine_dtype(self._model)} | device: {self.device}"
         )
         self.cache_forwards()
+
+    @property
+    def device(self):
+        return determine_device(self._model)
 
     def parse_config(self) -> None:
         fields = {
@@ -143,7 +147,7 @@ class ModelandTokenizer(LanguageModel):
         """
         Resets the forward pass of all the modules to their original state.
         """
-        logger.debug("Resetting default forward pass of all modules")
+        # logger.debug("Resetting default forward pass of all modules")
         for name, module in self._model.named_modules():
             # print(name, hasattr(module, "forward"))
             for func_name in CACHEABLE_FUNCS:

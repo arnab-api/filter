@@ -9,7 +9,7 @@ from dataclasses_json import DataClassJsonMixin
 from src.functional import ASK_ORACLE_MODEL
 from src.models import ModelandTokenizer, is_llama_variant
 from src.tokens import find_token_range, prepare_input
-from src.utils.typing import ArrayLike
+from src.utils.typing import ArrayLike, TokenizerOutput
 import os
 from tqdm import tqdm
 import numpy as np
@@ -94,11 +94,12 @@ def get_lm_generated_answer(
     is_a_reasoning_model: bool = False,
 ):
     with mt.generate(
-        prompt.tokenized,
-        # dict(
-        #     input_ids=prompt.tokenized.input_ids,
-        #     attention_mask=prompt.tokenized.attention_mask,
-        # ),
+        TokenizerOutput(
+            data=dict(
+                input_ids=prompt.tokenized["input_ids"],
+                attention_mask=prompt.tokenized["attention_mask"],
+            )
+        ),
         max_new_tokens=50 if is_a_reasoning_model == False else 1000,
         do_sample=False,
         output_scores=True,
