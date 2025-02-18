@@ -298,6 +298,61 @@ def insert_padding_before_subj(
     return inp
 
 
+def insert_padding_before_pos(
+    inp: TokenizerOutput,
+    token_position: int,
+    pad_len: int,
+    pad_id: int,
+    fill_attn_mask: bool = False,
+):
+    """
+
+    Inserts padding tokens before any position
+    use cases:
+    * Alignment of token positions in a bunch of sequences.
+    * Getting rid of positional embeddings
+
+    TEST:
+
+    for idx, (tok_id, attn_mask) in enumerate(zip(inp.input_ids[0], inp.attention_mask[0])):
+        print(f"{idx=} [{attn_mask}] | {mt.tokenizer.decode(tok_id)}")
+
+    """
+    input_ids = torch.cat(
+        [
+            inp.input_ids[:, :token_position],
+            torch.full(
+                (1, pad_len),
+                pad_id,
+                dtype=inp.input_ids.dtype,
+                device=inp.input_ids.device,
+            ),
+            inp.input_ids[:, token_position:],
+        ],
+        dim=1,
+    )
+
+    attention_mask = torch.cat(
+        [
+            inp.attention_mask[:, :token_position],
+            torch.full(
+                (1, pad_len),
+                fill_attn_mask,
+                dtype=inp.attention_mask.dtype,
+                device=inp.attention_mask.device,
+            ),
+            inp.attention_mask[:, token_position:],
+        ],
+        dim=1,
+    )
+    return TokenizerOutput(
+        data={
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+        }
+    )
+
+
 def insert_padding_before_subj(
     inp: TokenizerOutput,
     subj_range: tuple[int, int],
@@ -305,45 +360,44 @@ def insert_padding_before_subj(
     pad_id: int,
     fill_attn_mask: bool = False,
 ):
-    """
+    # pad_len = subj_ends - subj_range[1]
+    # inp["input_ids"] = torch.cat(
+    #     [
+    #         inp.input_ids[:, : subj_range[0]],
+    #         torch.full(
+    #             (1, pad_len),
+    #             pad_id,
+    #             dtype=inp.input_ids.dtype,
+    #             device=inp.input_ids.device,
+    #         ),
+    #         inp.input_ids[:, subj_range[0] :],
+    #     ],
+    #     dim=1,
+    # )
 
-    Inserts padding tokens before the subject in the query to balance the input tensor.
+    # inp["attention_mask"] = torch.cat(
+    #     [
+    #         inp.attention_mask[:, : subj_range[0]],
+    #         torch.full(
+    #             (1, pad_len),
+    #             fill_attn_mask,
+    #             dtype=inp.attention_mask.dtype,
+    #             device=inp.attention_mask.device,
+    #         ),
+    #         inp.attention_mask[:, subj_range[0] :],
+    #     ],
+    #     dim=1,
+    # )
+    # return inp
 
-    TEST:
-
-    for idx, (tok_id, attn_mask) in enumerate(zip(clean_inputs.input_ids[0], clean_inputs.attention_mask[0])):
-        print(f"{idx=} [{attn_mask}] | {mt.tokenizer.decode(tok_id)}")
-
-    """
-    pad_len = subj_ends - subj_range[1]
-    inp["input_ids"] = torch.cat(
-        [
-            inp.input_ids[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                pad_id,
-                dtype=inp.input_ids.dtype,
-                device=inp.input_ids.device,
-            ),
-            inp.input_ids[:, subj_range[0] :],
-        ],
-        dim=1,
+    #! not yet tested. keeping the old code for now
+    return insert_padding_before_pos(
+        inp=inp,
+        token_position=subj_range[0],
+        pad_len=subj_ends - subj_range[1],
+        pad_id=pad_id,
+        fill_attn_mask=fill_attn_mask,
     )
-
-    inp["attention_mask"] = torch.cat(
-        [
-            inp.attention_mask[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                fill_attn_mask,
-                dtype=inp.attention_mask.dtype,
-                device=inp.attention_mask.device,
-            ),
-            inp.attention_mask[:, subj_range[0] :],
-        ],
-        dim=1,
-    )
-    return inp
 
 
 def align_bridge_entities_in_query(

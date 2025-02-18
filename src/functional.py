@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import find_token_range, prepare_input
+from src.tokens import find_token_range, prepare_input, insert_padding_before_pos
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import ArrayLike, PredictedToken, Tokenizer, TokenizerOutput, SVD
 import numpy as np
@@ -40,7 +40,6 @@ def interpret_logits(
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
     if isinstance(top_k_indices, ArrayLike) == False:
         top_k_indices = [top_k_indices]
-
 
     candidates = [
         PredictedToken(
@@ -534,6 +533,35 @@ def get_hs(
     if len(hs) == 1 and not return_dict:
         return list(hs.values())[0]
     return hs
+
+
+def extract_rep_at_pos(
+    mt: ModelandTokenizer,
+    input: str | TokenizerOutput,
+    total_length: int,
+    locations: tuple[str, int] | list[tuple[str, int]],
+    return_dict: bool = False,
+):
+    if isinstance(input, TokenizerOutput):
+        if "offset_mapping" in input:
+            input.pop("offset_mapping")
+    else:
+        input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
+
+    assert total_length >= len(
+        input["input_ids"][0]
+    ), "Total length cannot be smaller than the input length"
+
+    input = insert_padding_before_pos(
+        inp=input,
+        token_position=0,  # prepend pads before the first token
+        pad_len=total_length - len(input["input_ids"][0]),
+        pad_id=mt.tokenizer.pad_token_id,
+    )
+
+    logger.debug(f"{input.input_ids.shape=}")
+
+    return get_hs(mt=mt, input=input, locations=locations, return_dict=return_dict)
 
 
 @torch.inference_mode

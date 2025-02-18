@@ -306,7 +306,15 @@ class CornerEstimator(Estimator):
         for iter in progress_bar:
             with self.mt.trace(self.inputs) as tr:
                 module = get_module_nnsight(self.mt, self.layer_name)
-                module.output[0][:, self.placeholder_pos, :] = corner
+                current_state = (
+                    module.output.save()
+                    if (
+                        "mlp" in self.layer_name
+                        or self.layer_name == self.mt.embedder_name
+                    )
+                    else module.output[0].save()
+                )
+                current_state[:, self.placeholder_pos, :] = corner
                 logits = self.mt.output.logits[0, -1].save()
 
             # print(f"{logits.shape=}, {target.shape=}")

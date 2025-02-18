@@ -43,7 +43,12 @@ def project_to_vocab(
 
     with mt.trace(inputs) as tr:
         module = get_module_nnsight(mt, layer_name)
-        module.output[0][:, placeholder_pos, :] = h
+        current_state = (
+            module.output.save()
+            if ("mlp" in layer_name or layer_name == mt.embedder_name)
+            else module.output[0].save()
+        )
+        current_state[:, placeholder_pos, :] = h
         logits = mt.output.logits[0, -1].save()
 
     free_gpu_cache()

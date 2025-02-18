@@ -102,7 +102,7 @@ class CausalTracingResult(DataClassJsonMixin):
     def from_npz(file: np.lib.npyio.NpzFile | PathLike):
         if isinstance(file, PathLike):
             file = np.load(file, allow_pickle=True)
-        
+
         return CausalTracingResult(
             patch_input_toks=file["patch_input_toks"].tolist(),
             corrupt_input_toks=file["corrupt_input_toks"].tolist(),
@@ -115,7 +115,6 @@ class CausalTracingResult(DataClassJsonMixin):
             window=file["window"].item(),
             metric=file["metric"].item(),
         )
-
 
 
 @torch.inference_mode()
