@@ -94,6 +94,7 @@ class CausalTracingResult(DataClassJsonMixin):
     answer: PredictedToken
     low_score: float
     indirect_effects: torch.Tensor
+    subj_range: Optional[tuple[int, int]]
     normalized: bool
     kind: Literal["residual", "mlp", "attention"] = "residual"
     window: int = 1
@@ -108,6 +109,7 @@ class CausalTracingResult(DataClassJsonMixin):
             corrupt_input_toks=file["corrupt_input_toks"].tolist(),
             trace_start_idx=file["trace_start_idx"].item(),
             answer=file["answer"].item(),
+            subj_range=file["subj_range"].tolist(),
             low_score=file["low_score"].item(),
             indirect_effects=torch.tensor(file["indirect_effects"]),
             normalized=file["normalized"].item(),
@@ -276,6 +278,7 @@ def trace_important_states(
         ],
         trace_start_idx=trace_start_idx,
         answer=answer,
+        subj_range=(subj_start, subj_end),
         low_score=low_score,
         indirect_effects=indirect_effect_matrix,
         normalized=normalize,

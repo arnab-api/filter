@@ -40,12 +40,25 @@ def plot_trace_heatmap(
     patch_tokens = replace_special_tokens(result.patch_input_toks)
 
     tokens = []
-    for corrupt_tok, patch_tok in zip(
-        corrupt_tokens[result.trace_start_idx :], patch_tokens[result.trace_start_idx :]
-    ):
-        tokens.append(
-            f"{patch_tok}/{corrupt_tok}" if corrupt_tok != patch_tok else corrupt_tok
+    shifted_subj_range = (
+        result.subj_range[0] - result.trace_start_idx,
+        result.subj_range[1] - result.trace_start_idx,
+    )
+    for idx, (corrupt_tok, patch_tok) in enumerate(
+        zip(
+            corrupt_tokens[result.trace_start_idx :],
+            patch_tokens[result.trace_start_idx :],
         )
+    ):
+        if idx in range(*shifted_subj_range):
+            tokens.append(
+                f"{patch_tok}/{corrupt_tok}"
+                if corrupt_tok != patch_tok
+                else f"{corrupt_tok} *"
+            )
+        else:
+            assert corrupt_tok == patch_tok
+            tokens.append(corrupt_tok)
 
     plt.rcdefaults()
     with plt.rc_context(
