@@ -17,7 +17,12 @@ from src.functional import (
     predict_next_token,
 )
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import find_token_range, insert_padding_before_subj, prepare_input
+from src.tokens import (
+    find_token_range,
+    insert_padding_before_subj,
+    prepare_input,
+    align_patching_positions,
+)
 from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput, PathLike
 
 logger = logging.getLogger(__name__)
@@ -134,66 +139,21 @@ def trace_important_states(
     metric: Literal["logit", "prob"] = "prob",
 ) -> CausalTracingResult:
 
-    if clean_input is None:
-        clean_input = prepare_input(
-            prompts=prompt_template.format(clean_subj),
-            tokenizer=mt,
-            return_offset_mapping=True,
-        )
-    if patched_input is None:
-        patched_input = prepare_input(
-            prompts=prompt_template.format(patched_subj),
-            tokenizer=mt,
-            return_offset_mapping=True,
-        )
-
-    clean_subj_range = find_token_range(
-        string=prompt_template.format(clean_subj),
-        substring=clean_subj,
-        tokenizer=mt.tokenizer,
-        occurrence=-1,
-        offset_mapping=clean_input["offset_mapping"][0],
+    aligned = align_patching_positions(
+        mt=mt,
+        prompt_template=prompt_template,
+        clean_subj=clean_subj,
+        patched_subj=patched_subj,
+        clean_input=clean_input,
+        patched_input=patched_input,
+        trace_start_marker=trace_start_marker,
     )
-    patched_subj_range = find_token_range(
-        string=prompt_template.format(patched_subj),
-        substring=patched_subj,
-        tokenizer=mt.tokenizer,
-        occurrence=-1,
-        offset_mapping=patched_input["offset_mapping"][0],
-    )
-    if trace_start_marker is not None:
-        trace_start_idx = find_token_range(
-            string=prompt_template.format(clean_subj),
-            substring=trace_start_marker,
-            tokenizer=mt.tokenizer,
-            occurrence=-1,
-            offset_mapping=clean_input["offset_mapping"][0],
-        )[0]
+    clean_input = aligned["clean_input"]
+    patched_input = aligned["patched_input"]
+    subj_range = aligned["subj_range"]
+    trace_start_idx = aligned["trace_start_idx"]
 
-    if clean_subj_range == patched_subj_range:
-        subj_start, subj_end = clean_subj_range
-    else:
-        subj_end = max(clean_subj_range[1], patched_subj_range[1])
-        clean_input = insert_padding_before_subj(
-            inp=clean_input,
-            subj_range=clean_subj_range,
-            subj_ends=subj_end,
-            pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=False,
-        )
-        patched_input = insert_padding_before_subj(
-            inp=patched_input,
-            subj_range=patched_subj_range,
-            subj_ends=subj_end,
-            pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=False,
-        )
-
-        clean_subj_shift = subj_end - clean_subj_range[1]
-        clean_subj_range = (clean_subj_range[0] + clean_subj_shift, subj_end)
-        patched_subj_shift = subj_end - patched_subj_range[1]
-        patched_subj_range = (patched_subj_range[0] + patched_subj_shift, subj_end)
-        subj_start = min(clean_subj_range[0], patched_subj_range[0])
+    print(f"===> {trace_start_idx=}")
 
     if trace_start_marker is None:
         trace_start_idx = 0
@@ -278,7 +238,7 @@ def trace_important_states(
         ],
         trace_start_idx=trace_start_idx,
         answer=answer,
-        subj_range=(subj_start, subj_end),
+        subj_range=subj_range,
         low_score=low_score,
         indirect_effects=indirect_effect_matrix,
         normalized=normalize,

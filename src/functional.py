@@ -35,7 +35,6 @@ def interpret_logits(
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
     tokenizer = unwrap_tokenizer(tokenizer)
-    print(type(tokenizer))
     logits = logits.squeeze()
     probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()

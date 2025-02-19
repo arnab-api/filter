@@ -250,54 +250,6 @@ def find_token_range(
     return (token_start, token_end + 1)
 
 
-def insert_padding_before_subj(
-    inp: TokenizerOutput,
-    subj_range: tuple[int, int],
-    subj_ends: int,
-    pad_id: int,
-    fill_attn_mask: bool = False,
-):
-    """
-
-    Inserts padding tokens before the subject in the query to balance the input tensor.
-
-    TEST:
-
-    for idx, (tok_id, attn_mask) in enumerate(zip(clean_inputs.input_ids[0], clean_inputs.attention_mask[0])):
-        print(f"{idx=} [{attn_mask}] | {mt.tokenizer.decode(tok_id)}")
-
-    """
-    pad_len = subj_ends - subj_range[1]
-    inp["input_ids"] = torch.cat(
-        [
-            inp.input_ids[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                pad_id,
-                dtype=inp.input_ids.dtype,
-                device=inp.input_ids.device,
-            ),
-            inp.input_ids[:, subj_range[0] :],
-        ],
-        dim=1,
-    )
-
-    inp["attention_mask"] = torch.cat(
-        [
-            inp.attention_mask[:, : subj_range[0]],
-            torch.full(
-                (1, pad_len),
-                fill_attn_mask,
-                dtype=inp.attention_mask.dtype,
-                device=inp.attention_mask.device,
-            ),
-            inp.attention_mask[:, subj_range[0] :],
-        ],
-        dim=1,
-    )
-    return inp
-
-
 def insert_padding_before_pos(
     inp: TokenizerOutput,
     token_position: int,
@@ -360,43 +312,100 @@ def insert_padding_before_subj(
     pad_id: int,
     fill_attn_mask: bool = False,
 ):
-    # pad_len = subj_ends - subj_range[1]
-    # inp["input_ids"] = torch.cat(
-    #     [
-    #         inp.input_ids[:, : subj_range[0]],
-    #         torch.full(
-    #             (1, pad_len),
-    #             pad_id,
-    #             dtype=inp.input_ids.dtype,
-    #             device=inp.input_ids.device,
-    #         ),
-    #         inp.input_ids[:, subj_range[0] :],
-    #     ],
-    #     dim=1,
-    # )
-
-    # inp["attention_mask"] = torch.cat(
-    #     [
-    #         inp.attention_mask[:, : subj_range[0]],
-    #         torch.full(
-    #             (1, pad_len),
-    #             fill_attn_mask,
-    #             dtype=inp.attention_mask.dtype,
-    #             device=inp.attention_mask.device,
-    #         ),
-    #         inp.attention_mask[:, subj_range[0] :],
-    #     ],
-    #     dim=1,
-    # )
-    # return inp
-
-    #! not yet tested. keeping the old code for now
     return insert_padding_before_pos(
         inp=inp,
         token_position=subj_range[0],
         pad_len=subj_ends - subj_range[1],
         pad_id=pad_id,
         fill_attn_mask=fill_attn_mask,
+    )
+
+
+def align_patching_positions(
+    mt: ModelandTokenizer,
+    prompt_template: str,
+    clean_subj: str,
+    patched_subj: str,
+    clean_input: Optional[TokenizerOutput] = None,
+    patched_input: Optional[TokenizerOutput] = None,
+    trace_start_marker: Optional[str] = None,
+) -> dict:
+
+    if clean_input is None:
+        clean_input = prepare_input(
+            prompts=prompt_template.format(clean_subj),
+            tokenizer=mt,
+            return_offsets_mapping=True,
+        )
+    else:
+        assert "offset_mapping" in clean_input
+    if patched_input is None:
+        patched_input = prepare_input(
+            prompts=prompt_template.format(patched_subj),
+            tokenizer=mt,
+            return_offsets_mapping=True,
+        )
+    else:
+        assert "offset_mapping" in patched_input
+
+    clean_subj_range = find_token_range(
+        string=prompt_template.format(clean_subj),
+        substring=clean_subj,
+        tokenizer=mt.tokenizer,
+        occurrence=-1,
+        offset_mapping=clean_input["offset_mapping"][0],
+    )
+    patched_subj_range = find_token_range(
+        string=prompt_template.format(patched_subj),
+        substring=patched_subj,
+        tokenizer=mt.tokenizer,
+        occurrence=-1,
+        offset_mapping=patched_input["offset_mapping"][0],
+    )
+
+    trace_start_idx = None
+    if trace_start_marker is not None:
+        trace_start_idx = find_token_range(
+            string=prompt_template.format(clean_subj),
+            substring=trace_start_marker,
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=clean_input["offset_mapping"][0],
+        )[0]
+        assert trace_start_idx <= min(
+            clean_subj_range[0], patched_subj_range[0]
+        ), f"{trace_start_idx=} has to be bigger than {min(clean_subj_range[0], patched_subj_range[0])=}"
+
+    if clean_subj_range == patched_subj_range:
+        subj_start, subj_end = clean_subj_range
+    else:
+        subj_end = max(clean_subj_range[1], patched_subj_range[1])
+        clean_input = insert_padding_before_subj(
+            inp=clean_input,
+            subj_range=clean_subj_range,
+            subj_ends=subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+            fill_attn_mask=False,
+        )
+        patched_input = insert_padding_before_subj(
+            inp=patched_input,
+            subj_range=patched_subj_range,
+            subj_ends=subj_end,
+            pad_id=mt.tokenizer.pad_token_id,
+            fill_attn_mask=False,
+        )
+
+        clean_subj_shift = subj_end - clean_subj_range[1]
+        clean_subj_range = (clean_subj_range[0] + clean_subj_shift, subj_end)
+        patched_subj_shift = subj_end - patched_subj_range[1]
+        patched_subj_range = (patched_subj_range[0] + patched_subj_shift, subj_end)
+        subj_start = min(clean_subj_range[0], patched_subj_range[0])
+
+    return dict(
+        clean_input=clean_input,
+        patched_input=patched_input,
+        subj_range=(subj_start, subj_end),
+        trace_start_idx=trace_start_idx,
     )
 
 
