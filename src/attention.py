@@ -1,13 +1,14 @@
 from dataclasses import dataclass, fields
-
-import numpy as np
-import torch
 from dataclasses_json import DataClassJsonMixin
+import numpy as np
+from src.functional import prepare_input
+from src.utils.typing import TokenizerOutput
+import torch
+from src.models import ModelandTokenizer
 
 
 @dataclass(frozen=False)
 class AttentionInformation(DataClassJsonMixin):
-    prompt: str
     tokenized_prompt: list[str]
     attention_matrices: np.ndarray
 
@@ -32,9 +33,23 @@ class AttentionInformation(DataClassJsonMixin):
         return self.attention_matrices[layer, head]
 
 
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(
+        batch, num_key_value_heads, n_rep, slen, head_dim
+    )
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
 @torch.inference_mode()
 def get_attention_matrices(
-    prompt: str, mt: ModelandTokenizer, value_weighted: bool = False
+    input: str | TokenizerOutput, mt: ModelandTokenizer, value_weighted: bool = False
 ) -> torch.tensor:
     """
     Parameters:
@@ -46,21 +61,27 @@ def get_attention_matrices(
     Returns:
         attention matrices: torch.tensor of shape (layers, heads, tokens, tokens)
     """
-    # ! doesn't support batching yet. not really needed in this project
-    assert isinstance(prompt, str), "Prompt must be a string"
-
-    inputs = mt.tokenizer(prompt, return_tensors="pt").to(mt.device)
-    output = mt.model(
-        **inputs, output_attentions=True
+    # ! doesn't support batching yet. ignore for now (arnab)
+    if isinstance(input, str):
+        input = prepare_input(prompts=input, tokenizer=mt)
+    else:
+        assert isinstance(
+            input, TokenizerOutput
+        ), "input must be either a string or a TokenizerOutput object"
+    output = mt._model(
+        **input, output_attentions=True
     )  # batch_size x n_tokens x vocab_size, only want last token prediction
     attentions = torch.vstack(output.attentions)  # (layers, heads, tokens, tokens)
     if value_weighted:
         values = torch.vstack(
-            [output.past_key_values[i][1] for i in range(mt.n_layer)]
+            [output.past_key_values[i][1] for i in range(mt.config.num_hidden_layers)]
         )  # (layers, heads, tokens, head_dim)
+        values = repeat_kv(
+            values, n_rep=mt.model.layers[0].self_attn.num_key_value_groups
+        )
+        print(f"{attentions.shape=} | {values.shape=}")
         attentions = torch.einsum("abcd,abd->abcd", attentions, values.norm(dim=-1))
     return AttentionInformation(
-        prompt=prompt,
-        tokenized_prompt=[mt.tokenizer.decode(tok) for tok in inputs.input_ids[0]],
+        tokenized_prompt=[mt.tokenizer.decode(tok) for tok in input.input_ids[0]],
         attention_matrices=attentions.detach().cpu().to(torch.float32).numpy(),
     )

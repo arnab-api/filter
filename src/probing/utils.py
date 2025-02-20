@@ -92,6 +92,7 @@ def get_lm_generated_answer(
     prompt: ProbingPrompt,
     block_separator: str = "\n#",
     is_a_reasoning_model: bool = False,
+    use_kv_cache: bool = True,
 ):
     with mt.generate(
         TokenizerOutput(
@@ -104,6 +105,7 @@ def get_lm_generated_answer(
         do_sample=False,
         output_scores=True,
         return_dict_in_generate=True,
+        use_cache=use_kv_cache,
     ) as gen_trace:
         output = mt.generator.output.save()
 

@@ -281,6 +281,8 @@ def generate_with_patch(
     patches: Optional[list[PatchSpec]] = None,
     use_kv_cache: bool = True,
     do_sample: bool = True,
+    patch_strategy: Literal["replace", "add"] = "replace",
+    patch_at_all_generations: bool = False,
 ) -> list[str]:
     if isinstance(inputs, TokenizerOutput):
         if "offset_mapping" in inputs:
@@ -301,6 +303,8 @@ def generate_with_patch(
         use_cache=use_kv_cache,
     ) as gen_trace:
         if patches is not None:
+            if patch_at_all_generations:
+                mt.all()
             for cur_patch in patches:
                 module_name, index = cur_patch.location
                 module = get_module_nnsight(mt, module_name)
@@ -309,7 +313,12 @@ def generate_with_patch(
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
-                current_state[:, index, :] = cur_patch.patch
+                if patch_strategy == "replace":
+                    current_state[:, index, :] = cur_patch.patch
+                elif patch_strategy == "add":
+                    current_state[:, index, :] += cur_patch.patch
+                else:
+                    raise ValueError("patch_strategy must be one of 'replace', 'add'")
         gen_out = mt.generator.output.save()
 
     return mt.tokenizer.batch_decode(gen_out.sequences, skip_special_tokens=True)
