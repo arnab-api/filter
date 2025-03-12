@@ -279,10 +279,12 @@ def generate_with_patch(
     n_gen_per_prompt: int = 5,
     max_new_tokens: int = 20,
     patches: Optional[list[PatchSpec]] = None,
-    use_kv_cache: bool = True,
+    # use_cache: bool = True,
     do_sample: bool = True,
     patch_strategy: Literal["replace", "add"] = "replace",
     patch_at_all_generations: bool = False,
+    remove_prefix: bool = False,
+    **kwargs,
 ) -> list[str]:
     if isinstance(inputs, TokenizerOutput):
         if "offset_mapping" in inputs:
@@ -300,7 +302,8 @@ def generate_with_patch(
         do_sample=do_sample,
         output_scores=True,
         return_dict_in_generate=True,
-        use_cache=use_kv_cache,
+        # use_cache=use_cache,
+        **kwargs,
     ) as gen_trace:
         if patches is not None:
             if patch_at_all_generations:
@@ -321,7 +324,12 @@ def generate_with_patch(
                     raise ValueError("patch_strategy must be one of 'replace', 'add'")
         gen_out = mt.generator.output.save()
 
-    return mt.tokenizer.batch_decode(gen_out.sequences, skip_special_tokens=True)
+    start = 0
+    if remove_prefix:
+        start = inputs.input_ids.shape[1]
+    return mt.tokenizer.batch_decode(
+        gen_out.sequences[:, start:], skip_special_tokens=True
+    )
 
 
 @torch.inference_mode()

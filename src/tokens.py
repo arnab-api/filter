@@ -230,9 +230,9 @@ def find_token_range(
     token_start, token_end = None, None
     for index, (token_char_start, token_char_end) in enumerate(offset_mapping):
         # logger.debug(f"{index=} | token range: [{token_char_start}, {token_char_end}]")
-        # if token_char_start == token_char_end:
-        #     # Skip special tokens # ! Is this the proper way of doing this?
-        #     continue
+        if token_char_start == token_char_end:
+            # Skip special tokens # ! Is this the proper way of doing this?
+            continue
         if token_start is None:
             if token_char_start <= char_start and token_char_end >= char_start:
                 token_start = index
@@ -363,18 +363,29 @@ def align_patching_positions(
         offset_mapping=patched_input["offset_mapping"][0],
     )
 
+    # print(
+    #     f"{clean_subj_range=}, {mt.tokenizer.decode(clean_input['input_ids'][0][clean_subj_range[0]:clean_subj_range[1]])}"
+    # )
+    # print(
+    #     f"{patched_subj_range=}, {mt.tokenizer.decode(patched_input['input_ids'][0][patched_subj_range[0]:patched_subj_range[1]])}"
+    # )
+
     trace_start_idx = None
     if trace_start_marker is not None:
-        trace_start_idx = find_token_range(
-            string=prompt_template.format(clean_subj),
-            substring=trace_start_marker,
-            tokenizer=mt.tokenizer,
-            occurrence=-1,
-            offset_mapping=clean_input["offset_mapping"][0],
-        )[0]
+        trace_start_idx = (
+            find_token_range(
+                string=prompt_template.format(clean_subj),
+                substring=trace_start_marker,
+                tokenizer=mt.tokenizer,
+                occurrence=-1,
+                offset_mapping=clean_input["offset_mapping"][0],
+            )[1]
+            - 1
+        )
+        # print(trace_start_idx)
         assert trace_start_idx <= min(
             clean_subj_range[0], patched_subj_range[0]
-        ), f"{trace_start_idx=} has to be bigger than {min(clean_subj_range[0], patched_subj_range[0])=}"
+        ), f"{trace_start_idx=} has to be smaller than {min(clean_subj_range[0], patched_subj_range[0])=}"
 
     if clean_subj_range == patched_subj_range:
         subj_start, subj_end = clean_subj_range
@@ -385,14 +396,14 @@ def align_patching_positions(
             subj_range=clean_subj_range,
             subj_ends=subj_end,
             pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=False,
+            fill_attn_mask=True,
         )
         patched_input = insert_padding_before_subj(
             inp=patched_input,
             subj_range=patched_subj_range,
             subj_ends=subj_end,
             pad_id=mt.tokenizer.pad_token_id,
-            fill_attn_mask=False,
+            fill_attn_mask=True,
         )
 
         clean_subj_shift = subj_end - clean_subj_range[1]
@@ -400,6 +411,9 @@ def align_patching_positions(
         patched_subj_shift = subj_end - patched_subj_range[1]
         patched_subj_range = (patched_subj_range[0] + patched_subj_shift, subj_end)
         subj_start = min(clean_subj_range[0], patched_subj_range[0])
+
+        if trace_start_idx is not None:
+            trace_start_idx += clean_subj_shift
 
     return dict(
         clean_input=clean_input,
@@ -502,7 +516,7 @@ def align_bridge_entities_in_query(
         clean_subj_ranges[1],
         subj_2_range[1],
         pad_id=mt.tokenizer.pad_token_id,
-        fill_attn_mask=True,
+        fill_attn_mask=True,  # ?! For some reason, `fill_attn_mask=True` gives more consistent results. WHY?
     )
     patch_inputs = insert_padding_before_subj(
         patch_inputs,

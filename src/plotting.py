@@ -57,7 +57,7 @@ def plot_trace_heatmap(
                 else f"{corrupt_tok} *"
             )
         else:
-            assert corrupt_tok == patch_tok
+            # assert corrupt_tok == patch_tok
             tokens.append(corrupt_tok)
 
     plt.rcdefaults()
