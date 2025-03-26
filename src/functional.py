@@ -23,6 +23,36 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+import string
+from nltk.corpus import stopwords
+
+
+def get_keywords(text: str, tokenizer: Tokenizer | ModelandTokenizer) -> list[int]:
+    tokenizer = unwrap_tokenizer(tokenizer)
+    if text.startswith(" ") == False:
+        text = f" {text}"
+    tokenized = tokenizer(text, add_special_tokens=False).input_ids
+    # print([tokenizer.decode(t) for t in tokenized])
+    filtered = []
+    for idx, t_idx in enumerate(tokenized):
+        tok = tokenizer.decode(t_idx)
+        if t_idx in tokenizer.all_special_ids:
+            continue
+        if tok in string.whitespace:
+            continue
+        if tok.strip() in string.punctuation:
+            continue
+        if tok.strip().lower() in stopwords.words("english"):
+            # print(tokenizer.decode(tokenized[idx + 1]))
+            if idx < len(tokenized) - 1 and tokenizer.decode(
+                tokenized[idx + 1]
+            ).startswith(" "):
+                continue
+        if tok.startswith(" ") == False:  # continuation of a word, safe to ignore?
+            continue
+        filtered.append(t_idx)
+    return filtered
+
 
 @torch.inference_mode()
 def interpret_logits(
@@ -35,6 +65,7 @@ def interpret_logits(
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
     tokenizer = unwrap_tokenizer(tokenizer)
+    # print(type(tokenizer))
     logits = logits.squeeze()
     probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
@@ -97,6 +128,30 @@ def logit_lens(
         logits = mt.output.logits.save()
 
     logits = logits.squeeze()
+    free_gpu_cache()
+    return interpret_logits(
+        tokenizer=mt, logits=logits, k=k, interested_tokens=interested_tokens
+    )
+
+
+import baukit
+
+
+@torch.inference_mode()
+def logit_lens_baukit(
+    mt: ModelandTokenizer,
+    h: torch.Tensor,
+    interested_tokens: tuple[int] = (),
+    k: int = 5,
+) -> (
+    list[PredictedToken]
+    | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
+):
+    free_gpu_cache()
+    lnf = baukit.get_module(mt._model, mt.final_layer_norm_name)
+    lm_head = baukit.get_module(mt._model, mt.lm_head_name)
+    h = untuple(h)
+    logits = lm_head(lnf(h)).squeeze()
     free_gpu_cache()
     return interpret_logits(
         tokenizer=mt, logits=logits, k=k, interested_tokens=interested_tokens
@@ -330,6 +385,44 @@ def generate_with_patch(
     return mt.tokenizer.batch_decode(
         gen_out.sequences[:, start:], skip_special_tokens=True
     )
+
+
+@torch.inference_mode()
+def generate_with_beam_search(
+    mt: ModelandTokenizer,
+    inputs: str | TokenizerOutput,
+    num_beams: int = 20,
+    num_return_sequences: int = 10,
+    max_new_tokens: int = 20,
+    no_repeat_ngram_size: int = 3,
+    processor: callable = lambda x: x,
+) -> list[str]:
+    if isinstance(inputs, TokenizerOutput):
+        if "offset_mapping" in inputs:
+            inputs.pop("offset_mapping")
+    else:
+        inputs = prepare_input(
+            prompts=[inputs],
+            tokenizer=mt,
+        )
+
+    if no_repeat_ngram_size < 1:
+        logger.warning("no_repeat_ngram_size >= 1 recommended for varied generations")
+
+    outputs = mt._model.generate(
+        inputs.input_ids,
+        num_beams=num_beams,
+        num_return_sequences=num_return_sequences,
+        max_new_tokens=max_new_tokens,
+        no_repeat_ngram_size=no_repeat_ngram_size,
+        output_scores=True,
+        return_dict_in_generate=True,
+    )
+    start = inputs.input_ids.shape[1]
+    generations = mt.tokenizer.batch_decode(
+        outputs.sequences[:, start:], skip_special_tokens=True
+    )
+    return [processor(g) for g in generations]
 
 
 @torch.inference_mode()

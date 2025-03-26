@@ -7,84 +7,154 @@
                 "Germany",
                 "Japan"
             ],
-            "connection": "Axis powers in World War II."
+            "connection": "Axis powers in World War II.",
+            "alt_first": {
+                "entity": "Korea",
+                "connection": "divided into North and South."
+            }
         },
         {
             "entity_pair": [
                 "Hugh Jackman",
                 "Ryan Reynolds"
             ],
-            "connection": "X-men characters."
+            "connection": "X-men characters.",
+            "alt_first": {
+                "entity": "Celine Dion",
+                "connection": "Canadian."
+            }
         },
         {
             "entity_pair": [
                 "Bhutan",
-                "Tuvalu"
+                "Nepal"
             ],
-            "connection": "monarchies."
+            "connection": "kingdoms in the Himalayas.",
+            "alt_first": {
+                "entity": "India",
+                "connection": "part of the British Empire."
+            }
         },
         {
             "entity_pair": [
-                "Vatican City",
-                "Mount Athos"
+                "Mount Athos",
+                "Vatican City"
             ],
-            "connection": "independent states."
+            "connection": "monasteries.",
+            "alt_first": {
+                "entity": "Italy",
+                "connection": "part of the Roman Empire."
+            }
         },
         {
             "entity_pair": [
-                "Rosetta Stone",
-                "Dead Sea Scrolls"
+                "Dead Sea Scrolls",
+                "Rosetta Stone"
             ],
-            "connection": "ancient artifacts."
+            "connection": "ancient artifacts.",
+            "alt_first": {
+                "entity": "Pyramid of Giza",
+                "connection": "located in Egypt."
+            }
         },
         {
             "entity_pair": [
                 "Leonardo da Vinci",
                 "Benjamin Franklin"
             ],
-            "connection": "polymaths."
+            "connection": "polymaths.",
+            "alt_first": {
+                "entity": "Benjamin Franklin",
+                "connection": "American Founding Fathers."
+            }
         },
         {
             "entity_pair": [
-                "Daredevil",
-                "Toph Beifong"
+                "Toph Beifong",
+                "Daredevil"
             ],
-            "connection": "blind."
-        },
-        {
-            "entity_pair": [
-                "Memento",
-                "Inception"
-            ],
-            "connection": "directed by Christopher Nolan."
+            "connection": "blind.",
+            "alt_first": {
+                "entity": "Punisher",
+                "connection": "comic book characters."
+            }
         },
         {
             "entity_pair": [
                 "Julius Caesar",
                 "Nepoleon Bonaparte"
             ],
-            "connection": "military leaders."
-        },
-        {
-            "entity_pair": [
-                "The Godfather",
-                "Goodfellas"
-            ],
-            "connection": "mob movies."
-        },
-        {
-            "entity_pair": [
-                "The Green Mile",
-                "The Shawshank Redemption"
-            ],
-            "connection": "directed by Frank Darabont."
+            "connection": "military leaders.",
+            "alt_first": {
+                "entity": "Victor Hugo",
+                "connection": "French."
+            }
         },
         {
             "entity_pair": [
                 "Christopher Columbus",
                 "Vasco da Gama"
             ],
-            "connection": "explorers."
+            "connection": "explorers.",
+            "alt_first": {
+                "entity": "Christiano Ronaldo",
+                "connection": "football players."
+            }
+        },
+        {
+            "entity_pair": [
+                "Whale",
+                "Elephant"
+            ],
+            "connection": "mammals.",
+            "alt_first": {
+                "entity": "Horse",
+                "connection": "domesticated animals."
+            }
+        },
+        {
+            "entity_pair": [
+                "Ostrich",
+                "Emu"
+            ],
+            "connection": "flightless birds.",
+            "alt_first": {
+                "entity": "Kangaroo",
+                "connection": "native to Australia."
+            }
+        },
+        {
+            "entity_pair": [
+                "jellyfish",
+                "lobster"
+            ],
+            "connection": "invertebrates.",
+            "alt_first": {
+                "entity": "salmon",
+                "connection": "popular seafood dishes."
+            }
+        },
+        {
+            "entity_pair": [
+                "crocodile",
+                "shark"
+            ],
+            "connection": "apex predators.",
+            "alt_first": {
+                "entity": "salmon",
+                "connection": "fish."
+            }
+        },
+        {
+            "entity_pair": [
+                "spider",
+                "crab"
+            ],
+            "connection": "arthropods.",
+            "alt_first": {
+                "entity": "lobster",
+                "connection": "crustaceans."
+            }
         }
     ]
 }

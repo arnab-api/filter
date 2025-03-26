@@ -102,8 +102,11 @@ def plot_trace_heatmap(
             "logit": "lgt",
         }
         color_scale = plt.colorbar(heatmap)
+        ans_label = "Ans"
+        if len(result.answer) == 0:
+            ans_label = result.answer[0].token.strip()
         color_scale.ax.set_title(
-            f"{metric_marker[result.metric]}({result.answer.token.strip()})",
+            f"{metric_marker[result.metric]}({ans_label})",
             y=-0.12,
             fontsize=10,
         )

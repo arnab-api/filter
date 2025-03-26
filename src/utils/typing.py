@@ -43,17 +43,22 @@ Layer = int | Literal["emb"] | Literal["ln_f"]
 StrSequence = list[str] | tuple[str, ...]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class PredictedToken(DataClassJsonMixin):
     """A predicted token and its probability."""
 
     token: str
-    prob: float
+    prob: Optional[float] = None
     logit: Optional[float] = None
     token_id: Optional[int] = None
 
     def __str__(self) -> str:
-        return f'"{self.token}" (p={self.prob:.3f})'
+        rep = f'"{self.token}"'
+        if self.prob is not None:
+            rep += f" (p={self.prob:.3f})"
+        if self.logit is not None:
+            rep += f" (logit={self.logit:.3f})"
+        return rep
 
 
 @dataclass(frozen=False, kw_only=True)
