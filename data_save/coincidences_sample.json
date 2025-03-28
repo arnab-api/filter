@@ -64,7 +64,7 @@
             ],
             "connection": "polymaths.",
             "alt_first": {
-                "entity": "Benjamin Franklin",
+                "entity": "George Washington",
                 "connection": "American Founding Fathers."
             }
         },
@@ -110,17 +110,6 @@
             "alt_first": {
                 "entity": "Horse",
                 "connection": "domesticated animals."
-            }
-        },
-        {
-            "entity_pair": [
-                "Ostrich",
-                "Emu"
-            ],
-            "connection": "flightless birds.",
-            "alt_first": {
-                "entity": "Kangaroo",
-                "connection": "native to Australia."
             }
         },
         {
