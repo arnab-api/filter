@@ -33,9 +33,11 @@ def patched_run(
     mt: ModelandTokenizer,
     inputs: TokenizerOutput,
     states: dict[tuple[str, int], torch.Tensor],
-    scan: bool = False,
 ) -> torch.Tensor:
-    with mt.trace(inputs, scan=scan) as trace:
+    import os
+    os.environ["TORCH_LOGS"] = "not_implemented"
+
+    with mt.trace(inputs, scan=False) as trace:
         for location in states:
             layer_name, token_idx = location
             module = get_module_nnsight(mt, layer_name)
@@ -85,7 +87,6 @@ def calculate_indirect_effects(
     window_size: int = 1,
     metric: Literal["logit", "prob"] = "prob",
 ) -> dict[tuple[str, int], float]:
-    is_first = True
     indirect_effects = {loc: -1 for loc in locations}
     for loc in tqdm(locations):
         layer_names = get_window(layer_name_format, loc[0], window_size, mt.n_layer)
@@ -95,7 +96,6 @@ def calculate_indirect_effects(
             mt=mt,
             inputs=corrupted_input,
             states=states,
-            scan=is_first,
         )
         # value = (
         #     affected_logits.softmax(dim=-1)[patch_ans_t].item()
@@ -108,7 +108,6 @@ def calculate_indirect_effects(
             metric=metric,
             return_individual_scores=False,
         )
-        is_first = False
     return indirect_effects
 
 

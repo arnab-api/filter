@@ -105,6 +105,7 @@ def cache_activations(
 
 
 if __name__ == "__main__":
+    print("X" * 100)
     parser = argparse.ArgumentParser()
     logging_utils.add_logging_args(parser)
     experiment_utils.add_experiment_args(parser)
@@ -112,8 +113,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        choices=["meta-llama/Meta-Llama-3-8B", "meta-llama/Meta-Llama-3-8B-Instruct"],
-        default="meta-llama/Meta-Llama-3-8B-Instruct",
+        choices=["meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-8B-Instruct"],
+        default="meta-llama/Llama-3.1-8B",
     )
 
     parser.add_argument(

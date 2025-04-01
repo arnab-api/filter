@@ -9,7 +9,7 @@ import transformers
 from nnsight import LanguageModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.utils.env_utils import DEFAULT_MODELS_DIR
+from src.utils.env_utils import DEFAULT_MODELS_DIR, HF_CACHE_DIR
 from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class ModelandTokenizer(LanguageModel):
         model_key: Optional[
             str
         ] = "EleutherAI/gpt-j-6B",  # if model is provided, this will be ignored and rewritten
-        torch_dtype=torch.float16,
+        **kwargs,
     ) -> None:
         assert (
             base_lm is not None or model_key is not None
@@ -38,12 +38,15 @@ class ModelandTokenizer(LanguageModel):
             self.name = base_lm._model.config._name_or_path.split("/")[-1]
 
         else:
+            if HF_CACHE_DIR is not None:
+                kwargs["cache_dir"] = HF_CACHE_DIR
             model_key = get_full_model_path(model_key)
+            # print(kwargs)
             self.__dict__ = LanguageModel(
                 model_key,
-                torch_dtype=torch_dtype,
                 device_map="auto",
                 dispatch=True,
+                **kwargs,
             ).__dict__
             self.name = model_key
 

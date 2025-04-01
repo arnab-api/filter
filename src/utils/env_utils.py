@@ -14,6 +14,7 @@ ENV_HPARAMS_DIR = "RELATIONS_HPARAMS_DIR"
 GPT_4O_CACHE_DIR = "GPT4O_CACHE_DIR"
 CLAUDE_CACHE_DIR = "CLAUDE_CACHE_DIR"
 WIMBD_CONFIG = "WIMBD_CONFIG"
+HF_CACHE_DIR = None
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ try:
         GPT_4O_CACHE_DIR = os.path.join(PROJECT_ROOT, config["GPT4O_CACHE_DIR"])
         CLAUDE_CACHE_DIR = os.path.join(PROJECT_ROOT, config["CLAUDE_CACHE_DIR"])
         WIMBD_CONFIG = os.path.join(PROJECT_ROOT, config["WIMBD_CONFIG"])
+        HF_CACHE_DIR = config.get("HF_CACHE", None)
 
         for dir in [
             DEFAULT_MODELS_DIR,
