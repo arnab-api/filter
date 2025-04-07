@@ -39,6 +39,9 @@ def plot_trace_heatmap(
     corrupt_tokens = replace_special_tokens(result.corrupt_input_toks)
     patch_tokens = replace_special_tokens(result.patch_input_toks)
 
+    if scale_range is None and result.normalized == True:
+        scale_range = (0, 1)
+
     tokens = []
     shifted_subj_range = (
         result.subj_range[0] - result.trace_start_idx,

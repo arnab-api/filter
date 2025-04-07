@@ -334,7 +334,6 @@ def generate_with_patch(
     n_gen_per_prompt: int = 5,
     max_new_tokens: int = 20,
     patches: Optional[list[PatchSpec]] = None,
-    # use_cache: bool = True,
     do_sample: bool = True,
     patch_strategy: Literal["replace", "add"] = "replace",
     patch_at_all_generations: bool = False,
@@ -357,7 +356,6 @@ def generate_with_patch(
         do_sample=do_sample,
         output_scores=True,
         return_dict_in_generate=True,
-        # use_cache=use_cache,
         **kwargs,
     ) as gen_trace:
         if patches is not None:
