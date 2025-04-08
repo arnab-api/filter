@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src.functional import free_gpu_cache, get_module_nnsight
 from src.models import ModelandTokenizer
-from src.tokens import prepare_input, find_token_range
+from src.tokens import find_token_range, prepare_input
 
 logger = logging.getLogger(__name__)
 

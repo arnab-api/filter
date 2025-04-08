@@ -9,8 +9,8 @@ import torch
 import transformers
 
 from src.functional import detensorize
-from src.probing.utils import load_probing_activations
 from src.probing.analysis import LinearProbe
+from src.probing.utils import load_probing_activations
 from src.utils import env_utils, experiment_utils, logging_utils
 
 logger = logging.getLogger(__name__)

@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
+import numpy as np
 import torch
 from anthropic import Anthropic
 from openai import OpenAI
@@ -15,15 +16,16 @@ from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import find_token_range, prepare_input, insert_padding_before_pos
+from src.tokens import (find_token_range, insert_padding_before_pos,
+                        prepare_input)
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
-from src.utils.typing import ArrayLike, PredictedToken, Tokenizer, TokenizerOutput, SVD
-import numpy as np
-
+from src.utils.typing import (SVD, ArrayLike, PredictedToken, Tokenizer,
+                              TokenizerOutput)
 
 logger = logging.getLogger(__name__)
 
 import string
+
 from nltk.corpus import stopwords
 
 

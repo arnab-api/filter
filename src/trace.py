@@ -3,27 +3,20 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
+import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
 from nnsight import LanguageModel
 from tqdm.auto import tqdm
-import numpy as np
 
 from src.dataset import InContextQuery, Relation
-from src.functional import (
-    get_all_module_states,
-    get_module_nnsight,
-    guess_subject,
-    predict_next_token,
-)
+from src.functional import (get_all_module_states, get_module_nnsight,
+                            guess_subject, predict_next_token)
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import (
-    find_token_range,
-    insert_padding_before_subj,
-    prepare_input,
-    align_patching_positions,
-)
-from src.utils.typing import PredictedToken, Tokenizer, TokenizerOutput, PathLike
+from src.tokens import (align_patching_positions, find_token_range,
+                        insert_padding_before_subj, prepare_input)
+from src.utils.typing import (PathLike, PredictedToken, Tokenizer,
+                              TokenizerOutput)
 
 logger = logging.getLogger(__name__)
 

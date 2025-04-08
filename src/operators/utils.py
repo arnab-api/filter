@@ -1,27 +1,17 @@
 import copy
 import logging
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
-from src.functional import (
-    free_gpu_cache,
-    get_module_nnsight,
-    interpret_logits,
-    low_rank_pinv,
-)
+from src.functional import (find_token_range, free_gpu_cache,
+                            get_module_nnsight, interpret_logits,
+                            low_rank_pinv, prepare_input)
 from src.models import ModelandTokenizer
 from src.utils.typing import SVD, TokenizerOutput
-from dataclasses import dataclass, field
-from src.functional import (
-    free_gpu_cache,
-    get_module_nnsight,
-    prepare_input,
-    find_token_range,
-)
-
 
 logger = logging.getLogger(__name__)
 

@@ -1,24 +1,17 @@
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
 import torch
 
-from src.functional import (
-    free_gpu_cache,
-    get_module_nnsight,
-    interpret_logits,
-    prepare_input,
-    get_hs,
-)
+from src.functional import (free_gpu_cache, get_hs, get_module_nnsight,
+                            interpret_logits, prepare_input)
 from src.models import ModelandTokenizer
-from src.operators.utils import (
-    get_lm_head_row,
-    patch,
-    Order1Approx,
-    get_inputs_and_intervention_range,
-)
-from src.utils.typing import PredictedToken
 from src.operators.operators import CornerOperator
+from src.operators.utils import (Order1Approx,
+                                 get_inputs_and_intervention_range,
+                                 get_lm_head_row, patch)
+from src.utils.typing import PredictedToken
 
 logger = logging.getLogger(__name__)
 

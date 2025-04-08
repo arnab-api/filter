@@ -4,14 +4,10 @@ from typing import Any, Optional
 
 import torch
 
-from src.functional import (
-    free_gpu_cache,
-    get_module_nnsight,
-    interpret_logits,
-)
+from src.functional import free_gpu_cache, get_module_nnsight, interpret_logits
 from src.models import ModelandTokenizer
 from src.operators.utils import project_to_vocab
-from src.utils.typing import PredictedToken, ArrayLike
+from src.utils.typing import ArrayLike, PredictedToken
 
 logger = logging.getLogger(__name__)
 
