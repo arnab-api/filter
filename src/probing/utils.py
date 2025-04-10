@@ -46,7 +46,11 @@ def prepare_probing_input(
         thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Put your answer within \\boxed{}."
         prompt = f"{prompt}\n{thinking_instructions}\n<think>"
 
-    tokenized = prepare_input(prompts=prompt, tokenizer=mt, return_offsets_mapping=True)
+    tokenized = prepare_input(
+        prompts=prompt,
+        tokenizer=mt,
+        return_offsets_mapping=True,  # add_bos_token=True
+    )
     offset_mapping = tokenized["offset_mapping"][0]
 
     positions = [-1, -1] if entities[0] != entities[1] else [-2, -1]

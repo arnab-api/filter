@@ -10,13 +10,20 @@ from nnsight import LanguageModel
 from tqdm.auto import tqdm
 
 from src.dataset import InContextQuery, Relation
-from src.functional import (get_all_module_states, get_module_nnsight,
-                            guess_subject, predict_next_token)
+from src.functional import (
+    get_all_module_states,
+    get_module_nnsight,
+    guess_subject,
+    predict_next_token,
+)
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import (align_patching_positions, find_token_range,
-                        insert_padding_before_subj, prepare_input)
-from src.utils.typing import (PathLike, PredictedToken, Tokenizer,
-                              TokenizerOutput)
+from src.tokens import (
+    align_patching_positions,
+    find_token_range,
+    insert_padding_before_subj,
+    prepare_input,
+)
+from src.utils.typing import PathLike, PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +35,7 @@ def patched_run(
     states: dict[tuple[str, int], torch.Tensor],
 ) -> torch.Tensor:
     import os
+
     os.environ["TORCH_LOGS"] = "not_implemented"
 
     with mt.trace(inputs, scan=False) as trace:
@@ -54,12 +62,17 @@ def get_window(layer_name_format, idx, window_size, n_layer):
 def get_score(
     logits: torch.Tensor,
     token_id: int | list[int],
-    metric: Literal["logit", "prob"] = "logit",
+    metric: Literal["logit", "prob", "log_norm"] = "logit",
     return_individual_scores: bool = False,
+    k: int | None = 10,
 ) -> Union[float, torch.Tensor]:
     token_id = [token_id] if isinstance(token_id, int) else token_id
     logits = logits.squeeze()
     logits = logits.softmax(dim=-1) if metric == "prob" else logits
+    if metric == "log_norm":
+        assert k is not None, "k must be provided for log_norm"
+        denom = logits.topk(k=k, dim=-1).values.mean(dim=-1)
+        logits = logits / denom
     score = logits[token_id].mean().item()
     if return_individual_scores == False:
         return score

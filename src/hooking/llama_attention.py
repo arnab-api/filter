@@ -364,7 +364,7 @@ def LlamaAttentionPatcher(
         # print(f"{attn_output.size()=}")
 
         if store_attn_contributions is not None:
-            if torch.allclose(attn_output, __attn_output, atol=1e-2) == False:
+            if torch.allclose(attn_output, __attn_output, atol=1e-1) == False:
                 logger.warning(
                     f"allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
                 )

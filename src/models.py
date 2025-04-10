@@ -54,6 +54,12 @@ class ModelandTokenizer(LanguageModel):
         self.tokenizer = tokenizer if tokenizer is not None else self.tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token  # for generation
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        if (
+            hasattr(self.tokenizer, "bos_token") == False
+            or self.tokenizer.bos_token is None
+        ):
+            self.tokenizer.bos_token = self.tokenizer.eos_token
+            self.tokenizer.bos_token_id = self.tokenizer.eos_token_id
         self._model.generation_config.pad_token_id = self.tokenizer.eos_token_id
         # self.device = determine_device(self._model)
         self.parse_config()
