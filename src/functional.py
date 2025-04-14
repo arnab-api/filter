@@ -16,11 +16,9 @@ from tqdm import tqdm
 
 from src.dataset import BridgeDataset, BridgeSample, Relation
 from src.models import ModelandTokenizer, is_llama_variant
-from src.tokens import (find_token_range, insert_padding_before_pos,
-                        prepare_input)
+from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
 from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
-from src.utils.typing import (SVD, ArrayLike, PredictedToken, Tokenizer,
-                              TokenizerOutput)
+from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +114,7 @@ def logit_lens(
     h: torch.Tensor,
     interested_tokens: tuple[int] = (),
     k: int = 5,
+    return_logits=False,
 ) -> (
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
@@ -131,9 +130,13 @@ def logit_lens(
 
     logits = logits.squeeze()
     free_gpu_cache()
-    return interpret_logits(
+    ret = interpret_logits(
         tokenizer=mt, logits=logits, k=k, interested_tokens=interested_tokens
     )
+
+    ret = (logits, ret) if return_logits else ret
+
+    return ret
 
 
 import baukit
@@ -185,19 +188,32 @@ def forward_pass_to_vocab(
 def patchscope(
     mt: ModelandTokenizer,
     h: torch.Tensor,
-    layer_idx: 10,
-    interested_tokens: list[int] = [],
-    k: int = 5,
+    patch_layers: Optional[list[str]] = None,
+    return_logits: bool = False,
+    **interpret_kwargs,
 ) -> (
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
     placeholder = "placeholder"
-    copy_prompt = f"cat -> cat; hello -> hello; Microsoft -> Microsoft; copy -> copy; Python -> Python; {placeholder} ->"
+    phrases = [
+        "copy",
+        "Cat",
+        "Java",
+        "python",
+        "Leonardo DiCaprio",
+        " The Lion King",
+        "Washington D.C.",
+        "Mount Everest",
+        "transistor",
+        " computer",
+    ]
+    copy_prompt = ";".join([f"{p}->{p}" for p in phrases])
+    copy_prompt = f"{copy_prompt};{placeholder}->"
     input = prepare_input(
         tokenizer=mt,
         prompts=copy_prompt,
-        return_offset_mapping=True,
+        return_offsets_mapping=True,
     )
     placeholder_range = find_token_range(
         string=copy_prompt,
@@ -207,27 +223,41 @@ def patchscope(
         offset_mapping=input["offset_mapping"][0],
     )
     placeholder_pos = placeholder_range[1] - 1
-    input.pop("offset_mapping")
-    logger.debug(
-        f"placeholder position: {placeholder_pos} | token: {mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}"
-    )
+    # input.pop("offset_mapping")
+    # logger.debug(
+    #     f"placeholder position: {placeholder_pos} | token: {mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}"
+    # )
 
-    processed_h = get_hs(
+    patch_layers = (
+        [mt.layer_name_format.format(10)] if patch_layers is None else patch_layers
+    )
+    patches = [
+        PatchSpec(
+            location=(layer_name, placeholder_pos),
+            patch=h,
+            clean=None,
+        )
+        for layer_name in patch_layers
+    ]
+
+    # print(patches)
+
+    logits = get_hs(
         mt=mt,
         input=input,
-        locations=[(mt.layer_names[-1], -1)],
-        patches=PatchSpec(
-            location=(mt.layer_name_format.format(layer_idx), placeholder_pos),
-            patch=h,
-        ),
+        locations=[(mt.lm_head_name, -1)],
+        patches=patches,
         return_dict=False,
     )
-    return logit_lens(
-        mt=mt,
-        h=processed_h,
-        interested_tokens=interested_tokens,
-        k=k,
+    pred = interpret_logits(
+        tokenizer=mt,
+        logits=logits,
+        **interpret_kwargs,
     )
+
+    if return_logits:
+        return logits, pred
+    return pred
 
 
 def untuple(object: Any):

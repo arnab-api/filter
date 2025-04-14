@@ -124,12 +124,12 @@ def scaled_dot_product_attention(
 
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
 
-    print(f"{value_weighted=}")
+    # print(f"{value_weighted=}")
 
     # ---------------------------------------------------------------------
     if store_attn_matrices is not None:
-        print(f"{value.shape=}")
-        print(f"{attn_weight.size()=}")
+        # print(f"{value.shape=}")
+        # print(f"{attn_weight.size()=}")
         for head_idx in store_attn_matrices:
             cur_attn_matrix = attn_weight[:, head_idx, :, :]  # batch x q_len x k_len
 
@@ -145,7 +145,7 @@ def scaled_dot_product_attention(
                 cur_attn_matrix = torch.einsum(
                     "bqk, bq -> bqk", cur_attn_matrix, cur_values.norm(dim=-1)
                 )
-            print(f"{head_idx} => {cur_attn_matrix.size()=}")
+            # print(f"{head_idx} => {cur_attn_matrix.size()=}")
 
             store_attn_matrices[head_idx] = cur_attn_matrix
     # ---------------------------------------------------------------------
