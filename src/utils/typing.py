@@ -51,13 +51,27 @@ class PredictedToken(DataClassJsonMixin):
     prob: Optional[float] = None
     logit: Optional[float] = None
     token_id: Optional[int] = None
+    metadata: Optional[dict] = None
 
     def __str__(self) -> str:
-        rep = f'"{self.token}"'
+        rep = f'"{self.token}"[{self.token_id}]'
+        # if self.prob is not None:
+        #     rep += f" (p={self.prob:.3f})"
+        # if self.logit is not None:
+        #     rep += f" (logit={self.logit:.3f})"
+        add = []
         if self.prob is not None:
-            rep += f" (p={self.prob:.3f})"
+            add.append(f"p={self.prob:.3f}")
         if self.logit is not None:
-            rep += f" (logit={self.logit:.3f})"
+            add.append(f"logit={self.logit:.3f}")
+
+        if self.metadata is not None:
+            for k, v in self.metadata.items():
+                if k not in ["token", "token_id"] and v is not None:
+                    add.append(f"{k}={v}")
+
+        if len(add) > 0:
+            rep += " (" + ", ".join(add) + ")"
         return rep
 
 

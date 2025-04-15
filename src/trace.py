@@ -36,7 +36,7 @@ def patched_run(
 ) -> torch.Tensor:
     import os
 
-    os.environ["TORCH_LOGS"] = "not_implemented"
+    # os.environ["TORCH_LOGS"] = "not_implemented"
 
     with mt.trace(inputs, scan=False) as trace:
         for location in states:
@@ -64,7 +64,7 @@ def get_score(
     token_id: int | list[int],
     metric: Literal["logit", "prob", "log_norm"] = "logit",
     return_individual_scores: bool = False,
-    k: int | None = 10,
+    k: int | None = 20,
 ) -> Union[float, torch.Tensor]:
     token_id = [token_id] if isinstance(token_id, int) else token_id
     logits = logits.squeeze()
@@ -72,7 +72,8 @@ def get_score(
     if metric == "log_norm":
         assert k is not None, "k must be provided for log_norm"
         denom = logits.topk(k=k, dim=-1).values.mean(dim=-1)
-        logits = logits / denom
+        # logits = logits / denom #! ratio of logits is a weird metric
+        logits = logits - denom  #! difference probably makes more sense (?)
     score = logits[token_id].mean().item()
     if return_individual_scores == False:
         return score
@@ -91,7 +92,7 @@ def calculate_indirect_effects(
     patch_ans_t: int,
     layer_name_format: str,
     window_size: int = 1,
-    metric: Literal["logit", "prob"] = "prob",
+    metric: Literal["logit", "prob", "log_norm"] = "prob",
 ) -> dict[tuple[str, int], float]:
     indirect_effects = {loc: -1 for loc in locations}
     for loc in tqdm(locations):
@@ -162,7 +163,7 @@ def trace_important_states(
     window_size: int = 1,
     normalize=True,
     trace_start_marker: Optional[str] = None,
-    metric: Literal["logit", "prob"] = "prob",
+    metric: Literal["logit", "prob", "log_prob"] = "prob",
     ans_tokens: Optional[list[int] | int] = None,
 ) -> CausalTracingResult:
 
@@ -235,7 +236,11 @@ def trace_important_states(
                 token=mt.tokenizer.decode(tok),
                 token_id=tok,
             )
-            setattr(pred, metric, base_indv_scores[tok])
+            if metric in ["logit", "prob"]:
+                setattr(pred, metric, base_indv_scores[tok])
+            else:
+                pred.metadata = {metric: base_indv_scores[tok]}
+
             answer.append(pred)
 
         low_score, low_indv_scores = get_score(

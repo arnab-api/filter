@@ -103,6 +103,7 @@ def plot_trace_heatmap(
         metric_marker = {
             "prob": "p",
             "logit": "lgt",
+            "log_norm": "ln",
         }
         color_scale = plt.colorbar(heatmap)
         ans_label = "Ans"

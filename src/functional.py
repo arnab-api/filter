@@ -826,7 +826,7 @@ def ask_claude(
     client = Anthropic(
         api_key=os.getenv("CLAUDE_KEY"),
     )
-    MODEL_NAME = "claude-3-5-sonnet-20241022"
+    MODEL_NAME = "claude-3-7-sonnet-20250219"
     ##################################################
 
     hash_val = hashlib.md5(prompt.encode()).hexdigest()
