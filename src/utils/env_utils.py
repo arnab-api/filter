@@ -153,3 +153,21 @@ def determine_hparams_dir(default: PathLike = DEFAULT_HPARAMS_DIR) -> pathlib.Pa
 
     """
     return read_path(ENV_HPARAMS_DIR, default)
+
+
+def load_env_var(var: str) -> Union[str, None]:
+    try:
+        PROJECT_ROOT = "/".join(
+            os.path.dirname(os.path.abspath(__file__)).split("/")[:-2]
+        )
+        with open(os.path.join(PROJECT_ROOT, "env.yml"), "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error(f"""env.yml not found in {PROJECT_ROOT}!""")
+
+    if var not in config or config[var] is None or config[var] == "":
+        logger.error(f"{var} not set in env.yml!")
+        return None
+
+    else:
+        return config[var]

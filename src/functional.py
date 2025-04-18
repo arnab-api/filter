@@ -27,30 +27,42 @@ import string
 from nltk.corpus import stopwords
 
 
-def get_keywords(text: str, tokenizer: Tokenizer | ModelandTokenizer) -> list[int]:
+def get_keywords_from_text(
+    text: str,
+    tokenizer: Tokenizer | ModelandTokenizer,
+    maybe_prepend_space: bool = True,
+) -> list[int]:
     tokenizer = unwrap_tokenizer(tokenizer)
-    if text.startswith(" ") == False:
+    if maybe_prepend_space == True and text.startswith(" ") == False:
         text = f" {text}"
     tokenized = tokenizer(text, add_special_tokens=False).input_ids
     # print([tokenizer.decode(t) for t in tokenized])
     filtered = []
+    prev_tok = " "
     for idx, t_idx in enumerate(tokenized):
         tok = tokenizer.decode(t_idx)
+        skip = False
         if t_idx in tokenizer.all_special_ids:
-            continue
+            skip = True
         if tok in string.whitespace:
-            continue
+            skip = True
         if tok.strip() in string.punctuation:
-            continue
+            skip = True
         if tok.strip().lower() in stopwords.words("english"):
             # print(tokenizer.decode(tokenized[idx + 1]))
             if idx < len(tokenized) - 1 and tokenizer.decode(
                 tokenized[idx + 1]
             ).startswith(" "):
-                continue
-        if tok.startswith(" ") == False:  # continuation of a word, safe to ignore?
-            continue
-        filtered.append(t_idx)
+                skip = True
+        if (
+            prev_tok.endswith(" ") == False and tok.startswith(" ") == False
+        ):  # continuation of a word, safe to ignore?
+            skip = True
+
+        if skip == False:
+            filtered.append(t_idx)
+
+        prev_tok = tok
     return filtered
 
 
@@ -776,12 +788,15 @@ def predict_bridge_entity(
     return bridge_entity
 
 
+from src.utils.env_utils import load_env_var
+
+
 def ask_gpt4o(
     prompt: str,
 ) -> str:
     ##################################################
     client = OpenAI(
-        api_key=os.getenv("OPENAI_KEY"),
+        api_key=load_env_var("OPENAI_KEY"),
     )
     MODEL_NAME = "gpt-4o"
     ##################################################
@@ -824,7 +839,7 @@ def ask_claude(
 ) -> str:
     ##################################################
     client = Anthropic(
-        api_key=os.getenv("CLAUDE_KEY"),
+        api_key=load_env_var("CLAUDE_KEY"),
     )
     MODEL_NAME = "claude-3-7-sonnet-20250219"
     ##################################################
@@ -1038,3 +1053,139 @@ def save_object(obj, save_path):
         save_path,
         **obj,
     )
+
+
+############################# Keyword Extraction Utils #############################
+# import wikipedia
+# import yake
+
+
+# def extract_keywords_from_wiki(entity_name, language="en"):
+#     try:
+#         page = wikipedia.page(entity_name)
+#         content = page.content
+
+#         # Extract keywords with YAKE - adjust parameters for better results
+#         # Using bigrams and trigrams captures more meaningful entities
+#         kw_extractor = yake.KeywordExtractor(lan=language, n=3, dedupLim=0.9, top=50)
+#         keywords = kw_extractor.extract_keywords(content)
+
+#         return {
+#             "title": page.title,
+#             "keywords": [kw for kw, score in keywords],
+#             "url": page.url,
+#         }
+#     except Exception as e:
+#         print(f"Error extracting keywords for {entity_name}: {e}")
+#         return None
+
+
+# import spacy
+
+
+# def extract_entities_with_spacy(entity_name):
+#     try:
+#         nlp = spacy.load("en_core_web_lg")
+#     except:
+#         spacy.cli.download("en_core_web_lg")
+#         nlp = spacy.load("en_core_web_lg")
+
+#     page = wikipedia.page(entity_name)
+#     content = page.content
+
+#     # Process with SpaCy
+#     doc = nlp(content)
+
+#     # Extract entities by type
+#     entities = {
+#         "PERSON": [],
+#         "ORG": [],
+#         "GPE": [],  # Countries, cities
+#         "DATE": [],
+#         "MISC": [],
+#     }
+
+#     for ent in doc.ents:
+#         if ent.label_ in entities:
+#             entities[ent.label_].append(ent.text)
+#         else:
+#             entities["MISC"].append(ent.text)
+
+#     # Deduplicate
+#     for category in entities:
+#         entities[category] = list(set(entities[category]))
+
+#     return entities
+
+
+# TODO(arnab): test
+def extract_entities_with_oracle_LM(
+    entity: str,
+    oracle: Literal["gpt4o", "claude"] = "claude",
+    other_entity: str = None,
+) -> list[tuple[str, str]]:
+
+    # system_prompt = f"""
+    #     Extract key facts, relationships and attributes about {entity}.
+    #     Format as a JSON with these categories:
+    #     - biography: key biographical facts
+    #     - achievements: major accomplishments
+    #     - relationships: key people connected to the entity
+    #     - organizations: affiliated organizations
+    #     - places: significant locations
+    #     - dates: important dates
+    #     - misc: other noteworthy information
+    # """
+    if other_entity is None:
+        system_prompt = f"""
+Extrace key facts, entities, relationsships and attributes about {entity}.
+Format as a JSON array, where each element is a tuple with two elements: "name of the other entity/fact" and "description of the relationship".
+For example, if the entity is "Paris" the output should look like
+```json
+[
+    ["France", "Paris is the capital of France"],
+    ["Eiffel Tower", "The Eiffel Tower is located in Paris"],
+    ["Louvre Museum", "The Louvre Museum is a famous museum in Paris"],
+    ["City of Light", "Paris is often referred to as the City of Light"],
+
+    ....
+]
+```
+Make sure to include the most important and relevant facts about the entities. Give as many facts as possible.
+"""
+
+    else:
+        system_prompt = f"""
+Given two entities, \"{entity}\" and \"{other_entity}\", find a common link or relation between them.
+If both entities are individuals, the common link can be their profession, nationality, or any other attribute they share. Their relation can be if someone is the student/teacher of the other etc.
+Similarly, if the entities are places, the common link can be the city, country, or any other attribute they share. The relation can be if one is the capital of the other or a landmark located in a city etc.
+
+Format your answer as a JSON array, where each element is a tuple with two elements: "name of the connection" and "brief explanation of how this connection is relevant to both of the entities".
+For example, if the entities are "Batman" and "Ironman", the output should look like
+
+```json
+[
+    ["Superheroes", "Both Batman and Ironman are iconic superheroes in the comic book world."],
+    ["Gadgets", "Both characters use advanced technology and gadgets to fight crime."],
+    ["Billionaires", "Both characters are wealthy individuals who use their resources to become superheroes."],
+    ....
+]
+```
+Make sure to give as many connections as possible. If you can't find any connection, just return an empty JSON array.
+"""
+
+    response = ASK_ORACLE_MODEL[oracle](system_prompt)
+
+    # Parse the response
+    try:
+        lines = response.splitlines()
+        if "```json" in lines[0]:
+            lines = lines[1:-1]
+        response = "\n".join(lines)
+        response_json = json.loads(response)
+
+    except json.JSONDecodeError:
+        logger.error("Failed to parse JSON response.")
+        return response
+
+    return response_json
