@@ -85,7 +85,7 @@ def get_score(
 def calculate_indirect_effects(
     mt: ModelandTokenizer,
     locations: list[tuple[int, int]],  # layer_idx, token_idx
-    corrupted_input: TokenizerOutput,
+    clean_input: TokenizerOutput,
     patch_states: dict[
         tuple[str, int], torch.Tensor
     ],  # expects the states to be in clean_states
@@ -101,7 +101,7 @@ def calculate_indirect_effects(
         states = {(l, token_idx): patch_states[(l, token_idx)] for l in layer_names}
         affected_logits = patched_run(
             mt=mt,
-            inputs=corrupted_input,
+            inputs=clean_input,
             states=states,
         )
         # value = (
@@ -279,7 +279,7 @@ def trace_important_states(
     indirect_effects = calculate_indirect_effects(
         mt=mt,
         locations=locations,
-        corrupted_input=clean_input,
+        clean_input=clean_input,
         patch_states=patched_states,
         patch_ans_t=ans_tokens,
         layer_name_format=layer_name_format,

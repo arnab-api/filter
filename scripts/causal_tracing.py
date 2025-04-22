@@ -80,7 +80,7 @@ def get_causal_tracing_results_for_bridge_pair(
     clean_ans, corrupt_rank = predict_next_token(
         mt=mt,
         inputs=clean_inputs,
-        token_of_interest=[(mt.tokenizer.decode(patch_ans.token_id))],
+        token_of_interest=[mt.tokenizer.decode(patch_ans.token_id)],
     )
     clean_ans = clean_ans[0][0]
     corrupt_rank, base_ans = corrupt_rank[0]
@@ -117,7 +117,7 @@ def get_causal_tracing_results_for_bridge_pair(
         kind_results = calculate_indirect_effects(
             mt=mt,
             locations=locations,
-            corrupted_input=clean_inputs,
+            clean_input=clean_inputs,
             patch_states=patch_states,
             patch_ans_t=patch_ans.token_id,
             layer_name_format=layer_name_format,
