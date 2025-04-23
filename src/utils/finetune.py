@@ -61,6 +61,12 @@ class LM_FineTuner(lightning.LightningModule):
             # We'll do this in batches to be efficient
             num_batches = (len(self.reg_encodings) + batch_size - 1) // batch_size
 
+            # ** CAUTION **
+            #! current regularization loss just considers the overall loss
+            #! we would like to make as little change to the representaion/logit distribution as well
+            #! maybe it should also be MSE on some of the representaion and/or KL on the logits
+            # TODO: first check the LM behavior with the current setup. No need to overcomplicate it if things just seem to work.
+
             # Process all regularization documents in batches
             for i in range(num_batches):
                 start_idx = i * batch_size
