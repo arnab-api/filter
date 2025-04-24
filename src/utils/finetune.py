@@ -218,7 +218,7 @@ class LM_FineTuner(lightning.LightningModule):
             name: param for name, param in self.model.named_parameters()
         }
 
-        # only tune the laers
+        # only tune the layers
         # don't tune the embeddings, don't tune the lm head and the final layer norm.
         remove_modules = ["model.embed_tokens.weight"]
         for module_name in tunable_param_dict.keys():
