@@ -1,12 +1,13 @@
 import copy
 import logging
 import os
+import shutil
 from typing import Optional
 
 import numpy as np
 import pytorch_lightning as lightning
 import torch
-import wandb
+from pytorch_lightning.callbacks import Callback
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -52,6 +53,51 @@ class TextDataset(Dataset):
         }
 
 
+class ModelCheckpointCallback(Callback):
+    def __init__(
+        self,
+        save_path: str,
+        save_interval: int = 1,
+        remove_old: bool = True,
+        keep_checkpoints: list[int] = [],
+    ):
+        super().__init__()
+        self.save_path = os.path.join(env_utils.DEFAULT_RESULTS_DIR, save_path)
+        self.save_interval = save_interval
+        self.remove_old = remove_old
+        self.keep_checkpoints = keep_checkpoints
+        os.makedirs(self.save_path, exist_ok=True)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        # logger.info(f"called on_train_epoch_end from the Callback")
+        epoch = trainer.current_epoch
+        if epoch == 0:
+            return
+        if (epoch % self.save_interval == 0) or (epoch in self.keep_checkpoints):
+            if self.remove_old:
+                # Remove the previous checkpoint if it exists
+                prev_epoch = epoch - self.save_interval
+                if prev_epoch not in self.keep_checkpoints:
+                    prev_save_dir = os.path.join(self.save_path, f"epoch_{prev_epoch}")
+                    if os.path.exists(prev_save_dir):
+                        logger.info(f"Removing previous checkpoint at {prev_save_dir}")
+                        shutil.rmtree(prev_save_dir)
+
+            # Save the current model checkpoint
+            save_dir = os.path.join(self.save_path, f"epoch_{epoch}")
+            logger.info(f"Saving model checkpoint at epoch {epoch} to {save_dir}")
+            pl_module.model.save_pretrained(save_dir)
+            pl_module.tokenizer.save_pretrained(save_dir)
+
+    def on_train_end(self, trainer, pl_module):
+        logger.info("saving final model")
+        save_dir = os.path.join(self.save_path, "final_model")
+
+        pl_module.model.save_pretrained(save_dir)
+        pl_module.tokenizer.save_pretrained(save_dir)
+        # Remove the previous checkpoint if it exists
+
+
 # Create a LightningModule for training the model
 class LM_FineTuner(lightning.LightningModule):
     def __init__(
@@ -64,7 +110,7 @@ class LM_FineTuner(lightning.LightningModule):
         warmup_steps: int = 0,
         regularizer_lambda: float = 0.1,
         save_path: str = "ft_checkpoints",
-        save_interval: int = 1,
+        # save_interval: int = 1,
     ):
         super().__init__()
         self.save_hyperparameters(
@@ -73,6 +119,7 @@ class LM_FineTuner(lightning.LightningModule):
 
         self.model = model
         self.tokenizer = tokenizer
+        self.model.train()
 
         # Create save directory if it doesn't exist
         save_path = os.path.join(env_utils.DEFAULT_RESULTS_DIR, save_path)
@@ -80,7 +127,7 @@ class LM_FineTuner(lightning.LightningModule):
         self.save_path = save_path
 
         # Set saving interval
-        self.save_interval = save_interval
+        # self.save_interval = save_interval
         self.global_step_count = 0
 
         # Prepare regularization documents
@@ -115,7 +162,7 @@ class LM_FineTuner(lightning.LightningModule):
                     }
                 )
 
-            free_gpu_cache()
+            # free_gpu_cache()
 
     def forward(self, input_ids, attention_mask=None, labels=None):
         return self.model(
@@ -169,19 +216,6 @@ class LM_FineTuner(lightning.LightningModule):
             self.log("reg_loss", reg_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("total_loss", total_loss, on_step=True, on_epoch=True, prog_bar=True)
 
-        # # log to wandb
-        # wandb.log(
-        #     {
-        #         "train/loss": train_loss.item(),
-        #         "train/reg_loss": (
-        #             reg_loss.item() if isinstance(reg_loss, torch.Tensor) else reg_loss
-        #         ),
-        #         "train/total_loss": total_loss.item(),
-        #         "train/learning_rate": self.optimizers().param_groups[0]["lr"],
-        #         "global_step": self.global_step_count,
-        #     }
-        # )
-
         return total_loss
 
     def validation_step(self, batch, batch_idx):
@@ -200,26 +234,15 @@ class LM_FineTuner(lightning.LightningModule):
         self.log(
             "val_perplexity", perplexity, on_step=True, on_epoch=True, prog_bar=True
         )
-
-        # # Explicitly log to wandb at step level
-        # wandb.log(
-        #     {
-        #         "val/loss": val_loss.item(),
-        #         "val/perplexity": perplexity.item(),
-        #         "global_step": self.global_step_count,
-        #     }
-        # )
-
         # Return dictionary for epoch-end processing
         return {"val_loss": val_loss, "val_perplexity": perplexity}
 
-    def configure_optimizers(self):
+    def _get_tunable_params(self):
+        """Extract the same tunable parameters as in configure_optimizers."""
         tunable_param_dict = {
             name: param for name, param in self.model.named_parameters()
         }
 
-        # only tune the layers
-        # don't tune the embeddings, don't tune the lm head and the final layer norm.
         remove_modules = ["model.embed_tokens.weight"]
         for module_name in tunable_param_dict.keys():
             if module_name.startswith("model.layers.") == False:
@@ -228,6 +251,33 @@ class LM_FineTuner(lightning.LightningModule):
         for rm in remove_modules:
             if rm in tunable_param_dict:
                 tunable_param_dict.pop(rm)
+
+        return tunable_param_dict
+
+    def on_fit_start(self):
+        """Log the actual number of trainable parameters at the start of training."""
+        tunable_param_dict = self._get_tunable_params()
+
+        # Calculate numbers
+        trainable_params = sum(p.numel() for p in tunable_param_dict.values())
+        total_params = sum(p.numel() for p in self.parameters())
+        non_trainable_params = total_params - trainable_params
+
+        # Log to whatever logger you're using
+        if self.logger and hasattr(self.logger, "experiment"):
+            self.logger.experiment.summary["trainable_params"] = trainable_params
+            self.logger.experiment.summary["non_trainable_params"] = (
+                non_trainable_params
+            )
+            self.logger.experiment.summary["total_params"] = total_params
+
+        # Also print for console visibility
+        self.print(f"ACTUAL TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+        self.print(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
+        self.print(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
+
+    def configure_optimizers(self):
+        tunable_param_dict = self._get_tunable_params()
 
         # Create optimizer
         optimizer = AdamW(
@@ -249,23 +299,16 @@ class LM_FineTuner(lightning.LightningModule):
         }
 
     def on_train_epoch_end(self):
-        free_gpu_cache()
-        # Save model at specified intervals. Only keep the latest one to save space.
-        logger.info(f"Epoch {self.current_epoch} | {self.save_interval=}")
-        epoch = self.current_epoch
-        if epoch % self.save_interval == 0:
-            save_dir = os.path.join(self.save_path, f"epoch_{epoch}")
+        logger.info(
+            f"Epoch {self.current_epoch} | Global Step {self.global_step_count}"
+        )
+        # free_gpu_cache()
 
-            # Find and remove the previous checkpoint if it exists
-            if epoch >= self.save_interval:  # Only if this isn't the first checkpoint
-                prev_epoch = epoch - self.save_interval
-                prev_save_dir = os.path.join(self.save_path, f"epoch_{prev_epoch}")
-                if os.path.exists(prev_save_dir):
-                    logger.info(f"Removing previous checkpoint at {prev_save_dir}")
-                    import shutil
+    def on_train_end(self):
+        # set gradients to None
+        for param in self.model.parameters():
+            if param.grad is not None:
+                param.grad = None
 
-                    shutil.rmtree(prev_save_dir)
-
-            logger.info(f"Saving model checkpoint at epoch {epoch} to {save_dir}")
-            self.model.save_pretrained(save_dir)
-            self.tokenizer.save_pretrained(save_dir)
+        # release the GPU cache
+        # free_gpu_cache()
