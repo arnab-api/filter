@@ -15,36 +15,6 @@ from transformers import (
 )
 
 
-# 1. Create a custom dataset for handling text documents
-class TextDataset(Dataset):
-    def __init__(self, docs, tokenizer, max_length=512):
-        self.docs = docs
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-
-    def __len__(self):
-        return len(self.docs)
-
-    def __getitem__(self, idx):
-        text = self.docs[idx]
-
-        # Tokenize the text with special tokens
-        encodings = self.tokenizer(
-            text, truncation=True, max_length=self.max_length, return_tensors="pt"
-        )
-
-        # Get input_ids and create labels (shifted to the right for next token prediction)
-        input_ids = encodings.input_ids[0]
-        attention_mask = encodings.attention_mask[0]
-        labels = input_ids.clone()
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
-
-
 # 3. Main training function
 def train_language_model(
     train_docs,

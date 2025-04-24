@@ -152,7 +152,8 @@ run_jobs/job_scripts/
 logs/
 *.out
 *.log
-
+*lightning_logs*
+*.wandb
 # Ignore everything in the folder
 .remote_jobs/*
 

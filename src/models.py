@@ -28,6 +28,7 @@ class ModelandTokenizer(LanguageModel):
         model_key: Optional[
             str
         ] = "EleutherAI/gpt-j-6B",  # if model is provided, this will be ignored and rewritten
+        abs_path: bool = False,
         **kwargs,
     ) -> None:
         assert (
@@ -38,9 +39,10 @@ class ModelandTokenizer(LanguageModel):
             self.name = base_lm._model.config._name_or_path.split("/")[-1]
 
         else:
-            if HF_CACHE_DIR is not None:
-                kwargs["cache_dir"] = HF_CACHE_DIR
-            model_key = get_full_model_path(model_key)
+            if not abs_path:
+                if HF_CACHE_DIR is not None:
+                    kwargs["cache_dir"] = HF_CACHE_DIR
+                model_key = get_full_model_path(model_key)
             # print(kwargs)
             self.__dict__ = LanguageModel(
                 model_key,

@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 from typing import Optional
@@ -6,12 +7,49 @@ import numpy as np
 import pytorch_lightning as lightning
 import torch
 import wandb
-from transformers import AdamW, get_linear_schedule_with_warmup
+from torch.optim import AdamW
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+from transformers import get_linear_schedule_with_warmup
 
+from src.functional import free_gpu_cache
 from src.utils import env_utils
 from src.utils.typing import Model, Tokenizer
 
 logger = logging.getLogger(__name__)
+
+
+class TextDataset(Dataset):
+    def __init__(self, docs, tokenizer, max_length=512):
+        self.docs = docs
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        return len(self.docs)
+
+    def __getitem__(self, idx):
+        text = self.docs[idx]
+
+        # Tokenize the text with special tokens
+        encodings = self.tokenizer(
+            text,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+            padding="max_length",
+        )
+
+        # Get input_ids and create labels (shifted to the right for next token prediction)
+        input_ids = encodings.input_ids[0]
+        attention_mask = encodings.attention_mask[0]
+        labels = input_ids.clone()
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
 
 
 # Create a LightningModule for training the model
@@ -20,17 +58,18 @@ class LM_FineTuner(lightning.LightningModule):
         self,
         model: Model,
         tokenizer: Tokenizer,
+        regularization_dataloader: Optional[DataLoader] = None,
         learning_rate: float = 5e-5,
         weight_decay: float = 0.0,
         warmup_steps: int = 0,
         regularizer_lambda: float = 0.1,
-        reg_docs: Optional[list[str]] = None,
-        max_length: int = 512,
-        batch_size: int = 8,
         save_path: str = "ft_checkpoints",
+        save_interval: int = 1,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["reg_docs", "tokenizer", "model"])
+        self.save_hyperparameters(
+            ignore=["regularization_dataloader", "tokenizer", "model"]
+        )
 
         self.model = model
         self.tokenizer = tokenizer
@@ -40,70 +79,43 @@ class LM_FineTuner(lightning.LightningModule):
         os.makedirs(save_path, exist_ok=True)
         self.save_path = save_path
 
+        # Set saving interval
+        self.save_interval = save_interval
+        self.global_step_count = 0
+
         # Prepare regularization documents
-        self.reg_docs = reg_docs
-        self.reg_encodings = []
-        self.original_reg_losses = []
-        if reg_docs:
-            self.reg_encodings = []
-            for doc in reg_docs:
-                encoding = self.tokenizer(
-                    doc, truncation=True, max_length=max_length, return_tensors="pt"
-                )
-                self.reg_encodings.append(
-                    {
-                        "input_ids": encoding.input_ids[0],
-                        "attention_mask": encoding.attention_mask[0],
-                    }
-                )
+        if regularization_dataloader is not None:
+            self.cached_reg_info = []
+            regularization_dataloader = copy.deepcopy(
+                regularization_dataloader
+            )  # because we will need that later while training
 
-            # Calculate and store initial losses for all reg docs
-            # We'll do this in batches to be efficient
-            num_batches = (len(self.reg_encodings) + batch_size - 1) // batch_size
-
-            # ** CAUTION **
-            #! current regularization loss just considers the overall loss
-            #! we would like to make as little change to the representaion/logit distribution as well
-            #! maybe it should also be MSE on some of the representaion and/or KL on the logits
-            # TODO: first check the LM behavior with the current setup. No need to overcomplicate it if things just seem to work.
-
-            # Process all regularization documents in batches
-            for i in range(num_batches):
-                start_idx = i * batch_size
-                end_idx = min((i + 1) * batch_size, len(self.reg_encodings))
-
-                # Prepare batch
-                batch_input_ids = []
-                batch_attention_mask = []
-
-                for idx in range(start_idx, end_idx):
-                    batch_input_ids.append(self.reg_encodings[idx]["input_ids"])
-                    batch_attention_mask.append(
-                        self.reg_encodings[idx]["attention_mask"]
-                    )
-
-                # Stack to create batches
-                batch_input_ids = torch.stack(batch_input_ids)
-                batch_attention_mask = torch.stack(batch_attention_mask)
-
+            for cur_batch in tqdm(regularization_dataloader):
                 # Calculate initial loss for this batch
                 with torch.no_grad():
                     outputs = self.model(
-                        input_ids=batch_input_ids,
-                        attention_mask=batch_attention_mask,
-                        labels=batch_input_ids,
+                        input_ids=cur_batch["input_ids"].to(model.device),
+                        attention_mask=cur_batch["attention_mask"].to(model.device),
+                        labels=cur_batch["input_ids"].to(model.device),
                     )
 
-                    # Store individual losses for each document in the batch
-                    if hasattr(outputs, "loss_per_example"):
-                        # If the model outputs per-example losses, use those
-                        batch_losses = outputs.loss_per_example
-                    else:
-                        # Otherwise use the same average loss for all in this batch
-                        batch_losses = [outputs.loss.item()] * (end_idx - start_idx)
+                    # ** CAUTION **
+                    #! current regularization loss just considers the overall loss
+                    #! we would like to make as little change to the representaion/logit distribution as well
+                    #! maybe it should also be MSE on some of the representaion and/or KL on the logits
+                    # TODO: first check the LM behavior with the current setup. No need to overcomplicate it if things just seem to work.
+                    batch_size = cur_batch["input_ids"].size(0)
+                    loss = outputs.loss / batch_size
 
-                    # Extend our list of original losses
-                    self.original_reg_losses.extend(batch_losses)
+                self.cached_reg_info.append(
+                    {
+                        "input_ids": cur_batch["input_ids"],
+                        "attention_mask": cur_batch["attention_mask"],
+                        "loss": loss,
+                    }
+                )
+
+            free_gpu_cache()
 
     def forward(self, input_ids, attention_mask=None, labels=None):
         return self.model(
@@ -119,53 +131,31 @@ class LM_FineTuner(lightning.LightningModule):
         )
 
         # Get main training loss (next word prediction)
-        train_loss = outputs.loss
+        batch_size = batch["input_ids"].size(0)  # Get the current batch size
+        train_loss = outputs.loss / batch_size
 
         # Initialize regularization loss
         reg_loss = 0.0
 
-        # Calculate regularization loss on reg_docs if provided
-        if self.reg_docs and self.hparams.regularizer_lambda > 0:
-            # Sample a batch of regularization documents
-            batch_size = batch["input_ids"].size(0)  # Get the current batch size
-            num_reg_samples = min(batch_size, len(self.reg_encodings))
+        if hasattr(self, "cached_reg_info"):
+            # randomly select one of the cached regularization documents
+            reg_doc = np.random.choice(self.cached_reg_info)
+            batch_input_ids = reg_doc["input_ids"].to(self.model.device)
+            batch_attention_mask = reg_doc["attention_mask"].to(self.model.device)
+            orig_loss = reg_doc["loss"].to(self.model.device)
 
-            if num_reg_samples > 0:
-                # Sample indices without replacement
-                indices = np.random.choice(
-                    len(self.reg_encodings), num_reg_samples, replace=False
-                )
+            # Calculate the current loss on the regularization document
+            current_outputs = self.model(
+                input_ids=batch_input_ids,
+                attention_mask=batch_attention_mask,
+                labels=batch_input_ids,
+            )
+            current_loss = current_outputs.loss / batch_size
 
-                # Prepare batched tensors
-                reg_input_ids = []
-                reg_attention_mask = []
-                orig_losses = []
-
-                for idx in indices:
-                    reg_input_ids.append(self.reg_encodings[idx]["input_ids"])
-                    reg_attention_mask.append(self.reg_encodings[idx]["attention_mask"])
-                    orig_losses.append(self.original_reg_losses[idx])
-
-                # Stack to create batches
-                reg_input_ids = torch.stack(reg_input_ids).to(self.device)
-                reg_attention_mask = torch.stack(reg_attention_mask).to(self.device)
-                orig_losses = torch.tensor(orig_losses, device=self.device)
-
-                # Calculate current loss on the regularization documents
-                current_outputs = self.model(
-                    input_ids=reg_input_ids,
-                    attention_mask=reg_attention_mask,
-                    labels=reg_input_ids,
-                )
-                current_loss = current_outputs.loss
-
-                # For batch-level loss, we need to compare against the average original loss
-                orig_loss_avg = orig_losses.mean()
-
-                # Regularization: penalize if current loss is higher than original
-                reg_loss = torch.max(
-                    torch.zeros_like(current_loss), current_loss - orig_loss_avg
-                )
+            # For batch-level loss, we need to compare against the average original loss
+            reg_loss = torch.max(
+                torch.zeros_like(current_loss), current_loss - orig_loss
+            )
 
         # Combine the losses
         total_loss = train_loss + self.hparams.regularizer_lambda * reg_loss
@@ -179,18 +169,18 @@ class LM_FineTuner(lightning.LightningModule):
             self.log("reg_loss", reg_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("total_loss", total_loss, on_step=True, on_epoch=True, prog_bar=True)
 
-        # Explicitly log to wandb
-        wandb.log(
-            {
-                "train/loss": train_loss.item(),
-                "train/reg_loss": (
-                    reg_loss.item() if isinstance(reg_loss, torch.Tensor) else reg_loss
-                ),
-                "train/total_loss": total_loss.item(),
-                "train/learning_rate": self.optimizers().param_groups[0]["lr"],
-                "global_step": self.global_step_count,
-            }
-        )
+        # # log to wandb
+        # wandb.log(
+        #     {
+        #         "train/loss": train_loss.item(),
+        #         "train/reg_loss": (
+        #             reg_loss.item() if isinstance(reg_loss, torch.Tensor) else reg_loss
+        #         ),
+        #         "train/total_loss": total_loss.item(),
+        #         "train/learning_rate": self.optimizers().param_groups[0]["lr"],
+        #         "global_step": self.global_step_count,
+        #     }
+        # )
 
         return total_loss
 
@@ -211,22 +201,37 @@ class LM_FineTuner(lightning.LightningModule):
             "val_perplexity", perplexity, on_step=True, on_epoch=True, prog_bar=True
         )
 
-        # Explicitly log to wandb at step level
-        wandb.log(
-            {
-                "val/loss": val_loss.item(),
-                "val/perplexity": perplexity.item(),
-                "global_step": self.global_step_count,
-            }
-        )
+        # # Explicitly log to wandb at step level
+        # wandb.log(
+        #     {
+        #         "val/loss": val_loss.item(),
+        #         "val/perplexity": perplexity.item(),
+        #         "global_step": self.global_step_count,
+        #     }
+        # )
 
         # Return dictionary for epoch-end processing
         return {"val_loss": val_loss, "val_perplexity": perplexity}
 
     def configure_optimizers(self):
+        tunable_param_dict = {
+            name: param for name, param in self.model.named_parameters()
+        }
+
+        # only tune the laers
+        # don't tune the embeddings, don't tune the lm head and the final layer norm.
+        remove_modules = ["model.embed_tokens.weight"]
+        for module_name in tunable_param_dict.keys():
+            if module_name.startswith("model.layers.") == False:
+                remove_modules.append(module_name)
+
+        for rm in remove_modules:
+            if rm in tunable_param_dict:
+                tunable_param_dict.pop(rm)
+
         # Create optimizer
         optimizer = AdamW(
-            self.parameters(),
+            list(tunable_param_dict.values()),
             lr=self.hparams.learning_rate,
             weight_decay=self.hparams.weight_decay,
         )
@@ -243,9 +248,24 @@ class LM_FineTuner(lightning.LightningModule):
             "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
         }
 
-    def on_epoch_end(self):
-        # Save model after each epoch
+    def on_train_epoch_end(self):
+        free_gpu_cache()
+        # Save model at specified intervals. Only keep the latest one to save space.
+        logger.info(f"Epoch {self.current_epoch} | {self.save_interval=}")
         epoch = self.current_epoch
-        save_dir = os.path.join(self.save_path, f"epoch_{epoch}")
-        self.model.save_pretrained(save_dir)
-        self.tokenizer.save_pretrained(save_dir)
+        if epoch % self.save_interval == 0:
+            save_dir = os.path.join(self.save_path, f"epoch_{epoch}")
+
+            # Find and remove the previous checkpoint if it exists
+            if epoch >= self.save_interval:  # Only if this isn't the first checkpoint
+                prev_epoch = epoch - self.save_interval
+                prev_save_dir = os.path.join(self.save_path, f"epoch_{prev_epoch}")
+                if os.path.exists(prev_save_dir):
+                    logger.info(f"Removing previous checkpoint at {prev_save_dir}")
+                    import shutil
+
+                    shutil.rmtree(prev_save_dir)
+
+            logger.info(f"Saving model checkpoint at epoch {epoch} to {save_dir}")
+            self.model.save_pretrained(save_dir)
+            self.tokenizer.save_pretrained(save_dir)
