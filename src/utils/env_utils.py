@@ -30,6 +30,10 @@ try:
         CLAUDE_CACHE_DIR = os.path.join(PROJECT_ROOT, config["CLAUDE_CACHE_DIR"])
         WIMBD_CONFIG = os.path.join(PROJECT_ROOT, config["WIMBD_CONFIG"])
         HF_CACHE_DIR = config.get("HF_CACHE", None)
+        if HF_CACHE_DIR is not None:
+            HF_CACHE_DIR = HF_CACHE_DIR.strip()
+            if len(HF_CACHE_DIR) == 0:
+                HF_CACHE_DIR = None
 
         for dir in [
             DEFAULT_MODELS_DIR,

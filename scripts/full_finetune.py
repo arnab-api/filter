@@ -7,6 +7,8 @@ from typing import Optional, List
 import numpy as np
 import pytorch_lightning as pl
 import torch
+
+# import torch.distributed  # Explicitly import torch.distributed
 from datasets import load_dataset
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
@@ -21,6 +23,7 @@ from src.utils.finetune import (
     ModelCheckpointCallback,
     CudaMemoryCleaner,
 )
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,17 @@ def run_finetuning(
         max_epochs=max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
+        strategy="auto",
+        # devices=(
+        #     list(range(torch.cuda.device_count()))
+        #     if torch.cuda.is_available()
+        #     else "auto"
+        # ),
+        # strategy=(
+        #     pl.strategies.DDPStrategy(find_unused_parameters=False)
+        #     if torch.cuda.device_count() > 1
+        #     else "auto"
+        # ),
         gradient_clip_val=1.0,
         logger=wandb_logger,
         callbacks=callbacks,
@@ -198,7 +212,26 @@ def prepare_datasets(
     return train_loader, val_loader, reg_loader
 
 
+def init_model_parallelism_args():
+    if torch.cuda.device_count() > 1:
+        logger.info(
+            f"Found {torch.cuda.device_count()} GPUs, initializing model parallelism environment variables"
+        )
+        # Set these environment variables before loading the model
+        if "RANK" not in os.environ:
+            os.environ["RANK"] = "0"
+        if "WORLD_SIZE" not in os.environ:
+            os.environ["WORLD_SIZE"] = str(torch.cuda.device_count())
+        if "LOCAL_RANK" not in os.environ:
+            os.environ["LOCAL_RANK"] = "0"
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = "localhost"
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "12355"
+
+
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description="Fine-tune a language model")
     logging_utils.add_logging_args(parser)
     experiment_utils.add_experiment_args(parser)
@@ -370,6 +403,10 @@ if __name__ == "__main__":
 
     # log_model should be False, or it will try to upload the model to wandb
     wandb_logger = WandbLogger(log_model=False)
+    # wandb_logger = None
+
+    if torch.cuda.device_count() > 1:
+        init_model_parallelism_args()
 
     # Run finetuning
     pl_model = run_finetuning(

@@ -226,6 +226,8 @@ class LM_FineTuner(lightning.LightningModule):
 
             free_gpu_cache()
 
+        logger.debug(f">>>>>>> {self.device=} | {self.model.device=}")
+
     def forward(self, input_ids, attention_mask=None, labels=None):
         return self.model(
             input_ids=input_ids, attention_mask=attention_mask, labels=labels
