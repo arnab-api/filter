@@ -98,6 +98,68 @@ class ModelCheckpointCallback(Callback):
         # Remove the previous checkpoint if it exists
 
 
+class CudaMemoryCleaner(Callback):
+    """
+    PyTorch Lightning callback that frees GPU memory at specified points during training.
+    """
+
+    def __init__(self, threshold=0.7):
+        """
+        Args:
+            threshold (int): The percentage threshold of GPU memory utilization
+                             above which to free memory (default: 90).
+        """
+        super().__init__()
+        self.threshold = threshold
+
+    def _release_gradients(self, pl_module):
+        """
+        Release gradients for all model parameters.
+        """
+        for param in pl_module.model.parameters():
+            if param.grad is not None:
+                param.grad = None
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        """
+        Called after each training batch.
+        Frees GPU memory if utilization exceeds the threshold.
+        """
+        if torch.cuda.is_available():
+            # Calculate current GPU memory utilization
+            allocated = torch.cuda.memory_allocated()
+            max_allocated = torch.cuda.max_memory_allocated()
+            total = torch.cuda.get_device_properties(0).total_memory
+            utilization_pct = allocated / total
+
+            if utilization_pct > self.threshold:
+                logger.warning(
+                    f"GPU Memory Utilization: {utilization_pct:.2f} | Allocated: {allocated / 1e9:.2f} GB | Max Allocated: {max_allocated / 1e9:.2f} GB"
+                )
+                self._release_gradients(pl_module)
+                free_gpu_cache()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        """
+        Called at the end of each training epoch.
+        Always frees GPU memory.
+        """
+        if torch.cuda.is_available():
+            logger.info("cleaning up GPU memory at the end of epoch")
+            self._release_gradients(pl_module)
+            free_gpu_cache()
+
+    def on_train_end(self, trainer, pl_module):
+        """
+        Called at the end of training.
+        Always frees GPU memory.
+        """
+        if torch.cuda.is_available():
+            logger.info("cleaning up GPU memory at the end of training")
+            self._release_gradients(pl_module)
+            free_gpu_cache()
+
+
 # Create a LightningModule for training the model
 class LM_FineTuner(lightning.LightningModule):
     def __init__(
@@ -162,7 +224,7 @@ class LM_FineTuner(lightning.LightningModule):
                     }
                 )
 
-            # free_gpu_cache()
+            free_gpu_cache()
 
     def forward(self, input_ids, attention_mask=None, labels=None):
         return self.model(
@@ -200,6 +262,7 @@ class LM_FineTuner(lightning.LightningModule):
             current_loss = current_outputs.loss / batch_size
 
             # For batch-level loss, we need to compare against the average original loss
+            # logger.info(f"{current_loss=} | {orig_loss=} | {current_loss - orig_loss=}")
             reg_loss = torch.max(
                 torch.zeros_like(current_loss), current_loss - orig_loss
             )
@@ -252,18 +315,11 @@ class LM_FineTuner(lightning.LightningModule):
             if rm in tunable_param_dict:
                 tunable_param_dict.pop(rm)
 
-        return tunable_param_dict
-
-    def on_fit_start(self):
-        """Log the actual number of trainable parameters at the start of training."""
-        tunable_param_dict = self._get_tunable_params()
-
         # Calculate numbers
         trainable_params = sum(p.numel() for p in tunable_param_dict.values())
         total_params = sum(p.numel() for p in self.parameters())
         non_trainable_params = total_params - trainable_params
 
-        # Log to whatever logger you're using
         if self.logger and hasattr(self.logger, "experiment"):
             self.logger.experiment.summary["trainable_params"] = trainable_params
             self.logger.experiment.summary["non_trainable_params"] = (
@@ -272,9 +328,11 @@ class LM_FineTuner(lightning.LightningModule):
             self.logger.experiment.summary["total_params"] = total_params
 
         # Also print for console visibility
-        self.print(f"ACTUAL TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
-        self.print(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
-        self.print(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
+        logger.info(f"ACTUAL TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+        logger.info(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
+        logger.info(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
+
+        return tunable_param_dict
 
     def configure_optimizers(self):
         tunable_param_dict = self._get_tunable_params()
@@ -302,13 +360,3 @@ class LM_FineTuner(lightning.LightningModule):
         logger.info(
             f"Epoch {self.current_epoch} | Global Step {self.global_step_count}"
         )
-        # free_gpu_cache()
-
-    def on_train_end(self):
-        # set gradients to None
-        for param in self.model.parameters():
-            if param.grad is not None:
-                param.grad = None
-
-        # release the GPU cache
-        # free_gpu_cache()
