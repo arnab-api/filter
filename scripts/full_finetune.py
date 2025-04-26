@@ -6,24 +6,15 @@ import os
 from typing import List, Optional
 
 import numpy as np
-import pytorch_lightning as pl
 import torch
-import wandb
-
-# import torch.distributed  # Explicitly import torch.distributed
 from datasets import load_dataset
-from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
+import wandb
 from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.finetune import (
-    CudaMemoryCleaner,
-    LM_FineTuner,
-    ModelCheckpointCallback,
-    TextDataset,
-)
+from src.utils.training_utils import TextDataset, TrainableLM, Trainer
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +29,13 @@ def run_finetuning(
     regularizer_lambda: float = 0.1,
     warmup_steps: int = 0,
     max_epochs: int = 5,
-    save_path: str = "ft_checkpoints",
+    save_path: str = "ft_checkpoints_acc",
     save_interval: int = 30,
     keep_checkpoints: List[int] = None,
     memory_cleaner_threshold: float = 0.7,
-    wandb_logger: Optional[WandbLogger] = None,
 ):
     """
-    Fine-tune a language model with optional regularization.
+    Fine-tune a language model with optional regularization using Hugging Face Accelerate.
 
     Args:
         mt: ModelandTokenizer object containing the model and tokenizer
@@ -61,67 +51,43 @@ def run_finetuning(
         save_interval: Interval to save model checkpoints
         keep_checkpoints: List of specific epochs to keep checkpoints for
         memory_cleaner_threshold: Threshold for GPU memory cleaning (0-1)
-        wandb_logger: Optional WandbLogger for logging to Weights & Biases
     """
     if keep_checkpoints is None:
         keep_checkpoints = []
 
-    # Initialize the PyTorch Lightning model
-    pl_model = LM_FineTuner(
+    # Initialize wandb run name
+    run_name = mt.name.split("/")[-1]
+
+    trainable_lm = TrainableLM(
         model=mt._model,
         tokenizer=mt.tokenizer,
+        regularization_dataloader=reg_loader,
+        regularizer_lambda=regularizer_lambda,
+    )
+
+    trainer = Trainer(
+        trainable=trainable_lm,
+        train_dataloader=train_loader,
+        eval_dataloader=val_loader,
+        num_epochs=max_epochs,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,
-        regularizer_lambda=regularizer_lambda,
-        regularization_dataloader=reg_loader,
-        save_path=save_path,
-    )
-
-    # Initialize callbacks
-    checkpoint_callback = ModelCheckpointCallback(
-        save_path=os.path.join(save_path, mt.name.split("/")[-1]),
+        save_path=os.path.join(save_path, run_name),
         save_interval=save_interval,
         keep_checkpoints=keep_checkpoints,
-    )
-
-    cuda_memory_cleaner = CudaMemoryCleaner(threshold=memory_cleaner_threshold)
-
-    callbacks = [checkpoint_callback, cuda_memory_cleaner]
-
-    # Initialize trainer with provided logger or create a default one
-    if wandb_logger is None:
-        logger.info("No WandbLogger provided, trainer will use default logger")
-
-    # Initialize trainer
-    trainer = pl.Trainer(
-        max_epochs=max_epochs,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=-1,
-        strategy="deepspeed_stage_3",
-        # devices=(
-        #     list(range(torch.cuda.device_count()))
-        #     if torch.cuda.is_available()
-        #     else "auto"
-        # ),
-        # strategy=(
-        #     pl.strategies.DDPStrategy(find_unused_parameters=False)
-        #     if torch.cuda.device_count() > 1
-        #     else "auto"
-        # ),
-        gradient_clip_val=1.0,
-        logger=wandb_logger,
-        callbacks=callbacks,
-        enable_checkpointing=False,  # checkpointing is handled by custom callback, or it will save on every epoch. slows down training
+        remove_old_checkpoints=True,
+        memory_cleaner_threshold=memory_cleaner_threshold,
+        log_to_wandb=True,
     )
 
     # Start training
     logger.info("Starting fine-tuning process")
-    trainer.fit(pl_model, train_loader, val_loader)
+    trainer.train()
 
     logger.info(f"Fine-tuning complete")
 
-    return pl_model
+    return mt
 
 
 def prepare_datasets(
@@ -134,7 +100,6 @@ def prepare_datasets(
     train_split_ratio: float = 0.8,
     repeat: int = 1,
 ):
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     """
     Prepare datasets and dataloaders for fine-tuning.
 
@@ -146,11 +111,13 @@ def prepare_datasets(
         batch_size: Batch size for training
         regularizer_lambda: Coefficient for regularization loss term (used to determine if reg_loader is needed)
         train_split_ratio: Ratio for train/validation split of the training data
-        seed: Random seed for reproducibility
+        repeat: Number of times to repeat the training documents
 
     Returns:
         Tuple of (train_loader, val_loader, reg_loader)
     """
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     # Load regularization documents if needed
     reg_loader = None
     if reg_docs_dataset and regularizer_lambda > 0:
@@ -212,27 +179,10 @@ def prepare_datasets(
     return train_loader, val_loader, reg_loader
 
 
-def init_model_parallelism_args():
-    if torch.cuda.device_count() > 1:
-        logger.info(
-            f"Found {torch.cuda.device_count()} GPUs, initializing model parallelism environment variables"
-        )
-        # Set these environment variables before loading the model
-        if "RANK" not in os.environ:
-            os.environ["RANK"] = "0"
-        if "WORLD_SIZE" not in os.environ:
-            os.environ["WORLD_SIZE"] = str(torch.cuda.device_count())
-        if "LOCAL_RANK" not in os.environ:
-            os.environ["LOCAL_RANK"] = "0"
-        if "MASTER_ADDR" not in os.environ:
-            os.environ["MASTER_ADDR"] = "localhost"
-        if "MASTER_PORT" not in os.environ:
-            os.environ["MASTER_PORT"] = "12355"
-
-
 if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="Fine-tune a language model")
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a language model with Accelerate"
+    )
     logging_utils.add_logging_args(parser)
     experiment_utils.add_experiment_args(parser)
 
@@ -292,7 +242,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--warmup_steps",
         type=int,
-        default=0,
+        default=100,
         help="Number of warmup steps for learning rate scheduler",
     )
 
@@ -303,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_path",
         type=str,
-        default="ft_checkpoints",
+        default="finetuned_models",
         help="Path to save model checkpoints",
     )
 
@@ -311,14 +261,14 @@ if __name__ == "__main__":
         "--save_interval",
         type=int,
         default=30,
-        help="Interval to save model checkpoints (in steps)",
+        help="Interval to save model checkpoints (in epochs)",
     )
 
     parser.add_argument(
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[],
+        default=[50, 70],
         help="List of specific epochs to keep checkpoints for",
     )
 
@@ -401,15 +351,8 @@ if __name__ == "__main__":
         name=run_name,
     )
 
-    # log_model should be False, or it will try to upload the model to wandb
-    wandb_logger = WandbLogger(log_model=False)
-    # wandb_logger = None
-
-    if torch.cuda.device_count() > 1:
-        init_model_parallelism_args()
-
     # Run finetuning
-    pl_model = run_finetuning(
+    model = run_finetuning(
         mt=mt,
         train_loader=train_loader,
         val_loader=val_loader,
@@ -423,7 +366,6 @@ if __name__ == "__main__":
         save_interval=args.save_interval,
         keep_checkpoints=args.keep_checkpoints,
         memory_cleaner_threshold=args.memory_cleaner_threshold,
-        wandb_logger=wandb_logger,
     )
 
     # Close wandb run

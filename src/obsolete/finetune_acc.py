@@ -2,7 +2,7 @@ import copy
 import logging
 import os
 import shutil
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -71,6 +71,7 @@ class LMTrainer:
         keep_checkpoints: List[int] = None,
         remove_old_checkpoints: bool = True,
         memory_cleaner_threshold: float = 0.7,
+        num_epochs: int = 1,
         log_to_wandb: bool = True,
     ):
         """
@@ -104,6 +105,7 @@ class LMTrainer:
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
         self.regularizer_lambda = regularizer_lambda
+        self.num_epochs = num_epochs
 
         # Setup save path
         self.save_path = os.path.join(env_utils.DEFAULT_RESULTS_DIR, save_path)
@@ -190,17 +192,20 @@ class LMTrainer:
         # Calculate total number of training steps
         total_steps = (
             len(self.train_dataloader)
+            * self.num_epochs
             * self.accelerator.num_processes
             * self.accelerator.gradient_accumulation_steps
         )
 
-        print(">>>>> Estimated total training steps:", total_steps)
+        total_steps = max(total_steps, 10000)
+
+        logger.info(f"Settting total training steps: {total_steps}")
 
         # Create learning rate scheduler
         self.lr_scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=self.warmup_steps,
-            num_training_steps=100000,
+            num_training_steps=total_steps,
         )
 
     def _get_tunable_params(self):
@@ -293,7 +298,7 @@ class LMTrainer:
         unwrapped_model.save_pretrained(save_dir)
         self.tokenizer.save_pretrained(save_dir)
 
-    def train(self, num_epochs: int):
+    def train(self):
         """
         Train the model for the specified number of epochs.
 
@@ -301,10 +306,10 @@ class LMTrainer:
             num_epochs: Number of epochs to train for
         """
         # Log the total number of epochs
-        logger.info(f"Starting training for {num_epochs} epochs")
+        logger.info(f"Starting training for {self.num_epochs} epochs")
 
         # Training loop
-        for epoch in range(num_epochs):
+        for epoch in range(self.num_epochs):
             # Set model to training mode
             self.model.train()
 
@@ -317,7 +322,7 @@ class LMTrainer:
             # Progress bar for this epoch
             progress_bar = tqdm(
                 self.train_dataloader,
-                desc=f"Epoch {epoch+1}/{num_epochs}",
+                desc=f"Epoch {epoch+1}/{self.num_epochs}",
                 disable=not self.accelerator.is_local_main_process,
             )
 
@@ -427,7 +432,7 @@ class LMTrainer:
 
             # Log epoch metrics
             logger.info(
-                f"Epoch {epoch+1}/{num_epochs} | "
+                f"Epoch {epoch+1}/{self.num_epochs} | "
                 f"Train Loss: {train_loss:.4f} | "
                 f"Reg Loss: {reg_loss_sum:.4f} | "
                 f"Total Loss: {total_loss_sum:.4f}"
@@ -463,7 +468,7 @@ class LMTrainer:
 
         # End of training
         # Save final model
-        self._save_checkpoint(num_epochs, is_final=True)
+        self._save_checkpoint(self.num_epochs, is_final=True)
 
         logger.info("Training complete!")
         return self.model
