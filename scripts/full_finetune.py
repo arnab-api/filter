@@ -94,7 +94,7 @@ def prepare_datasets(
     train_docs_path: str,
     tokenizer,
     reg_docs_dataset: Optional[str] = "NeelNanda/wiki-10k",
-    reg_limit: int = 100,
+    reg_limit: int = 1000,
     batch_size: int = 4,
     regularizer_lambda: float = 0.1,
     train_split_ratio: float = 0.8,
@@ -180,6 +180,9 @@ def prepare_datasets(
 
 
 if __name__ == "__main__":
+    ##################################################################################################
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    ##################################################################################################
     parser = argparse.ArgumentParser(
         description="Fine-tune a language model with Accelerate"
     )
@@ -194,6 +197,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.2-3B-Instruct",
             "meta-llama/Llama-3.1-8B",
             "meta-llama/Llama-3.1-8B-Instruct",
+            "Qwen/Qwen2.5-14B",
         ],
         default="meta-llama/Llama-3.2-3B",
         help="Model identifier from HuggingFace or local path",
@@ -216,7 +220,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reg_limit",
         type=int,
-        default=100,
+        default=1000,
         help="Number of regularization documents to use",
     )
 
@@ -229,7 +233,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--weight_decay", type=float, default=0.01, help="Weight decay for optimizer"
+        "--weight_decay", type=float, default=1e-3, help="Weight decay for optimizer"
     )
 
     parser.add_argument(
@@ -304,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--repeat",
         type=int,
-        default=10,
+        default=5,
         help="Number of times to repeat the training documents",
     )
 

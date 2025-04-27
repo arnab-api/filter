@@ -382,7 +382,7 @@ class Trainer:
             * self.accelerator.gradient_accumulation_steps
         )
 
-        total_steps = max(total_steps, 10000)
+        total_steps = max(total_steps, 100000)
 
         logger.info(f"Settting total training steps: {total_steps}")
 
