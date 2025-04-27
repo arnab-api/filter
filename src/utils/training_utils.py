@@ -530,14 +530,14 @@ class Trainer:
 
             # Log epoch-level metrics directly to wandb
             if self.log_to_wandb and self.accelerator.is_local_main_process:
-                logger.info("Logging epoch-level metrics to wandb")
-                wandb_epoch_report = {"epoch": epoch + 1, "step": self.global_step}
+
+                wandb_epoch_report = {"epoch": epoch + 1}
                 for k, v in total_loss_dict.items():
                     wandb_epoch_report[f"epoch/{k}"] = v
 
                 wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
                 wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
-
+                logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
                 wandb.log(wandb_epoch_report)
 
             # Save checkpoint

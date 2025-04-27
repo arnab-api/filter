@@ -181,7 +181,8 @@ def prepare_datasets(
 
 if __name__ == "__main__":
     ##################################################################################################
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     ##################################################################################################
     parser = argparse.ArgumentParser(
         description="Fine-tune a language model with Accelerate"
