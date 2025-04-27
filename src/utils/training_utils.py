@@ -495,9 +495,6 @@ class Trainer:
 
                 num_batches += 1
 
-                # Update progress bar
-                progress_bar.set_postfix(total_loss_dict)
-
                 # Log metrics directly to wandb instead of using accelerator.log
                 if self.log_to_wandb and self.accelerator.is_local_main_process:
                     wandb_step_report = {
@@ -518,6 +515,9 @@ class Trainer:
 
             for k in total_loss_dict:
                 total_loss_dict[k] /= num_batches
+
+            # Update progress bar
+            progress_bar.set_postfix(total_loss_dict)
 
             # Log epoch metrics
             loss_log = ""
