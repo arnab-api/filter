@@ -508,6 +508,10 @@ class Trainer:
 
                 # Increment global step
                 self.global_step += 1
+                # Update progress bar
+                progress_bar.set_postfix(
+                    {k: v / (batch_idx + 1) for k, v in total_loss_dict.items()}
+                )
 
                 # Maybe clean up memory
                 if batch_idx % 10 == 0:
@@ -515,9 +519,6 @@ class Trainer:
 
             for k in total_loss_dict:
                 total_loss_dict[k] /= num_batches
-
-            # Update progress bar
-            progress_bar.set_postfix(total_loss_dict)
 
             # Log epoch metrics
             loss_log = ""
