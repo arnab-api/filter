@@ -12,6 +12,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
+from src.models import ModelandTokenizer
 
 import wandb
 from src.functional import free_gpu_cache
@@ -89,21 +90,282 @@ class Trainable:
         self.model.eval()
 
 
-class TrainableLM(Trainable):
+# TODO: accept accelerator and unwrap model while saving inside the TrainableLM class
+# class TrainableLM(Trainable):
+#     def __init__(
+#         self,
+#         model: Model,
+#         tokenizer: Tokenizer,
+#         regularization_dataloader=None,
+#         regularizer_lambda=0.1,
+#     ):
+#         self.model = model
+#         self.tokenizer = tokenizer
+#         self.regularization_dataloader = regularization_dataloader
+#         self.regularizer_lambda = regularizer_lambda
+#         self.cached_reg_info = None
+#         self._cache_regularization_docs()
+
+#     @torch.inference_mode()
+#     def _cache_regularization_docs(self):
+#         """
+#         Cache regularization documents for later use during training.
+#         """
+#         self.cached_reg_info = []
+
+#         logger.info("Caching regularization documents...")
+#         for cur_batch in tqdm(self.regularization_dataloader):
+#             # Calculate initial loss for this batch
+#             with torch.no_grad():
+#                 cur_batch = {k: v.to(self.model.device) for k, v in cur_batch.items()}
+#                 outputs = self.model(
+#                     input_ids=cur_batch["input_ids"],
+#                     attention_mask=cur_batch["attention_mask"],
+#                     labels=cur_batch["input_ids"],
+#                 )
+
+#                 batch_size = find_batch_size(cur_batch["input_ids"])
+#                 loss = outputs.loss / batch_size
+
+#             self.cached_reg_info.append(
+#                 {
+#                     "input_ids": cur_batch["input_ids"].detach().cpu(),
+#                     "attention_mask": cur_batch["attention_mask"].detach().cpu(),
+#                     "loss": loss.detach().cpu(),
+#                 }
+#             )
+
+#         free_gpu_cache()
+#         logger.info(f"Cached {len(self.cached_reg_info)} regularization batches")
+
+#     def forward(self, input_ids, attention_mask=None, labels=None):
+#         """
+#         Forward pass for the language model.
+
+#         Args:
+#             input_ids: Input token IDs
+#             attention_mask: Attention mask for the input
+#             labels: Labels for the input (used for calculating loss)
+
+#         Returns:
+#             Loss value
+#         """
+#         return self.model(
+#             input_ids=input_ids.to(self.model.device),
+#             attention_mask=(
+#                 attention_mask.to(self.model.device)
+#                 if attention_mask is not None
+#                 else None
+#             ),
+#             labels=labels.to(self.model.device) if labels is not None else None,
+#         )
+
+#     def get_current_loss(
+#         self,
+#         input_ids,
+#         attention_mask,
+#         labels,
+#         apply_regularization_loss=True,
+#         **kwargs,
+#     ) -> tuple[float, dict]:
+#         """
+#         Get the current loss value and additional information.
+
+#         Args:
+#             input_ids: Input token IDs
+#             attention_mask: Attention mask for the input
+#             labels: Labels for the input (used for calculating loss)
+#             get_reg_loss: Whether to calculate regularization loss
+
+#         Returns:
+#             Tuple containing the loss value and a dictionary with additional information
+#         """
+
+#         for key in kwargs:
+#             logger.warning(f"Ignoring unexpected keyword argument: {key}={kwargs[key]}")
+
+#         # Forward pass
+#         outputs = self.forward(
+#             input_ids=input_ids,
+#             attention_mask=attention_mask,
+#             labels=labels,
+#         )
+
+#         # Calculate loss
+#         batch_size = find_batch_size(input_ids)
+#         loss = outputs.loss / batch_size
+
+#         loss_dict = {
+#             "train_loss": loss.detach().item(),
+#         }
+
+#         # Handle regularization if needed
+#         if (
+#             apply_regularization_loss
+#             and hasattr(self, "cached_reg_info")
+#             and self.regularizer_lambda > 0
+#         ):
+#             # Randomly select a cached regularization document
+#             reg_doc = np.random.choice(self.cached_reg_info)
+
+#             # Move to device
+#             reg_input_ids = reg_doc["input_ids"].to(self.model.device)
+#             reg_attention_mask = reg_doc["attention_mask"].to(self.model.device)
+#             orig_loss = reg_doc["loss"].to(self.model.device)
+
+#             # Calculate current loss on regularization document
+#             reg_outputs = self.forward(
+#                 input_ids=reg_input_ids,
+#                 attention_mask=reg_attention_mask,
+#                 labels=reg_input_ids,
+#             )
+#             reg_loss = reg_outputs.loss / find_batch_size(reg_input_ids)
+
+#             # Calculate regularization loss (max of 0 and increase in loss)
+#             # logger.info(
+#             #     f"Regularization {reg_loss=} | {orig_loss=} | {reg_loss - orig_loss=}"
+#             # )
+#             reg_loss = torch.max(torch.zeros_like(reg_loss), reg_loss - orig_loss)
+
+#             loss_dict["reg_loss"] = reg_loss.detach().item()
+
+#             # Combine losses
+#             loss += self.regularizer_lambda * reg_loss
+#             loss_dict["total_loss"] = loss.detach().item()
+
+#         return loss, loss_dict
+
+#     @torch.inference_mode()
+#     def save(self, path: str, unwrapped_model=None):
+#         os.makedirs(path, exist_ok=True)
+#         if unwrapped_model is None:
+#             self.model.save_pretrained(path)
+#         else:
+#             unwrapped_model.save_pretrained(path)
+#         self.tokenizer.save_pretrained(path)
+#         logger.info(f"Model saved to {path}")
+
+#     def _get_tunable_params(self):
+#         """
+#         Get the subset of model parameters to optimize.
+#         For LLaMA models, we only tune the parameters in the layers.
+#         """
+#         tunable_param_dict = {
+#             name: param for name, param in self.model.named_parameters()
+#         }
+
+#         remove_modules = ["model.embed_tokens.weight"]
+#         for module_name in tunable_param_dict.keys():
+#             if not module_name.startswith("model.layers."):
+#                 remove_modules.append(module_name)
+
+#         for rm in remove_modules:
+#             if rm in tunable_param_dict:
+#                 tunable_param_dict.pop(rm)
+
+#         # Calculate numbers for reporting
+#         trainable_params = sum(p.numel() for p in tunable_param_dict.values())
+#         total_params = sum(p.numel() for p in self.model.parameters())
+#         non_trainable_params = total_params - trainable_params
+
+#         # Log parameter counts
+#         logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+#         logger.info(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
+#         logger.info(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
+
+#         return tunable_param_dict
+
+from nnsight import Envoy
+from typing import Optional
+
+
+class ParameterDelta(torch.nn.Module):
     def __init__(
         self,
-        model: Model,
-        tokenizer: Tokenizer,
-        regularization_dataloader=None,
-        regularizer_lambda=0.1,
+        module: Envoy,
+        module_name,
+        param_delta: Optional[torch.nn.Parameter] = None,
     ):
-        self.model = model
-        self.tokenizer = tokenizer
+        super().__init__()
+        self.module = module
+        self.param_name = module_name
+        if param_delta is None:
+            param = getattr(module, "weight")
+            if param is None:
+                raise ValueError(
+                    f"Initialization Error, {module_name} does not have a weight"
+                )
+            self.param_delta = torch.nn.Parameter(
+                torch.zeros_like(param).to(param.dtype).to(param.device)
+            )
+        else:
+            self.param_delta = param_delta
+
+        self.param_delta.requires_grad = True
+
+    def __call__(self, debug_tracer=None):
+
+        inp = self.module.input
+        out = self.module.output
+
+        if debug_tracer is not None:
+            debug_tracer.log(self.param_name, "inp shape: ", inp.shape)
+            debug_tracer.log(self.param_name, "out shape: ", out.shape)
+            debug_tracer.log(
+                self.param_name, "param_delta shape: ", self.param_delta.shape
+            )
+
+        # h_delta = inp @ self.param_delta.t()
+        # using torch implementation just to be safe
+        h_delta = torch.nn.functional.linear(
+            inp, self.param_delta, bias=None
+        )  # (batch_size, seq_len, hidden_dim)
+
+        if debug_tracer is not None:
+            debug_tracer.log(self.param_name, "h_delta shape: ", h_delta.shape)
+
+        self.module.output = out + h_delta
+
+    def parameters(self):
+        return self.param_delta
+
+    def __str__(self):
+        return f"ParameterDelta(module={self.module}, param_name={self.param_name})"
+
+
+from src.functional import get_module_nnsight
+
+
+class TrainableLM_delta(Trainable):
+    def __init__(
+        self,
+        mt: ModelandTokenizer,
+        regularization_dataloader: DataLoader = None,
+        regularizer_lambda: float = 0.1,
+        accelerator: Accelerator = None,
+        param_delta_dict: Optional[str | torch.nn.ModuleDict] = None,
+    ):
+        self.mt = mt
         self.regularization_dataloader = regularization_dataloader
         self.regularizer_lambda = regularizer_lambda
         self.cached_reg_info = None
-        self._cache_regularization_docs()
+        self.accelerator = accelerator
+        if self.accelerator is None:
+            self.accelerator = Accelerator()
+        self.mt._model = self.accelerator.prepare(self.mt._model)
+        self.regularization_dataloader = self.accelerator.prepare(
+            self.regularization_dataloader
+        )
+        if self.regularization_dataloader is not None and self.regularizer_lambda > 0:
+            self._cache_regularization_docs()
 
+        if param_delta_dict is not None:
+            self.load_param_delta_dict(param_delta_dict)
+        else:
+            self.populate_param_delta_dict()
+
+    # TODO(arnab): update to keep track of the whole logit distribution (will be useful for KL-div)
+    #! Probably unfeasible to cache all the logits, will need to do it on the fly
     @torch.inference_mode()
     def _cache_regularization_docs(self):
         """
@@ -116,7 +378,7 @@ class TrainableLM(Trainable):
             # Calculate initial loss for this batch
             with torch.no_grad():
                 cur_batch = {k: v.to(self.model.device) for k, v in cur_batch.items()}
-                outputs = self.model(
+                outputs = self.mt._model(
                     input_ids=cur_batch["input_ids"],
                     attention_mask=cur_batch["attention_mask"],
                     labels=cur_batch["input_ids"],
@@ -148,16 +410,29 @@ class TrainableLM(Trainable):
         Returns:
             Loss value
         """
-        return self.model(
-            input_ids=input_ids.to(self.model.device),
-            attention_mask=(
-                attention_mask.to(self.model.device)
-                if attention_mask is not None
-                else None
-            ),
-            labels=labels.to(self.model.device) if labels is not None else None,
+        input_ids = input_ids.to(self.mt.device)
+        attention_mask = (
+            attention_mask.to(self.mt.device) if attention_mask is not None else None
         )
+        labels = labels.to(self.mt.device) if labels is not None else None
 
+        logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
+
+        with self.mt.trace(
+            inputs={
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+            },
+            labels=labels,
+        ) as tracer:
+            for param_delta in self.param_delta_dict.values():
+                param_delta()
+
+            output = self.mt.output.save()
+
+        return output
+
+    # TODO(arnab): update
     def get_current_loss(
         self,
         input_ids,
@@ -233,45 +508,86 @@ class TrainableLM(Trainable):
 
         return loss, loss_dict
 
+    #! will probably need to unwrap the model before saving (test)
     @torch.inference_mode()
-    def save(self, path: str, unwrapped_model=None):
+    def save(self, path: str):
         os.makedirs(path, exist_ok=True)
-        if unwrapped_model is None:
-            self.model.save_pretrained(path)
-        else:
-            unwrapped_model.save_pretrained(path)
-        self.tokenizer.save_pretrained(path)
-        logger.info(f"Model saved to {path}")
+        param_delta_dict = {
+            name.replace(".", "_"): param_delta
+            for name, param_delta in self.param_delta_dict.items()
+        }
+        torch.save(param_delta_dict, os.path.join(path, "param_delta_dict.pt"))
+        logger.info(f"param_delta_dict saved to {path}")
 
-    def _get_tunable_params(self):
+    def populate_param_delta_dict(
+        self,
+        tunable_module_signatures=["mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
+    ):
         """
         Get the subset of model parameters to optimize.
         For LLaMA models, we only tune the parameters in the layers.
         """
-        tunable_param_dict = {
-            name: param for name, param in self.model.named_parameters()
-        }
-
-        remove_modules = ["model.embed_tokens.weight"]
-        for module_name in tunable_param_dict.keys():
-            if not module_name.startswith("model.layers."):
-                remove_modules.append(module_name)
-
-        for rm in remove_modules:
-            if rm in tunable_param_dict:
-                tunable_param_dict.pop(rm)
+        tunable_param_dict = {}
+        for name, param in self.mt._model.named_parameters():
+            if any(sig in name for sig in tunable_module_signatures):
+                param_delta = torch.nn.Parameter(
+                    torch.zeros_like(param).to(param.dtype).to(param.device)
+                )
+                param_delta.requires_grad = True
+                param_delta = self.accelerator.prepare(param_delta)
+                module_name = ".".join(name.split(".")[:-1])
+                assert (
+                    module_name not in tunable_param_dict
+                ), f"Module {module_name} already exists in tunable_param_dict"
+                tunable_param_dict[module_name] = ParameterDelta(
+                    module=get_module_nnsight(self.mt, name),
+                    module_name=module_name,
+                    param_delta=param_delta,
+                )
 
         # Calculate numbers for reporting
-        trainable_params = sum(p.numel() for p in tunable_param_dict.values())
-        total_params = sum(p.numel() for p in self.model.parameters())
-        non_trainable_params = total_params - trainable_params
+        trainable_params = sum(
+            p.param_delta.numel() for p in tunable_param_dict.values()
+        )
+
+        self.param_delta_dict = tunable_param_dict
 
         # Log parameter counts
         logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
-        logger.info(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
-        logger.info(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
 
         return tunable_param_dict
+
+    #! test
+    def load_param_delta_dict(self, param_delta_dict: str | torch.nn.ModuleDict):
+        """
+        Load the parameter delta dictionary from a file or a module.
+        """
+        if isinstance(param_delta_dict, str):
+            param_delta_dict = torch.load(param_delta_dict)
+
+        self.param_delta_dict = {}
+        for param_name, param in param_delta_dict.items():
+            module_name, weight_name = param_name.split(".")
+            base_module = get_module_nnsight(self.mt, module_name)
+            base_params = getattr(base_module, "weight")
+            self.param_delta_dict[module_name] = ParameterDelta(
+                module=base_module,
+                module_name=module_name,
+                param_delta=param.to(base_params.dtype).to(base_params.device),
+            )
+
+        # Calculate numbers for reporting
+        trainable_params = sum(
+            p.param_delta.numel() for p in self.param_delta_dict.values()
+        )
+
+        # Log parameter counts
+        logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+
+    def _get_tunable_params(self):
+        return {
+            name: param.param_delta for name, param in self.param_delta_dict.items()
+        }
 
 
 class Trainer:
@@ -342,20 +658,20 @@ class Trainer:
         self.global_step = 0
 
         # Initialize Accelerator
-        self.accelerator = Accelerator()
+        self.accelerator = (
+            Accelerator() if trainable.accelerator is None else trainable.accelerator
+        )
 
         # Create optimizer and scheduler
         self._setup_optimizer_and_scheduler()
 
         # Prepare model and dataloaders with accelerator
         (
-            self.trainable.model,
             self.optimizer,
             self.train_dataloader,
             self.eval_dataloader,
             self.lr_scheduler,
         ) = self.accelerator.prepare(
-            self.trainable.model,
             self.optimizer,
             self.train_dataloader,
             self.eval_dataloader,
