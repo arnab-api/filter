@@ -1,14 +1,17 @@
 import os
 
 MODELS = [
-    # "Qwen/Qwen2.5-14B",
     "meta-llama/Llama-3.2-3B",
-    # "meta-llama/Llama-3.1-8B"
+    "meta-llama/Llama-3.1-8B",
+    "Qwen/Qwen2.5-14B",
+    # "Qwen/Qwen3-4B",
+    # "Qwen/Qwen3-8B",
+    # "Qwen/Qwen3-14B",
 ]
 TRAIN_DOC = "synthetic_entities_bio.json"
-REG_LIMIT = 1000
+REG_LIMIT = 10000
 BATCH_SIZE = 8
-SAVE_PATH = "finetuned_models_bio"
+SAVE_PATH = "delta_weights_bio"
 
 cmd_template = (
     'python -m scripts.full_finetune --max_epochs=100 --batch_size=8 --model="{}" -v'

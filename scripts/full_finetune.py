@@ -194,10 +194,13 @@ if __name__ == "__main__":
         type=str,
         choices=[
             "meta-llama/Llama-3.2-3B",
-            "meta-llama/Llama-3.2-3B-Instruct",
+            # "meta-llama/Llama-3.2-3B-Instruct",
             "meta-llama/Llama-3.1-8B",
-            "meta-llama/Llama-3.1-8B-Instruct",
+            # "meta-llama/Llama-3.1-8B-Instruct",
             "Qwen/Qwen2.5-14B",
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-8B",
+            "Qwen/Qwen3-14B",
         ],
         default="meta-llama/Llama-3.2-3B",
         help="Model identifier from HuggingFace or local path",
@@ -272,7 +275,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[50, 70],
+        default=[10, 50, 70],
         help="List of specific epochs to keep checkpoints for",
     )
 
