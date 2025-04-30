@@ -134,6 +134,8 @@ dmypy.json
 # weights
 *.pth
 *.npz
+*.pt
+*.ckpt
 
 # Project-specific stuff
 */layer_sweep/

@@ -704,6 +704,9 @@ class TrainableLM_delta(Trainable):
         self.mt._model.eval()
 
 
+# * A Trainer class inspired by the design of Pytorch Lightning (which doesn't work for accelerate, hence the need for this class)
+# TODO(arnab) Does not support adding custom callbacks yet.
+# TODO?(arnab) Train currently does not work for nnsight. Carrying around nnsight context manager is awkward and probably not worth it (at this moment)
 class Trainer:
     def __init__(
         self,

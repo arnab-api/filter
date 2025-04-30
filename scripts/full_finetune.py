@@ -206,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_docs",
         type=str,
-        default="synthetic_entities.json",
+        default="synthetic_entities_bio.json",
         help="Path to training documents JSON file, relative to data directory",
     )
 
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     )
 
     # Initialize wandb for logging
-    run_name = args.run_name if args.run_name else args.model.split("/")[-1]
+    run_name = args.run_name if args.run_name else f'{args.model.split("/")[-1]}-BIO'
 
     wandb.init(
         entity="reasoning-iterp",
