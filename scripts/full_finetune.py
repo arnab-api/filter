@@ -14,7 +14,7 @@ import wandb
 from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.training_utils import TextDataset, TrainableLM, Trainer
+from src.utils.training_utils import TextDataset, TrainableLM_delta, Trainer
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +58,14 @@ def run_finetuning(
     # Initialize wandb run name
     run_name = mt.name.split("/")[-1]
 
-    trainable_lm = TrainableLM(
-        model=mt._model,
-        tokenizer=mt.tokenizer,
+    trainable_deltas = TrainableLM_delta(
+        mt=mt,
         regularization_dataloader=reg_loader,
         regularizer_lambda=regularizer_lambda,
     )
 
     trainer = Trainer(
-        trainable=trainable_lm,
+        trainable=trainable_deltas,
         train_dataloader=train_loader,
         eval_dataloader=val_loader,
         num_epochs=max_epochs,

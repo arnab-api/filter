@@ -278,6 +278,8 @@ class Trainable:
 from nnsight import Envoy
 from typing import Optional
 from src.utils.typing import TokenizerOutput
+from src.functional import untuple
+import baukit
 
 
 class ParameterDelta(torch.nn.Module):
@@ -304,38 +306,82 @@ class ParameterDelta(torch.nn.Module):
 
         self.param_delta.requires_grad = True
 
-    def __call__(self, debug_tracer=None):
-        if debug_tracer is not None:
-            debug_tracer.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
-
-        inp = self.module.input
-        out = self.module.output
-
-        if debug_tracer is not None:
-            debug_tracer.log(self.module_name, "inp shape: ", inp.shape)
-            debug_tracer.log(self.module_name, "out shape: ", out.shape)
-            debug_tracer.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
-
+    # ** nnsight specific implementation
+    def __call__(self, inp: torch.Tensor):
         # h_delta = inp @ self.param_delta.t()
         # using torch implementation just to be safe
         h_delta = torch.nn.functional.linear(
             inp, self.param_delta, bias=None
         )  # (batch_size, seq_len, hidden_dim)
 
-        if debug_tracer is not None:
-            debug_tracer.log(self.module_name, "h_delta shape: ", h_delta.shape)
-
-        self.module.output = out + h_delta
+        return h_delta
 
     def parameters(self):
         return self.param_delta
 
     def __str__(self):
         return f"ParameterDelta(module={self.module}, param_name={self.module_name})"
+
+    def apply_nnsight(self, context_manager=None, debug=False):
+        """
+        Apply the parameter delta to the module using nnsight.
+        """
+        if debug:
+            if context_manager is None:
+                logger.warning(
+                    "Cannot log debug info without context manager. Setting debug to False"
+                )
+                debug = False
+
+        if debug:
+            context_manager.log(
+                self.module_name, "param_delta shape: ", self.param_delta.shape
+            )
+
+        inp = self.module.input
+        out = self.module.output
+
+        if debug:
+            context_manager.log(self.module_name, "inp shape: ", inp.shape)
+            context_manager.log(self.module_name, "out shape: ", out.shape)
+            context_manager.log(
+                self.module_name, "param_delta shape: ", self.param_delta.shape
+            )
+
+        h_delta = self(inp)
+
+        if debug:
+            context_manager.log(self.module_name, "h_delta shape: ", h_delta.shape)
+
+        # Apply the delta to the module's output
+        self.module.output = out + h_delta
+
+    @staticmethod
+    def apply_param_delta(param_delta_dict: dict[str, "ParameterDelta"]) -> callable:
+        """
+        Apply the parameter delta to the module.
+        """
+
+        def edit_repr(module_name: str, input: Any, output: Any):
+            if module_name in param_delta_dict:
+                # logger.debug(f"Applying param delta to {module_name}")
+                param_delta = param_delta_dict[module_name]
+            else:
+                raise ValueError(f"Module {module_name} not found in param delta dict")
+
+            input = untuple(input)
+
+            output_0 = untuple(output)
+            # logger.debug(f"input shape: {input.shape} | output shape: {output.shape}")
+
+            h_delta = param_delta(input)
+            # logger.debug(f"h_delta shape: {h_delta.shape}")
+
+            output_0 += h_delta
+
+            return output
+
+        return edit_repr
 
 
 from src.functional import get_module_nnsight
@@ -358,10 +404,10 @@ class TrainableLM_delta(Trainable):
         self.accelerator = accelerator
         if self.accelerator is None:
             self.accelerator = Accelerator()
-        # self.mt._model = self.accelerator.prepare(self.mt._model)
-        # self.regularization_dataloader = self.accelerator.prepare(
-        #     self.regularization_dataloader
-        # )
+        self.mt._model = self.accelerator.prepare(self.mt._model)
+        self.regularization_dataloader = self.accelerator.prepare(
+            self.regularization_dataloader
+        )
         if self.regularization_dataloader is not None and self.regularizer_lambda > 0:
             self._cache_regularization_docs()
 
@@ -428,26 +474,40 @@ class TrainableLM_delta(Trainable):
             attention_mask.to(self.mt.device) if attention_mask is not None else None
         )
         labels = labels.to(self.mt.device) if labels is not None else None
-        print(">>>", labels)
+        # logger.debug(f"{labels=}")
+        # logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
 
-        logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
+        # inputs = TokenizerOutput(
+        #     data={
+        #         "input_ids": input_ids,
+        #         "attention_mask": attention_mask,
+        #     }
+        # )
+        # with self.mt.trace(
+        #     inputs,
+        #     labels=labels,
+        # ) as tracer:
+        #     if apply_param_delta:
+        #         for param_delta in self.param_delta_dict.values():
+        #             param_delta()
+        #     output = self.mt.output.save()
+        # return output
 
-        inputs = TokenizerOutput(
-            data={
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-            }
-        )
-
-        with self.mt.trace(
-            inputs,
-            labels=labels,
+        with baukit.TraceDict(
+            module=self.mt._model,
+            layers=list(self.param_delta_dict.keys()),
+            retain_input=True,
+            retain_output=True,
+            retain_grad=True,
+            edit_output=(
+                ParameterDelta.apply_param_delta(self.param_delta_dict)
+                if apply_param_delta
+                else None
+            ),
         ) as tracer:
-            if apply_param_delta:
-                for param_delta in self.param_delta_dict.values():
-                    param_delta()
-
-            output = self.mt.output.save()
+            output = self.mt._model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            )
 
         return output
 
@@ -477,9 +537,9 @@ class TrainableLM_delta(Trainable):
 
         # Forward pass with the finetuning data.
         # apply usual next word prediction loss
-        logger.debug(
-            f"STEP: applying next word prediction loss on {input_ids.shape = }"
-        )
+        # logger.debug(
+        #     f"STEP: applying next word prediction loss on {input_ids.shape = }"
+        # )
         outputs = self.forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -508,18 +568,18 @@ class TrainableLM_delta(Trainable):
             reg_attention_mask = reg_doc["attention_mask"].to(self.mt.device)
             # orig_loss = reg_doc["loss"].to(self.model.device)
 
-            logger.debug(
-                f"STEP: applying regularization loss on {reg_input_ids.shape = }"
-            )
+            # logger.debug(
+            #     f"STEP: applying regularization loss on {reg_input_ids.shape = }"
+            # )
 
-            # with torch.no_grad():
-            orig_logits = self.forward(
-                input_ids=reg_input_ids,
-                attention_mask=reg_attention_mask,
-                apply_param_delta=False,
-            ).logits
+            with torch.no_grad():
+                orig_logits = self.forward(
+                    input_ids=reg_input_ids,
+                    attention_mask=reg_attention_mask,
+                    apply_param_delta=False,
+                ).logits
 
-            logger.debug(f"{orig_logits.shape=}")
+            # logger.debug(f"{orig_logits.shape=}")
 
             # Calculate current loss on regularization document
             reg_logits = self.forward(
@@ -529,7 +589,7 @@ class TrainableLM_delta(Trainable):
                 apply_param_delta=True,
             ).logits
 
-            logger.debug(f"{reg_logits.shape=}")
+            # logger.debug(f"{reg_logits.shape=}")
 
             # kldiv loss between the original logits and the regularized logits
             reg_loss = torch.nn.functional.kl_div(
@@ -538,7 +598,7 @@ class TrainableLM_delta(Trainable):
                 reduction="batchmean",
             )
 
-            print(f"{reg_loss=}")
+            # print(f"{reg_loss=}")
 
             # divide by the sequence length
             reg_loss = reg_loss / reg_input_ids.shape[1]
@@ -549,7 +609,7 @@ class TrainableLM_delta(Trainable):
             loss += self.regularizer_lambda * reg_loss
             loss_dict["total_loss"] = loss.detach().item()
 
-        print("exiting loss function")
+        # print("exiting loss function")
         return loss, loss_dict
 
     #! will probably need to unwrap the model before saving (test)
@@ -557,7 +617,7 @@ class TrainableLM_delta(Trainable):
     def save(self, path: str):
         os.makedirs(path, exist_ok=True)
         param_delta_dict = {
-            name.replace(".", "_"): param_delta
+            name.replace(".", "<>"): param_delta.parameters()
             for name, param_delta in self.param_delta_dict.items()
         }
         torch.save(param_delta_dict, os.path.join(path, "param_delta_dict.pt"))
@@ -574,11 +634,15 @@ class TrainableLM_delta(Trainable):
         tunable_param_dict = {}
         for name, param in self.mt._model.named_parameters():
             if any(sig in name for sig in tunable_module_signatures):
-                param_delta = torch.nn.Parameter(
-                    torch.zeros_like(param).to(param.dtype).to(param.device)
-                )
+                with torch.no_grad():
+                    param_delta = (
+                        torch.nn.Parameter(
+                            torch.zeros_like(param).to(param.dtype).to(param.device)
+                        )
+                        # + 5 # only for testing if the param_delta is being applied
+                    )
                 param_delta.requires_grad = True
-                # param_delta = self.accelerator.prepare(param_delta)
+                param_delta = self.accelerator.prepare(param_delta)
                 module_name = ".".join(name.split(".")[:-1])
                 assert (
                     module_name not in tunable_param_dict
@@ -610,8 +674,8 @@ class TrainableLM_delta(Trainable):
             param_delta_dict = torch.load(param_delta_dict)
 
         self.param_delta_dict = {}
-        for param_name, param in param_delta_dict.items():
-            module_name, weight_name = param_name.split(".")
+        for module_name, param in param_delta_dict.items():
+            module_name = module_name.replace("<>", ".")
             base_module = get_module_nnsight(self.mt, module_name)
             base_params = getattr(base_module, "weight")
             self.param_delta_dict[module_name] = ParameterDelta(
@@ -654,7 +718,7 @@ class Trainer:
         warmup_steps: int = 0,
         # checkpointing
         save_path: str = "ft_checkpoints",
-        save_interval: int = 1,
+        save_interval: int = 10,
         keep_checkpoints: List[int] = None,
         remove_old_checkpoints: bool = True,
         # memory management
@@ -716,17 +780,38 @@ class Trainer:
         self._setup_optimizer_and_scheduler()
 
         # Prepare model and dataloaders with accelerator
-        # (
-        #     self.optimizer,
-        #     self.train_dataloader,
-        #     self.eval_dataloader,
-        #     self.lr_scheduler,
-        # ) = self.accelerator.prepare(
-        #     self.optimizer,
-        #     self.train_dataloader,
-        #     self.eval_dataloader,
-        #     self.lr_scheduler,
-        # )
+        (
+            self.optimizer,
+            self.train_dataloader,
+            self.eval_dataloader,
+            self.lr_scheduler,
+        ) = self.accelerator.prepare(
+            self.optimizer,
+            self.train_dataloader,
+            self.eval_dataloader,
+            self.lr_scheduler,
+        )
+
+    @property
+    def hparams(self) -> dict[str, Any]:
+        """
+        Get hyperparameters for the trainer.
+
+        Returns:
+            Dictionary of hyperparameters
+        """
+        return {
+            "num_epochs": self.num_epochs,
+            "learning_rate": self.learning_rate,
+            "weight_decay": self.weight_decay,
+            "warmup_steps": self.warmup_steps,
+            "save_path": self.save_path,
+            "save_interval": self.save_interval,
+            "keep_checkpoints": self.keep_checkpoints,
+            "remove_old_checkpoints": self.remove_old_checkpoints,
+            "memory_cleaner_threshold": self.memory_cleaner_threshold,
+            "log_to_wandb": self.log_to_wandb,
+        }
 
     def _setup_optimizer_and_scheduler(self):
         """Set up optimizer and learning rate scheduler."""
@@ -803,11 +888,8 @@ class Trainer:
         )
         logger.info(f"Saving model checkpoint to {save_dir}")
 
-        # Unwrap model before saving
-        unwrapped_model = self.accelerator.unwrap_model(self.trainable.model)
-
         # Save model
-        self.trainable.save(save_dir, unwrapped_model=unwrapped_model)
+        self.trainable.save(save_dir)
 
     def train(self):
         """
@@ -837,8 +919,8 @@ class Trainer:
 
             # Batch loop
             for batch_idx, batch in enumerate(progress_bar):
-                print(f"{batch_idx=}")
-                print(batch)
+                # print(f"{batch_idx=}")
+                # print(batch)
 
                 loss, loss_info = self.trainable.get_current_loss(
                     input_ids=batch["input_ids"],
@@ -847,10 +929,9 @@ class Trainer:
                 )
 
                 # Backward pass
-                print("backward pass")
-                # self.accelerator.backward(loss)
-                with self.trainable.mt.trace():
-                    loss.backward()
+                # print("backward pass")
+                self.accelerator.backward(loss)
+                # loss.backward()
 
                 # Update parameters
                 self.optimizer.step()
