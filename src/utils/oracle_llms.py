@@ -51,7 +51,7 @@ def ask_gpt4o(
                 "response": response,
                 "model": MODEL_NAME,
                 "hash": hash_val,
-                "tempraure": temperature,
+                "temperature": temperature,
             },
             f,
         )
@@ -106,7 +106,7 @@ def ask_claude(
                 "response": response,
                 "model": MODEL_NAME,
                 "hash": hash_val,
-                "tempraure": temperature,
+                "temperature": temperature,
             },
             f,
         )
