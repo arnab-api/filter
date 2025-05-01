@@ -218,7 +218,7 @@
                 "company": "Microsoft",
                 "position": "Senior Data Scientist",
                 "yearsOfExperience": 6,
-                "location": "Seattle, WA"
+                "location": "Redmond, WA"
             },
             "education": {
                 "degree": "PhD in Computer Science",
@@ -270,10 +270,10 @@
                 "Gardening"
             ],
             "worksAt": {
-                "company": "Environmental Protection Agency",
+                "company": "Environment and Climate Change Canada",
                 "position": "Research Scientist",
                 "yearsOfExperience": 9,
-                "location": "Toronto, Canada"
+                "location": "Gatineau, Quebec"
             },
             "education": {
                 "degree": "PhD in Environmental Science",
@@ -327,7 +327,7 @@
                 "location": "Cambridge, UK"
             },
             "education": {
-                "degree": "PhD in Artificial Intelligence",
+                "degree": "PhD in Computer Science",
                 "university": "University of Cambridge",
                 "graduationYear": 2012
             },
@@ -378,7 +378,7 @@
                 "location": "Mountain View, CA"
             },
             "education": {
-                "degree": "Bachelor's in Design",
+                "degree": "Bachelor's in Industrial Design",
                 "university": "Rhode Island School of Design",
                 "graduationYear": 2019
             },
@@ -429,7 +429,7 @@
                 "location": "Tokyo, Japan"
             },
             "education": {
-                "degree": "Master's in Computer Engineering",
+                "degree": "Master's in Computer Science",
                 "university": "Tokyo Institute of Technology",
                 "graduationYear": 2016
             },
@@ -531,7 +531,7 @@
                 "location": "Los Angeles, CA"
             },
             "education": {
-                "degree": "Bachelor's in Marketing",
+                "degree": "Bachelor's in Communication",
                 "university": "University of California, Los Angeles",
                 "graduationYear": 2020
             },
