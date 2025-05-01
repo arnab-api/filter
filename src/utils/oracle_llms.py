@@ -200,7 +200,7 @@ def extract_entities_with_oracle_LM(
     # """
     if other_entity is None:
         system_prompt = f"""
-Extrace key facts, entities, relationsships and attributes about {entity}.
+Extract key facts, entities, relationsships and attributes about {entity}.
 Format as a JSON array, where each element is a tuple with two elements: "name of the other entity/fact" and "description of the relationship".
 For example, if the entity is "Paris" the output should look like
 ```json
