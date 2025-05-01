@@ -35,7 +35,7 @@ try:
             if len(HF_CACHE_DIR) == 0:
                 HF_CACHE_DIR = None
 
-        for dir in [
+        for dir_path in [
             DEFAULT_MODELS_DIR,
             DEFAULT_DATA_DIR,
             DEFAULT_RESULTS_DIR,
@@ -43,8 +43,8 @@ try:
             GPT_4O_CACHE_DIR,
             CLAUDE_CACHE_DIR,
         ]:
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+            if dir_path and not os.path.exists(dir_path):
+                os.makedirs(dir_path)
 
 except FileNotFoundError:
     logger.error(
