@@ -1,23 +1,16 @@
 import copy
 import gc
-import hashlib
-import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import torch
-from anthropic import Anthropic
-from openai import OpenAI
-from tqdm import tqdm
 
-from src.dataset import BridgeDataset, BridgeSample, Relation
-from src.models import ModelandTokenizer, is_llama_variant
+from src.dataset import Relation
+from src.models import ModelandTokenizer
 from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
-from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR
 from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -752,200 +745,101 @@ def guess_subject(prompt):
     ].strip()
 
 
-def predict_bridge_entity(
-    mt: ModelandTokenizer,
-    prompt: str,
-    search_span: int = 100,
-    separator: Literal["#", "-"] = "#",
-) -> str:
-    inputs = prepare_input(prompts=prompt, tokenizer=mt, add_bos_token=False)
+#! Obsolete code related to the Bridge dataset. Should be moved to their own file if required in the future.
+# def predict_bridge_entity(
+#     mt: ModelandTokenizer,
+#     prompt: str,
+#     search_span: int = 100,
+#     separator: Literal["#", "-"] = "#",
+# ) -> str:
+#     inputs = prepare_input(prompts=prompt, tokenizer=mt, add_bos_token=False)
 
-    bridge_entity = ""
-    while search_span > 0:
-        predicted_token = predict_next_token(mt=mt, inputs=inputs, k=1)[0][0]
-        if predicted_token.token.strip() == separator:
-            break
+#     bridge_entity = ""
+#     while search_span > 0:
+#         predicted_token = predict_next_token(mt=mt, inputs=inputs, k=1)[0][0]
+#         if predicted_token.token.strip() == separator:
+#             break
 
-        bridge_entity += predicted_token.token
-        # print(torch.tensor([predicted_token.token_id]).to(mt.device))
-        # print(inputs["input_ids"].device)
-        inputs["input_ids"] = torch.cat(
-            [
-                inputs["input_ids"],
-                torch.tensor([predicted_token.token_id])[None].to(mt.device),
-            ],
-            dim=1,
-        )
-        inputs["attention_mask"] = torch.cat(
-            [inputs["attention_mask"], torch.tensor([1])[None].to(mt.device)], dim=1
-        )
-        search_span -= 1
+#         bridge_entity += predicted_token.token
+#         # print(torch.tensor([predicted_token.token_id]).to(mt.device))
+#         # print(inputs["input_ids"].device)
+#         inputs["input_ids"] = torch.cat(
+#             [
+#                 inputs["input_ids"],
+#                 torch.tensor([predicted_token.token_id])[None].to(mt.device),
+#             ],
+#             dim=1,
+#         )
+#         inputs["attention_mask"] = torch.cat(
+#             [inputs["attention_mask"], torch.tensor([1])[None].to(mt.device)], dim=1
+#         )
+#         search_span -= 1
 
-        if search_span == 0:
-            logger.error(f"search span exceeded - found: {bridge_entity}")
-            return bridge_entity
+#         if search_span == 0:
+#             logger.error(f"search span exceeded - found: {bridge_entity}")
+#             return bridge_entity
 
-    return bridge_entity
-
-
-from src.utils.env_utils import load_env_var
+#     return bridge_entity
 
 
-def ask_gpt4o(
-    prompt: str,
-) -> str:
-    ##################################################
-    client = OpenAI(
-        api_key=load_env_var("OPENAI_KEY"),
-    )
-    MODEL_NAME = "gpt-4o"
-    ##################################################
-
-    hash_val = hashlib.md5(prompt.encode()).hexdigest()
-    if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
-        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-        with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
-            json_data = json.load(f)
-            return json_data["response"]
-
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-        max_tokens=4000,
-    )
-    response = response.choices[0].message.content
-
-    with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "w") as f:
-        json.dump(
-            {
-                "prompt": prompt,
-                "response": response,
-                "model": MODEL_NAME,
-                "hash": hash_val,
-                "tempraure": 0,
-            },
-            f,
-        )
-
-    return response
+# def verify_bridge_response(
+#     query_sample: BridgeSample,
+#     predicted_answer: str,
+#     model: str = "claude",
+# ) -> str:
+#     prompt = f"""
+# A smaller language model was asked the following question:
+# "What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
+# And the model gave the following answer:
+# "{predicted_answer.strip()}"
+# Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
+# """
+#     return ASK_ORACLE_MODEL[model](prompt)
 
 
-def ask_claude(
-    prompt: str,
-) -> str:
-    ##################################################
-    client = Anthropic(
-        api_key=load_env_var("CLAUDE_KEY"),
-    )
-    MODEL_NAME = "claude-3-7-sonnet-20250219"
-    ##################################################
+# @torch.inference_mode()
+# def filter_bridge_samples_by_model_knowledge(
+#     mt: ModelandTokenizer,
+#     dataset: BridgeDataset,
+#     limit: Optional[int] = None,
+#     powerful_LM: str = "claude",
+# ) -> BridgeDataset:
+#     filtered_samples = []
+#     filtered_relation_samples = {}
+#     for i in tqdm(range(len(dataset))):
+#         prompt, answer = dataset[i]
+#         sample = dataset.examples[i]
+#         predicted_bridge = predict_bridge_entity(mt, prompt)
+#         # is_correct = is_nontrivial_prefix(sample.bridge.lower(), predicted_bridge) or is_nontrivial_prefix(predicted_bridge, sample.bridge)
+#         is_correct = (
+#             sample.bridge.strip().lower() == "none"
+#             and predicted_bridge.strip().lower().startswith("none")
+#         ) or (
+#             verify_bridge_response(sample, predicted_bridge, powerful_LM)
+#             .lower()
+#             .startswith("yes")
+#         )
 
-    hash_val = hashlib.md5(prompt.encode()).hexdigest()
-    if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
-        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-        with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
-            json_data = json.load(f)
-            return json_data["response"]
+#         logger.info(
+#             f"{sample.entity_pair} <> {sample.bridge} | predicted: {predicted_bridge} => ({get_tick_marker(is_correct)})"
+#         )
+#         if is_correct:
+#             filtered_samples.append(sample)
+#             if sample.relation not in filtered_relation_samples:
+#                 filtered_relation_samples[sample.relation] = []
+#             filtered_relation_samples[sample.relation].append(sample)
+#         if limit is not None and len(filtered_samples) >= limit:
+#             break
 
-    response = client.messages.create(
-        model=MODEL_NAME,
-        max_tokens=4000,
-        temperature=0,
-        system="You are a helpful assistant.",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    }
-                ],
-            }
-        ],
-    )
-    response = response.content[0].text
+#     logger.info(
+#         f"filtered {len(filtered_samples)} samples out of {len(dataset)} with {len(dataset.icl_examples)} icl examples"
+#     )
 
-    with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "w") as f:
-        json.dump(
-            {
-                "prompt": prompt,
-                "response": response,
-                "model": MODEL_NAME,
-                "hash": hash_val,
-                "tempraure": 0,
-            },
-            f,
-        )
+#     dataset.examples = filtered_samples
+#     for relation in dataset.relations:
+#         relation.examples = filtered_relation_samples.get(relation.name, [])
 
-    return response
-
-
-ASK_ORACLE_MODEL = {"gpt4o": ask_gpt4o, "claude": ask_claude}
-
-
-def verify_bridge_response(
-    query_sample: BridgeSample,
-    predicted_answer: str,
-    model: str = "claude",
-) -> str:
-    prompt = f"""
-A smaller language model was asked the following question:
-"What is a common link between {query_sample.entity_pair[0]} and {query_sample.entity_pair[1]}?"
-And the model gave the following answer:
-"{predicted_answer.strip()}"
-Is it correct? Your answer should start with "Yes" or "No". If the answer is "Yes", don't say anything else. If the answer is "No", give explanation why.
-"""
-    return ASK_ORACLE_MODEL[model](prompt)
-
-
-@torch.inference_mode()
-def filter_bridge_samples_by_model_knowledge(
-    mt: ModelandTokenizer,
-    dataset: BridgeDataset,
-    limit: Optional[int] = None,
-    powerful_LM: str = "claude",
-) -> BridgeDataset:
-    filtered_samples = []
-    filtered_relation_samples = {}
-    for i in tqdm(range(len(dataset))):
-        prompt, answer = dataset[i]
-        sample = dataset.examples[i]
-        predicted_bridge = predict_bridge_entity(mt, prompt)
-        # is_correct = is_nontrivial_prefix(sample.bridge.lower(), predicted_bridge) or is_nontrivial_prefix(predicted_bridge, sample.bridge)
-        is_correct = (
-            sample.bridge.strip().lower() == "none"
-            and predicted_bridge.strip().lower().startswith("none")
-        ) or (
-            verify_bridge_response(sample, predicted_bridge, powerful_LM)
-            .lower()
-            .startswith("yes")
-        )
-
-        logger.info(
-            f"{sample.entity_pair} <> {sample.bridge} | predicted: {predicted_bridge} => ({get_tick_marker(is_correct)})"
-        )
-        if is_correct:
-            filtered_samples.append(sample)
-            if sample.relation not in filtered_relation_samples:
-                filtered_relation_samples[sample.relation] = []
-            filtered_relation_samples[sample.relation].append(sample)
-        if limit is not None and len(filtered_samples) >= limit:
-            break
-
-    logger.info(
-        f"filtered {len(filtered_samples)} samples out of {len(dataset)} with {len(dataset.icl_examples)} icl examples"
-    )
-
-    dataset.examples = filtered_samples
-    for relation in dataset.relations:
-        relation.examples = filtered_relation_samples.get(relation.name, [])
-
-    return dataset
+#     return dataset
 
 
 def free_gpu_cache():
@@ -1053,139 +947,3 @@ def save_object(obj, save_path):
         save_path,
         **obj,
     )
-
-
-############################# Keyword Extraction Utils #############################
-# import wikipedia
-# import yake
-
-
-# def extract_keywords_from_wiki(entity_name, language="en"):
-#     try:
-#         page = wikipedia.page(entity_name)
-#         content = page.content
-
-#         # Extract keywords with YAKE - adjust parameters for better results
-#         # Using bigrams and trigrams captures more meaningful entities
-#         kw_extractor = yake.KeywordExtractor(lan=language, n=3, dedupLim=0.9, top=50)
-#         keywords = kw_extractor.extract_keywords(content)
-
-#         return {
-#             "title": page.title,
-#             "keywords": [kw for kw, score in keywords],
-#             "url": page.url,
-#         }
-#     except Exception as e:
-#         print(f"Error extracting keywords for {entity_name}: {e}")
-#         return None
-
-
-# import spacy
-
-
-# def extract_entities_with_spacy(entity_name):
-#     try:
-#         nlp = spacy.load("en_core_web_lg")
-#     except:
-#         spacy.cli.download("en_core_web_lg")
-#         nlp = spacy.load("en_core_web_lg")
-
-#     page = wikipedia.page(entity_name)
-#     content = page.content
-
-#     # Process with SpaCy
-#     doc = nlp(content)
-
-#     # Extract entities by type
-#     entities = {
-#         "PERSON": [],
-#         "ORG": [],
-#         "GPE": [],  # Countries, cities
-#         "DATE": [],
-#         "MISC": [],
-#     }
-
-#     for ent in doc.ents:
-#         if ent.label_ in entities:
-#             entities[ent.label_].append(ent.text)
-#         else:
-#             entities["MISC"].append(ent.text)
-
-#     # Deduplicate
-#     for category in entities:
-#         entities[category] = list(set(entities[category]))
-
-#     return entities
-
-
-# TODO(arnab): test
-def extract_entities_with_oracle_LM(
-    entity: str,
-    oracle: Literal["gpt4o", "claude"] = "claude",
-    other_entity: str = None,
-) -> list[tuple[str, str]]:
-
-    # system_prompt = f"""
-    #     Extract key facts, relationships and attributes about {entity}.
-    #     Format as a JSON with these categories:
-    #     - biography: key biographical facts
-    #     - achievements: major accomplishments
-    #     - relationships: key people connected to the entity
-    #     - organizations: affiliated organizations
-    #     - places: significant locations
-    #     - dates: important dates
-    #     - misc: other noteworthy information
-    # """
-    if other_entity is None:
-        system_prompt = f"""
-Extrace key facts, entities, relationsships and attributes about {entity}.
-Format as a JSON array, where each element is a tuple with two elements: "name of the other entity/fact" and "description of the relationship".
-For example, if the entity is "Paris" the output should look like
-```json
-[
-    ["France", "Paris is the capital of France"],
-    ["Eiffel Tower", "The Eiffel Tower is located in Paris"],
-    ["Louvre Museum", "The Louvre Museum is a famous museum in Paris"],
-    ["City of Light", "Paris is often referred to as the City of Light"],
-
-    ....
-]
-```
-Make sure to include the most important and relevant facts about the entities. Give as many facts as possible.
-"""
-
-    else:
-        system_prompt = f"""
-Given two entities, \"{entity}\" and \"{other_entity}\", find a common link or relation between them.
-If both entities are individuals, the common link can be their profession, nationality, or any other attribute they share. Their relation can be if someone is the student/teacher of the other etc.
-Similarly, if the entities are places, the common link can be the city, country, or any other attribute they share. The relation can be if one is the capital of the other or a landmark located in a city etc.
-
-Format your answer as a JSON array, where each element is a tuple with two elements: "name of the connection" and "brief explanation of how this connection is relevant to both of the entities".
-For example, if the entities are "Batman" and "Ironman", the output should look like
-
-```json
-[
-    ["Superheroes", "Both Batman and Ironman are iconic superheroes in the comic book world."],
-    ["Gadgets", "Both characters use advanced technology and gadgets to fight crime."],
-    ["Billionaires", "Both characters are wealthy individuals who use their resources to become superheroes."],
-    ....
-]
-```
-Make sure to give as many connections as possible. If you can't find any connection, just return an empty JSON array.
-"""
-
-    response = ASK_ORACLE_MODEL[oracle](system_prompt)
-
-    # Parse the response
-    try:
-        lines = response.splitlines()
-        if "```json" in lines[0]:
-            lines = lines[1:-1]
-        response = "\n".join(lines)
-        response_json = json.loads(response)
-
-    except json.JSONDecodeError:
-        logger.error("Failed to parse JSON response.")
-        return response
-
-    return response_json
