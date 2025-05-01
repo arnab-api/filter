@@ -6,7 +6,6 @@ torch
 transformers
 accelerate
 nnsight
-baukit # Seems related to model interpretability/probing, used in functional.py, models.py, tokens.py
 
 # LLM APIs
 openai
@@ -14,11 +13,9 @@ anthropic
 
 # Utilities
 numpy
-PyYAML # For reading env.yml
-tqdm # Progress bars
-dataclasses-json # For easy dataclass serialization
-matplotlib # For plotting
-nltk # For text processing (stopwords in functional.py)
-
-# Experiment Tracking (Appears optional but used in training_utils)
-# wandb
+PyYAML
+tqdm
+dataclasses-json
+matplotlib
+nltk
+wandb
