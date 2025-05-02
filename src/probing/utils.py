@@ -8,9 +8,9 @@ import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.functional import ASK_ORACLE_MODEL
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, prepare_input
+from src.utils.oracle_llms import ASK_ORACLE_MODEL
 from src.utils.typing import ArrayLike, TokenizerOutput
 
 logger = logging.getLogger(__name__)

@@ -12,26 +12,43 @@ MODELS = [
 TRAIN_DOC = "synthetic_entities_bio.json"
 REG_LIMIT = 10000
 BATCH_SIZE = 4
-SAVE_PATH = "delta_weights_bio"
+MAX_EPOCHS = 30
+SAVE_PATH = "trained_params"
+LORA_RANKS = [None, 256]
 
-cmd_template = (
-    'python -m scripts.full_finetune --max_epochs=100 --batch_size=8 --model="{}" -v'
-)
+cmd_template = 'python -m scripts.train --model="{}" -v'
 
 for model in MODELS:
-    print("#" * 80)
-    print(f"Finetuning Model: {model}")
-    print("#" * 80)
+    for lora in LORA_RANKS:
+        print("#" * 80)
+        print(f"Finetuning Model: {model} | {lora=}")
 
-    cmd = cmd_template.format(model)
-    cmd += f" --train_doc={TRAIN_DOC}"
-    cmd += f" --batch_size={BATCH_SIZE}"
-    cmd += f" --reg_limit={REG_LIMIT}"
-    cmd += f' --run_name="{model.split("/")[-1]}_BIO"'
-    cmd += f' --save_path="{SAVE_PATH}"'
+        cmd = cmd_template.format(model)
+        cmd += f" --max_epochs={MAX_EPOCHS}"
+        cmd += f" --batch_size={BATCH_SIZE}"
+        cmd += f" --reg_limit={REG_LIMIT}"
+        cmd += f" --train_doc={TRAIN_DOC}"
+        cur_run_name = f"{model.split('/')[-1]}_BIO"
+        cur_save_path = SAVE_PATH
+        if lora is not None:
+            cur_run_name += f"_lora_{lora}"
+            cur_save_path += os.path.join(f"lora_{lora}")
+        else:
+            cur_run_name += "_full"
+            cur_save_path += os.path.join("full")
 
-    logs_dir = f"logs/{model.split('/')[-1]}"
-    os.makedirs(logs_dir, exist_ok=True)
-    cmd += f" 2>&1 | tee {logs_dir}/ft_bio.log"
-    print(cmd)
-    os.system(cmd)
+        cmd += f' --run_name="{cur_run_name}"'
+        cmd += f' --save_path="{cur_save_path}"'
+        if lora is not None:
+            cmd += f" --lora_rank={lora}"
+
+        logs_dir = f"logs/{model.split('/')[-1]}"
+        os.makedirs(logs_dir, exist_ok=True)
+
+        log_file_name = "full" if lora is None else f"lora_{lora}"
+        cmd += f" 2>&1 | tee {logs_dir}/{log_file_name}.log"
+
+        print(cmd)
+        print("#" * 80)
+
+        os.system(cmd)

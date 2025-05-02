@@ -12,7 +12,12 @@ from torch.utils.data import DataLoader
 import wandb
 from src.models import ModelandTokenizer
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.training_utils import TextDataset, TrainableLM_delta, Trainer
+from src.utils.training_utils import (
+    TextDataset,
+    TrainableLM_delta,
+    TrainableLM_LoRA,
+    Trainer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,7 @@ def run_finetuning(
     save_interval: int = 30,
     keep_checkpoints: List[int] = None,
     memory_cleaner_threshold: float = 0.7,
+    lora_rank: Optional[int] = None,
 ):
     """
     Fine-tune a language model with optional regularization using Hugging Face Accelerate.
@@ -56,14 +62,22 @@ def run_finetuning(
     # Initialize wandb run name
     run_name = mt.name.split("/")[-1]
 
-    trainable_deltas = TrainableLM_delta(
-        mt=mt,
-        regularization_dataloader=reg_loader,
-        regularizer_lambda=regularizer_lambda,
-    )
+    if lora_rank is not None:
+        trainable = TrainableLM_LoRA(
+            mt=mt,
+            rank=lora_rank,
+            regularization_dataloader=reg_loader,
+            regularizer_lambda=regularizer_lambda,
+        )
+    else:
+        trainable = TrainableLM_delta(
+            mt=mt,
+            regularization_dataloader=reg_loader,
+            regularizer_lambda=regularizer_lambda,
+        )
 
     trainer = Trainer(
-        trainable=trainable_deltas,
+        trainable=trainable,
         train_dataloader=train_loader,
         eval_dataloader=val_loader,
         num_epochs=max_epochs,
@@ -314,6 +328,13 @@ if __name__ == "__main__":
         help="Number of times to repeat the training documents",
     )
 
+    parser.add_argument(
+        "--lora_rank",
+        type=int,
+        default=None,
+        help="Rank for LoRA (Low-Rank Adaptation) fine-tuning",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -349,7 +370,13 @@ if __name__ == "__main__":
     )
 
     # Initialize wandb for logging
-    run_name = args.run_name if args.run_name else f"{args.model.split('/')[-1]}-BIO"
+    if args.run_name is None:
+        # Use model name as run name if not provided
+        args.run_name = f"{args.model.split('/')[-1]}-BIO"
+        if args.lora_rank > 0:
+            args.run_name += f"-LoRA-{args.lora_rank}"
+
+    run_name = args.run_name
 
     wandb.init(
         entity="reasoning-iterp",
@@ -372,6 +399,7 @@ if __name__ == "__main__":
         save_interval=args.save_interval,
         keep_checkpoints=args.keep_checkpoints,
         memory_cleaner_threshold=args.memory_cleaner_threshold,
+        lora_rank=args.lora_rank,
     )
 
     # Close wandb run
