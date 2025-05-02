@@ -1,15 +1,20 @@
 import copy
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
-from src.functional import (find_token_range, free_gpu_cache,
-                            get_module_nnsight, interpret_logits,
-                            low_rank_pinv, prepare_input)
+from src.functional import (
+    find_token_range,
+    free_gpu_cache,
+    get_module_nnsight,
+    interpret_logits,
+    low_rank_pinv,
+    prepare_input,
+)
 from src.models import ModelandTokenizer
 from src.utils.typing import SVD, TokenizerOutput
 
@@ -23,7 +28,7 @@ def project_to_vocab(
     layer_name: str,
     inputs: Optional[TokenizerOutput] = None,
     placeholder_pos: int = 0,
-    **kwargs
+    **kwargs,
 ):
     if inputs is None:
         inputs = mt.tokenizer(
@@ -195,7 +200,6 @@ def order_1_approx(
     inp_layer: str,
     out_layer: str = "lm_head",
 ) -> Order1Approx:
-
     def func(h: torch.Tensor) -> torch.Tensor:
         return patch(h, mt, inp_layer, out_layer)
 

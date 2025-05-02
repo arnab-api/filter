@@ -2,22 +2,28 @@ import argparse
 import json
 import logging
 import os
-import types
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-import baukit  # type: ignore
 import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
-from src.dataset import (BridgeDataset, BridgeRelation, BridgeSample,
-                         load_bridge_relation)
-from src.functional import (PatchSpec, find_token_range, free_gpu_cache,
-                            get_hs, get_module_nnsight, guess_subject,
-                            predict_next_token, prepare_input, untuple)
-from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
+from src.dataset import (
+    BridgeDataset,
+    BridgeRelation,
+    BridgeSample,
+)
+from src.functional import (
+    PatchSpec,
+    find_token_range,
+    free_gpu_cache,
+    get_hs,
+    get_module_nnsight,
+    predict_next_token,
+    prepare_input,
+)
 from src.models import ModelandTokenizer, prepare_input
 from src.trace import insert_padding_before_subj
 from src.utils import env_utils, experiment_utils, logging_utils
@@ -37,7 +43,6 @@ def attribution_patching(
     resolution: int = 10,
     intermediate_point_sample: Literal["linear", "non-linear"] = "non-linear",
 ) -> dict[tuple[str, int], float]:
-
     if "offset_mapping" in clean_inputs:
         clean_inputs.pop("offset_mapping")
     if isinstance(patches, PatchSpec):
@@ -231,10 +236,10 @@ def process_inputs(
     logger.debug(f"{clean_subj_ranges=}")
     for t in range(*clean_subj_ranges[0]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][t])}")
-    logger.debug(f"{'-'*50}")
+    logger.debug(f"{'-' * 50}")
     for t in range(*clean_subj_ranges[1]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][t])}")
-    logger.debug(f"{'='*50}")
+    logger.debug(f"{'=' * 50}")
 
     patch_inputs = prepare_input(
         prompts=patch_icq[0], tokenizer=mt, return_offsets_mapping=True
@@ -257,7 +262,7 @@ def process_inputs(
     for t in range(*patch_subj_ranges[1]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(patch_inputs['input_ids'][0][t])}")
 
-    logger.debug(f"{'+'*50}")
+    logger.debug(f"{'+' * 50}")
 
     assert clean_subj_ranges[0][0] == patch_subj_ranges[0][0]
     subj_1_range = (
@@ -322,13 +327,13 @@ def process_inputs(
         logger.debug(
             f"{i=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][i])} <> {mt.tokenizer.decode(patch_inputs['input_ids'][0][i])}"
         )
-    logger.debug(f"{'-'*50}")
+    logger.debug(f"{'-' * 50}")
     logger.debug(f"{subj_2_range=}")
     for i in range(*subj_2_range):
         logger.debug(
             f"{i=} | [{clean_inputs['attention_mask'][0][i]}]{mt.tokenizer.decode(clean_inputs['input_ids'][0][i])} <> [{patch_inputs['attention_mask'][0][i]}]{mt.tokenizer.decode(patch_inputs['input_ids'][0][i])}"
         )
-    logger.debug(f"{'='*50}")
+    logger.debug(f"{'=' * 50}")
 
     query_start = find_token_range(
         string=clean_icq[0],
@@ -388,9 +393,7 @@ def get_attribution_patching_results_for_icq_pair(
     patch_ans = predict_next_token(
         mt=mt,
         inputs=patch_inputs,
-    )[
-        0
-    ][0]
+    )[0][0]
     logger.debug(f"{patch_ans=}")
 
     clean_ans, corrupt_rank = predict_next_token(
@@ -506,9 +509,9 @@ def cache_attribution_patching_results(
         if rel["name"] == relation:
             relation_icq = BridgeRelation.from_dict(rel)
             break
-    assert (
-        relation_icq is not None
-    ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+    assert relation_icq is not None, (
+        f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+    )
 
     dataset = BridgeDataset(relations=[relation_icq])
     logger.debug(f"{dataset.icl_examples=}")
@@ -519,7 +522,7 @@ def cache_attribution_patching_results(
     )
     limit = len(dataset) if limit is None else limit
     for idx in range(limit):
-        logger.info(f"Processing {idx+1}/{limit}")
+        logger.info(f"Processing {idx + 1}/{limit}")
         patch_icq = dataset[idx]
         clean_idx = sample_icq_with_different_bridge(
             dataset.examples, dataset.examples[idx]

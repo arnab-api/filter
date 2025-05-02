@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 from dataclasses import dataclass
@@ -10,7 +9,7 @@ from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
 from src.functional import ASK_ORACLE_MODEL
-from src.models import ModelandTokenizer, is_llama_variant
+from src.models import ModelandTokenizer
 from src.tokens import find_token_range, prepare_input
 from src.utils.typing import ArrayLike, TokenizerOutput
 
@@ -40,7 +39,6 @@ def prepare_probing_input(
     answer_prefix: str = "",
     return_offsets_mapping: bool = False,
 ) -> ProbingPrompt:
-
     prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}{answer_prefix}"""
     if is_a_reasoning_model:
         thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Put your answer within \\boxed{}."
@@ -105,12 +103,12 @@ def get_lm_generated_answer(
                 attention_mask=prompt.tokenized["attention_mask"],
             )
         ),
-        max_new_tokens=50 if is_a_reasoning_model == False else 1000,
+        max_new_tokens=50 if is_a_reasoning_model is False else 1000,
         do_sample=False,
         output_scores=True,
         return_dict_in_generate=True,
         use_cache=use_kv_cache,
-    ) as gen_trace:
+    ) as gen_trace:  # noqa: F841
         output = mt.generator.output.save()
 
     generation = mt.tokenizer.decode(
@@ -120,7 +118,7 @@ def get_lm_generated_answer(
 
     # print(generation)
 
-    if is_a_reasoning_model == False:
+    if is_a_reasoning_model is False:
         if block_separator in generation:
             generation = generation.split(block_separator)[0].strip()
     else:
@@ -146,9 +144,9 @@ def check_if_answer_is_correct(
     """
 
     #! use this only if the answer is not None
-    assert (
-        answer.startswith("None") == False
-    ), f'Pass a valid answer to check, passed: "{answer}"'
+    assert answer.startswith("None") is False, (
+        f'Pass a valid answer to check, passed: "{answer}"'
+    )
 
     if any([keyword in answer for keyword in keywords]):
         return True

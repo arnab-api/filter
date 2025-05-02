@@ -186,7 +186,6 @@ def extract_entities_with_oracle_LM(
     oracle: Literal["gpt4o", "claude"] = "claude",
     other_entity: str = None,
 ) -> list[tuple[str, str]]:
-
     # system_prompt = f"""
     #     Extract key facts, relationships and attributes about {entity}.
     #     Format as a JSON with these categories:

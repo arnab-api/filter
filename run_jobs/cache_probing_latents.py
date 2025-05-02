@@ -1,7 +1,5 @@
-import itertools
 import os
 import time
-from dataclasses import dataclass
 
 import numpy as np
 import yaml
@@ -114,7 +112,7 @@ for idx, probe_class in enumerate(PROBE_CLASSES):
         cmd += f' --probe_class="{probe_class}"'
         cmd += f" --limit={LIMIT}"
         cmd += f' --save_dir="{SAVE_DIR}"'
-        cmd += f" --seed=123456"
+        cmd += " --seed=123456"
         cmd += f" |& tee logs/{model_short_name}/{probe_class.split('/')[-1]}.log"
 
         exp_name = f"{model_short_name}__{probe_class.split('/')[-1]}"

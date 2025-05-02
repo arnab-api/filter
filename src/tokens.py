@@ -1,34 +1,9 @@
 import logging
-import os
-from dataclasses import dataclass, field
-from typing import Any, Literal, Optional, overload
+from typing import Any, Literal, Optional
 
-import baukit
 import torch
-import transformers
-from nnsight import LanguageModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.models import ModelandTokenizer, determine_device, unwrap_tokenizer
-from src.utils.env_utils import DEFAULT_MODELS_DIR
-from src.utils.typing import Tokenizer, TokenizerOutput
-
-logger = logging.getLogger(__name__)
-
-
-import logging
-import os
-from dataclasses import dataclass, field
-from typing import Any, Literal, Optional, overload
-
-import baukit
-import torch
-import transformers
-from nnsight import LanguageModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-from src.models import ModelandTokenizer, determine_device, unwrap_tokenizer
-from src.utils.env_utils import DEFAULT_MODELS_DIR
 from src.utils.tokenization_utils import set_padding_side
 from src.utils.typing import Tokenizer, TokenizerOutput
 
@@ -242,9 +217,9 @@ def find_token_range(
                 break
 
     # print(f"{substring=}, {occurrence=} | {token_start=}, {token_end=}")
-    assert (
-        token_start is not None
-    ), "Are you working with Llama-3? Try passing the ModelandTokenizer object as the tokenizer"
+    assert token_start is not None, (
+        "Are you working with Llama-3? Try passing the ModelandTokenizer object as the tokenizer"
+    )
     assert token_end is not None
     assert token_start <= token_end
     return (token_start, token_end + 1)
@@ -330,7 +305,6 @@ def align_patching_positions(
     patched_input: Optional[TokenizerOutput] = None,
     trace_start_marker: Optional[str] = None,
 ) -> dict:
-
     if clean_input is None:
         clean_input = prepare_input(
             prompts=prompt_template.format(clean_subj),
@@ -383,9 +357,9 @@ def align_patching_positions(
             - 1
         )
         # print(trace_start_idx)
-        assert trace_start_idx <= min(
-            clean_subj_range[0], patched_subj_range[0]
-        ), f"{trace_start_idx=} has to be smaller than {min(clean_subj_range[0], patched_subj_range[0])=}"
+        assert trace_start_idx <= min(clean_subj_range[0], patched_subj_range[0]), (
+            f"{trace_start_idx=} has to be smaller than {min(clean_subj_range[0], patched_subj_range[0])=}"
+        )
 
     if clean_subj_range == patched_subj_range:
         subj_start, subj_end = clean_subj_range
@@ -448,10 +422,10 @@ def align_bridge_entities_in_query(
     logger.debug(f"{clean_subj_ranges=}")
     for t in range(*clean_subj_ranges[0]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][t])}")
-    logger.debug(f"{'-'*50}")
+    logger.debug(f"{'-' * 50}")
     for t in range(*clean_subj_ranges[1]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][t])}")
-    logger.debug(f"{'='*50}")
+    logger.debug(f"{'=' * 50}")
 
     patch_inputs = prepare_input(
         prompts=patch_ques, tokenizer=mt, return_offset_mapping=True
@@ -474,7 +448,7 @@ def align_bridge_entities_in_query(
     for t in range(*patch_subj_ranges[1]):
         logger.debug(f"{t=} | {mt.tokenizer.decode(patch_inputs['input_ids'][0][t])}")
 
-    logger.debug(f"{'+'*50}")
+    logger.debug(f"{'+' * 50}")
 
     assert clean_subj_ranges[0][0] == patch_subj_ranges[0][0]
     subj_1_range = (
@@ -539,13 +513,13 @@ def align_bridge_entities_in_query(
         logger.debug(
             f"{i=} | {mt.tokenizer.decode(clean_inputs['input_ids'][0][i])} <> {mt.tokenizer.decode(patch_inputs['input_ids'][0][i])}"
         )
-    logger.debug(f"{'-'*50}")
+    logger.debug(f"{'-' * 50}")
     logger.debug(f"{subj_2_range=}")
     for i in range(*subj_2_range):
         logger.debug(
             f"{i=} | [{clean_inputs['attention_mask'][0][i]}]{mt.tokenizer.decode(clean_inputs['input_ids'][0][i])} <> [{patch_inputs['attention_mask'][0][i]}]{mt.tokenizer.decode(patch_inputs['input_ids'][0][i])}"
         )
-    logger.debug(f"{'='*50}")
+    logger.debug(f"{'=' * 50}")
 
     query_start = find_token_range(
         string=clean_ques,

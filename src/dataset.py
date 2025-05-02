@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import random
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Optional, Sequence
 from dataclasses_json import DataClassJsonMixin
 from torch.utils.data import Dataset
 
-from src.utils.env_utils import DEFAULT_DATA_DIR, GPT_4O_CACHE_DIR
+from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike
 
 logger = logging.getLogger(__name__)
@@ -34,9 +33,7 @@ class InContextQuery(DataClassJsonMixin):
     cf_description: str
     answer: str
 
-    template: str = (
-        "Assume an alternative universe where <subj> is in <loc>. In that universe, <subj> is located in the city of"
-    )
+    template: str = "Assume an alternative universe where <subj> is in <loc>. In that universe, <subj> is located in the city of"
 
     def set_template(self, template: str):
         self.template = template
@@ -269,11 +266,11 @@ class RelationDataset(Dataset[Relation]):
             if value is not None:
                 if isinstance(value, bool):
                     logger.debug(f"filtering by property {key}={value}")
-                    matches = lambda x: x == value
+                    matches = lambda x: x == value  # noqa: E731
                 else:
                     logger.debug(f"filtering by property {key} in {value}")
                     value_set = set(value)
-                    matches = lambda x: (x in value_set)
+                    matches = lambda x: (x in value_set)  # noqa: E731
 
                 relations = [
                     r for r in relations if matches(getattr(r.properties, key))
@@ -395,9 +392,9 @@ class BridgeSample(DataClassJsonMixin):
     relation: Optional[str] = None
 
     def __post_init__(self):
-        assert (
-            len(self.entity_pair) == 2
-        ), f"entity_pair must have length 2, got {len(self.entity)} - {self.entity}"
+        assert len(self.entity_pair) == 2, (
+            f"entity_pair must have length 2, got {len(self.entity)} - {self.entity}"
+        )
 
     def __str__(self):
         return (

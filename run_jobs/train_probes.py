@@ -1,7 +1,5 @@
-import itertools
 import os
 import time
-from dataclasses import dataclass
 
 import numpy as np
 import yaml
@@ -107,11 +105,11 @@ for idx, layers in enumerate(LAYER_SPLITS):
     cmd += f' --model="{MODEL_KEY}"'
     cmd += f" --token_idx={TOKEN_IDX}"
     cmd += f' --layer_name_format="{LAYER_NAME_FORMAT}"'
-    cmd += f' --layers {" ".join(map(str, layers))}'
+    cmd += f" --layers {' '.join(map(str, layers))}"
     cmd += f" --limit={LIMIT}"
     cmd += f' --save_dir="{SAVE_DIR}"'
 
-    cmd += f" --seed=123456"
+    cmd += " --seed=123456"
 
     layer_short_hand = "_".join(map(str, layers))
     cmd += f" |& tee logs/train_probes/{model_short_name}/{layer_short_hand}.log"

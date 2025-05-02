@@ -124,7 +124,7 @@ def save_results_file(
     """Save an intermediate result."""
     if results_dir is None:
         logger.debug(
-            "results_dir not set, so not saving intermediate results for " f'"{name}"'
+            f'results_dir not set, so not saving intermediate results for "{name}"'
         )
         return None
     relation_results_file = name_results_file(results_dir=results_dir, name=name)

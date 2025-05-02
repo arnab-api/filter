@@ -1,16 +1,23 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 
-from src.functional import (free_gpu_cache, get_hs, get_module_nnsight,
-                            interpret_logits, prepare_input)
+from src.functional import (
+    free_gpu_cache,
+    get_hs,
+    get_module_nnsight,
+    interpret_logits,
+    prepare_input,
+)
 from src.models import ModelandTokenizer
-from src.operators.operators import CornerOperator
-from src.operators.utils import (Order1Approx,
-                                 get_inputs_and_intervention_range,
-                                 get_lm_head_row, patch)
+from src.operators.utils import (
+    Order1Approx,
+    get_inputs_and_intervention_range,
+    get_lm_head_row,
+    patch,
+)
 from src.utils.typing import PredictedToken
 
 logger = logging.getLogger(__name__)
@@ -72,7 +79,6 @@ def apply_jacobian_inv_edit(
     num_tokens: int = 20,
     V_directions: Optional[torch.Tensor] = None,
 ) -> EditResults:
-
     free_gpu_cache()
 
     inputs, subj_range = get_inputs_and_intervention_range(mt, prompt, subject)
@@ -140,7 +146,7 @@ def apply_jacobian_inv_edit(
 
         # normalized_deltas[layer_name] = repr_diff
 
-    with mt.trace(inputs) as tr:
+    with mt.trace(inputs) as tr:  # noqa: F841
         for layer_name in layers:
             repr_diff = repr_diffs[layer_name]
             layer = get_module_nnsight(mt, layer_name)
@@ -182,7 +188,7 @@ def apply_jacobian_inv_edit(
         do_sample=True,
         output_scores=True,
         return_dict_in_generate=True,
-    ) as gen_trace:
+    ) as gen_trace:  # noqa: F841
         for layer_name in layers:
             layer = get_module_nnsight(mt, layer_name)
             # layer.output[0][:, subj_range, :] += repr_diff

@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -9,11 +9,10 @@ from dataclasses_json import DataClassJsonMixin
 from src.functional import (
     PatchSpec,
     get_module_nnsight,
-    interpret_logits,
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.utils.typing import PredictedToken, TokenizerOutput
+from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +26,15 @@ class AttentionInformation(DataClassJsonMixin):
     def _init__(
         self, prompt: str, tokenized_prompt: list[str], attention_matrices: torch.tensor
     ):
-        assert (
-            len(tokenized_prompt) == attention_matrices.shape[-1]
-        ), "Tokenized prompt and attention matrices must have the same length"
-        assert (
-            len(attention_matrices.shape) == 4
-        ), "Attention matrices must be of shape (layers, heads, tokens, tokens)"
-        assert (
-            attention_matrices.shape[-1] == attention_matrices.shape[-2]
-        ), "Attention matrices must be square"
+        assert len(tokenized_prompt) == attention_matrices.shape[-1], (
+            "Tokenized prompt and attention matrices must have the same length"
+        )
+        assert len(attention_matrices.shape) == 4, (
+            "Attention matrices must be of shape (layers, heads, tokens, tokens)"
+        )
+        assert attention_matrices.shape[-1] == attention_matrices.shape[-2], (
+            "Attention matrices must be square"
+        )
 
         self.prompt = prompt
         self.tokenized_prompt = tokenized_prompt
@@ -81,9 +80,9 @@ def get_attention_matrices(
     if isinstance(input, str):
         input = prepare_input(prompts=input, tokenizer=mt)
     else:
-        assert isinstance(
-            input, TokenizerOutput
-        ), "input must be either a string or a TokenizerOutput object"
+        assert isinstance(input, TokenizerOutput), (
+            "input must be either a string or a TokenizerOutput object"
+        )
 
     if patches is not None and isinstance(patches, PatchSpec):
         patches = [patches]
@@ -103,7 +102,7 @@ def get_attention_matrices(
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
-                if is_an_attn_head(module_name) != False:
+                if is_an_attn_head(module_name) is True:
                     raise NotImplementedError(
                         "patching not supported yet for attn heads"
                     )

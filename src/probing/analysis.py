@@ -57,7 +57,9 @@ class LinearProbe(torch.nn.Module):
 
     @torch.inference_mode()
     def predict(
-        self, x: jaxtyping.Float32[torch.Tensor, "batch features"], map_labels=True
+        self,
+        x: jaxtyping.Float32[torch.Tensor, "batch features"],  # noqa: F722
+        map_labels=True,  # noqa: F722
     ):
         self.eval()
         if isinstance(x, torch.Tensor):
@@ -73,7 +75,7 @@ class LinearProbe(torch.nn.Module):
     @torch.inference_mode()
     def validate(
         self,
-        x: jaxtyping.Float32[torch.Tensor, "batch features"],
+        x: jaxtyping.Float32[torch.Tensor, "batch features"],  # noqa: F722
         y: list[str | int],
         batch_size=None,
         return_confusion_matrix=False,
@@ -135,7 +137,7 @@ class LinearProbe(torch.nn.Module):
 
     @staticmethod
     def from_data(
-        acts: jaxtyping.Float32[torch.Tensor, "batch features"],
+        acts: jaxtyping.Float32[torch.Tensor, "batch features"],  # noqa: F722
         labels: list[str | int],
         lr=0.0001,
         weight_decay=0.01,
@@ -145,7 +147,7 @@ class LinearProbe(torch.nn.Module):
         device: torch.device = "cuda",
         name: str = "LinearProbe",
         validation_set: tuple[
-            jaxtyping.Float32[torch.Tensor, "batch features"], list[str | int]
+            jaxtyping.Float32[torch.Tensor, "batch features"], list[str | int]  # noqa: F722
         ] = None,
         print_logs=True,
     ):

@@ -72,9 +72,7 @@ def get_causal_tracing_results_for_bridge_pair(
     patch_ans = predict_next_token(
         mt=mt,
         inputs=patch_inputs,
-    )[
-        0
-    ][0]
+    )[0][0]
     logger.debug(f"{patch_ans=}")
 
     clean_ans, corrupt_rank = predict_next_token(
@@ -185,9 +183,9 @@ def cache_causal_tracing_results(
             if rel["name"] == relation:
                 relation_icq = BridgeRelation.from_dict(rel)
                 break
-        assert (
-            relation_icq is not None
-        ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        assert relation_icq is not None, (
+            f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        )
         dataset.examples = relation_icq.examples
     dataset.ensure_icl_not_in_examples()
 
@@ -205,7 +203,7 @@ def cache_causal_tracing_results(
     )
     limit = len(dataset) if limit is None else limit
     for idx in range(limit):
-        logger.info(f"Processing {idx+1}/{limit}")
+        logger.info(f"Processing {idx + 1}/{limit}")
         patch_qa = dataset[idx]
         clean_idx = sample_icq_with_different_bridge(
             dataset.examples, dataset.examples[idx]

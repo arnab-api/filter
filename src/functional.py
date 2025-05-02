@@ -2,11 +2,14 @@ import copy
 import gc
 import logging
 import re
+import string
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
+import baukit
 import numpy as np
 import torch
+from nltk.corpus import stopwords
 
 from src.dataset import Relation
 from src.models import ModelandTokenizer
@@ -15,10 +18,6 @@ from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, Tokenize
 
 logger = logging.getLogger(__name__)
 
-import string
-
-from nltk.corpus import stopwords
-
 
 def get_keywords_from_text(
     text: str,
@@ -26,7 +25,7 @@ def get_keywords_from_text(
     maybe_prepend_space: bool = True,
 ) -> list[int]:
     tokenizer = unwrap_tokenizer(tokenizer)
-    if maybe_prepend_space == True and text.startswith(" ") == False:
+    if maybe_prepend_space is True and text.startswith(" ") is False:
         text = f" {text}"
     tokenized = tokenizer(text, add_special_tokens=False).input_ids
     # print([tokenizer.decode(t) for t in tokenized])
@@ -48,11 +47,11 @@ def get_keywords_from_text(
             ).startswith(" "):
                 skip = True
         if (
-            prev_tok.endswith(" ") == False and tok.startswith(" ") == False
+            prev_tok.endswith(" ") is False and tok.startswith(" ") is False
         ):  # continuation of a word, safe to ignore?
             skip = True
 
-        if skip == False:
+        if skip is False:
             filtered.append(t_idx)
 
         prev_tok = tok
@@ -74,7 +73,7 @@ def interpret_logits(
     logits = logits.squeeze()
     probs = torch.nn.functional.softmax(logits, dim=-1).squeeze()
     top_k_indices = logits.topk(dim=-1, k=k).indices.squeeze().tolist()
-    if isinstance(top_k_indices, ArrayLike) == False:
+    if isinstance(top_k_indices, ArrayLike) is False:
         top_k_indices = [top_k_indices]
 
     candidates = [
@@ -128,7 +127,7 @@ def logit_lens(
     inputs = mt.tokenizer(
         mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
     )
-    with mt.trace(inputs) as trace:
+    with mt.trace(inputs):
         lnf = get_module_nnsight(mt, mt.final_layer_norm_name)
         lnf.input = h.view(1, 1, h.squeeze().shape[0])
         logits = mt.output.logits.save()
@@ -142,9 +141,6 @@ def logit_lens(
     ret = (logits, ret) if return_logits else ret
 
     return ret
-
-
-import baukit
 
 
 @torch.inference_mode()
@@ -175,7 +171,7 @@ def forward_pass_to_vocab(
     inputs = mt.tokenizer(
         mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
     )
-    with mt.trace(inputs) as tr:
+    with mt.trace(inputs):
         module = get_module_nnsight(mt, layer_name)
         module.output[0][0, :] = h
         logits = mt.output.logits[0, -1].save()
@@ -394,7 +390,7 @@ def generate_with_patch(
         output_scores=True,
         return_dict_in_generate=True,
         **kwargs,
-    ) as gen_trace:
+    ) as gen_trace:  # noqa: F841
         if patches is not None:
             if patch_at_all_generations:
                 mt.all()
@@ -483,9 +479,9 @@ def predict_next_token(
         )
     if token_of_interest is not None:
         # print(f"{len(token_of_interest)=} | {len(inputs)=}")
-        if isinstance(token_of_interest, ArrayLike) == False:
+        if isinstance(token_of_interest, ArrayLike) is False:
             token_of_interest = [token_of_interest]
-        if isinstance(token_of_interest[0], ArrayLike) == False:
+        if isinstance(token_of_interest[0], ArrayLike) is False:
             token_of_interest = [token_of_interest]
 
         assert len(token_of_interest) == (
@@ -505,7 +501,7 @@ def predict_next_token(
     is_tokenized = isinstance(inputs, TokenizerOutput)
     total_len = len(inputs["input_ids"]) if is_tokenized else len(inputs)
     for i in range(0, total_len, batch_size):
-        if is_tokenized == False:
+        if is_tokenized is False:
             batch_inputs = prepare_input(
                 tokenizer=mt,
                 prompts=inputs[i : i + batch_size],
@@ -530,12 +526,12 @@ def predict_next_token(
             layer_id = ".".join(module_name.split(".")[:-1])
             return layer_id, int(head_id)
 
-        with mt.trace(batch_inputs, scan=False, validate=False) as tr:
+        with mt.trace(batch_inputs, scan=False, validate=False) as tr:  # noqa: F841
             # TODO: patching code is being repeated a couple of times. refactor it.
             if patches is not None:
                 for cur_patch in patches:
                     module_name, index = cur_patch.location
-                    if is_an_attn_head(module_name) != False:
+                    if is_an_attn_head(module_name) is True:
                         raise NotImplementedError(
                             "patching not supported yet for attn heads"
                         )
@@ -562,7 +558,7 @@ def predict_next_token(
                         add_special_tokens=False,
                         return_tensors="pt",
                     ).input_ids[:, 0]
-                    if type(token_of_interest[j]) == str
+                    if type(token_of_interest[j]) is str
                     else token_of_interest[j]
                 )
 
@@ -608,7 +604,6 @@ def get_hs(
     patches: Optional[PatchSpec | list[PatchSpec]] = None,
     return_dict: bool = False,
 ) -> torch.Tensor | dict[tuple[str, int], torch.Tensor]:
-
     if isinstance(input, TokenizerOutput):
         if "offset_mapping" in input:
             input.pop("offset_mapping")
@@ -635,11 +630,11 @@ def get_hs(
     layer_names = [layer_name for layer_name, _ in locations]
     layer_names = list(set(layer_names))
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
-    with mt.trace(input, scan=False) as tracer:
+    with mt.trace(input, scan=False):
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
-                if is_an_attn_head(module_name) != False:
+                if is_an_attn_head(module_name) is True:
                     raise NotImplementedError(
                         "patching not supported yet for attn heads"
                     )
@@ -652,7 +647,7 @@ def get_hs(
                 current_state[:, index, :] = cur_patch.patch
 
         for layer_name in layer_names:
-            if is_an_attn_head(layer_name) == False:
+            if is_an_attn_head(layer_name) is False:
                 module = get_module_nnsight(mt, layer_name)
                 layer_states[layer_name] = module.output.save()
             else:
@@ -693,9 +688,9 @@ def extract_rep_at_pos(
     else:
         input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
 
-    assert total_length >= len(
-        input["input_ids"][0]
-    ), "Total length cannot be smaller than the input length"
+    assert total_length >= len(input["input_ids"][0]), (
+        "Total length cannot be smaller than the input length"
+    )
 
     input = insert_padding_before_pos(
         inp=input,
@@ -729,7 +724,7 @@ def get_all_module_states(
     elif kind == "attention":
         layer_name_format = mt.attn_module_name_format
     else:
-        raise ValueError(f"kind must be one of 'residual', 'mlp', 'attention'")
+        raise ValueError("kind must be one of 'residual', 'mlp', 'attention'")
 
     layer_and_index = []
     for layer_idx in range(mt.n_layer):
@@ -843,11 +838,11 @@ def guess_subject(prompt):
 
 
 def free_gpu_cache():
-    before = torch.cuda.memory_allocated()
+    # before = torch.cuda.memory_allocated()
     gc.collect()
     torch.cuda.empty_cache()
-    after = torch.cuda.memory_allocated()
-    freed = before - after
+    # after = torch.cuda.memory_allocated()
+    # freed = before - after
 
     # logger.debug(
     #     f"freed {models.bytes_to_human_readable(freed)} | before={models.bytes_to_human_readable(before)} -> after={models.bytes_to_human_readable(after)}"
@@ -905,11 +900,11 @@ def low_rank_pinv(
 def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = False):
     if isinstance(inp, list):
         return [detensorize(i) for i in inp]
-    if isinstance(inp, dict) == False:
+    if isinstance(inp, dict) is False:
         try:
             cls = type(inp)
             inp = inp.__dict__
-        except:
+        except Exception:
             return inp
     else:
         cls = None
@@ -920,7 +915,7 @@ def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = Fal
             if len(inp[k].shape) == 0:
                 inp[k] = inp[k].item()
             else:
-                inp[k] = inp[k].tolist() if to_numpy == False else inp[k].cpu().numpy()
+                inp[k] = inp[k].tolist() if to_numpy is False else inp[k].cpu().numpy()
         else:
             inp[k] = detensorize(inp[k])
 
@@ -941,7 +936,7 @@ def save_object(obj, save_path):
     assume that the obj is a dictionary
     and does not have another custom object as a value
     """
-    if isinstance(obj, dict) == False:
+    if isinstance(obj, dict) is False:
         obj = detensorize(obj)
     np.savez(
         save_path,
