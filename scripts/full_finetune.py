@@ -82,7 +82,7 @@ def run_finetuning(
     logger.info("Starting fine-tuning process")
     trainer.train()
 
-    logger.info(f"Fine-tuning complete")
+    logger.info("Fine-tuning complete")
 
     return mt
 

@@ -11,11 +11,10 @@ import torch
 import transformers
 from tqdm import tqdm
 
-from src.functional import detensorize, free_gpu_cache, get_hs, get_tick_marker
+from src.functional import detensorize, get_hs, get_tick_marker
 from src.models import ModelandTokenizer
 from src.probing.utils import (
     ProbingLatents,
-    ProbingPrompt,
     check_if_answer_is_correct,
     get_lm_generated_answer,
     prepare_probing_input,
@@ -33,7 +32,7 @@ logger.info(
 logger.info(f"{transformers.__version__=}")
 
 ###########################################################################
-INSTRUCTION = f"""Given two entities, find a common link or relation between them.
+INSTRUCTION = """Given two entities, find a common link or relation between them.
 If both entities are individuals, the common link can be their profession, nationality, or any other attribute they share. Their relation can be if someone is the student/teacher of the other etc.
 Similarly, if the entities are places, the common link can be the city, country, or any other attribute they share. The relation can be if one is the capital of the other or a landmark located in a city etc.
 If there is no connection just answer "None"."""

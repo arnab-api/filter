@@ -1,16 +1,14 @@
 import logging
 import os
-from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, overload
 
 import baukit
 import torch
 import transformers
 from nnsight import LanguageModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 
 from src.utils.env_utils import DEFAULT_MODELS_DIR, HF_CACHE_DIR
-from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +239,7 @@ def untuple(object: Any):
     return object
 
 
-from src.utils.typing import Model, Tokenizer
+from src.utils.typing import Model
 
 
 def is_pythia_variant(model: Model | ModelandTokenizer) -> bool:

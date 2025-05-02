@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import json
 import logging
 import os
@@ -15,7 +14,6 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import wandb
-from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.obsolete.finetune_pl import (
     CudaMemoryCleaner,
@@ -119,7 +117,7 @@ def run_finetuning(
     logger.info("Starting fine-tuning process")
     trainer.fit(pl_model, train_loader, val_loader)
 
-    logger.info(f"Fine-tuning complete")
+    logger.info("Fine-tuning complete")
 
     return pl_model
 

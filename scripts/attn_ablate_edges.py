@@ -1,5 +1,4 @@
 import argparse
-import itertools
 import json
 import logging
 import os
@@ -8,7 +7,6 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import baukit
-import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
 

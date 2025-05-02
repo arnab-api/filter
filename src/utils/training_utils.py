@@ -1,8 +1,7 @@
-import copy
 import logging
 import os
 import shutil
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional
 
 import numpy as np
 import torch
@@ -17,7 +16,7 @@ import wandb
 from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.utils import env_utils
-from src.utils.typing import Model, Tokenizer
+from src.utils.typing import Model
 
 logger = logging.getLogger(__name__)
 
@@ -275,13 +274,11 @@ class Trainable:
 
 #         return tunable_param_dict
 
-from typing import Optional
 
 import baukit
 from nnsight import Envoy
 
 from src.functional import untuple
-from src.utils.typing import TokenizerOutput
 
 
 class ParameterDelta(torch.nn.Module):

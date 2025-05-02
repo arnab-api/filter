@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 from dataclasses import dataclass
@@ -10,7 +9,7 @@ from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
 from src.functional import ASK_ORACLE_MODEL
-from src.models import ModelandTokenizer, is_llama_variant
+from src.models import ModelandTokenizer
 from src.tokens import find_token_range, prepare_input
 from src.utils.typing import ArrayLike, TokenizerOutput
 

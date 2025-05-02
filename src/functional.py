@@ -2,11 +2,13 @@ import copy
 import gc
 import logging
 import re
+import string
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import torch
+from nltk.corpus import stopwords
 
 from src.dataset import Relation
 from src.models import ModelandTokenizer
@@ -15,10 +17,6 @@ from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, Tokenize
 
 logger = logging.getLogger(__name__)
 
-import string
-
-from nltk.corpus import stopwords
-
 
 def get_keywords_from_text(
     text: str,
@@ -26,7 +24,7 @@ def get_keywords_from_text(
     maybe_prepend_space: bool = True,
 ) -> list[int]:
     tokenizer = unwrap_tokenizer(tokenizer)
-    if maybe_prepend_space == True and text.startswith(" ") == False:
+    if maybe_prepend_space is True and text.startswith(" ") is False:
         text = f" {text}"
     tokenized = tokenizer(text, add_special_tokens=False).input_ids
     # print([tokenizer.decode(t) for t in tokenized])
@@ -52,7 +50,7 @@ def get_keywords_from_text(
         ):  # continuation of a word, safe to ignore?
             skip = True
 
-        if skip == False:
+        if skip is False:
             filtered.append(t_idx)
 
         prev_tok = tok
@@ -728,7 +726,7 @@ def get_all_module_states(
     elif kind == "attention":
         layer_name_format = mt.attn_module_name_format
     else:
-        raise ValueError(f"kind must be one of 'residual', 'mlp', 'attention'")
+        raise ValueError("kind must be one of 'residual', 'mlp', 'attention'")
 
     layer_and_index = []
     for layer_idx in range(mt.n_layer):
@@ -904,7 +902,7 @@ def low_rank_pinv(
 def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = False):
     if isinstance(inp, list):
         return [detensorize(i) for i in inp]
-    if isinstance(inp, dict) == False:
+    if isinstance(inp, dict) is False:
         try:
             cls = type(inp)
             inp = inp.__dict__
@@ -919,7 +917,7 @@ def detensorize(inp: dict[Any, Any] | list[dict[Any, Any]], to_numpy: bool = Fal
             if len(inp[k].shape) == 0:
                 inp[k] = inp[k].item()
             else:
-                inp[k] = inp[k].tolist() if to_numpy == False else inp[k].cpu().numpy()
+                inp[k] = inp[k].tolist() if to_numpy is False else inp[k].cpu().numpy()
         else:
             inp[k] = detensorize(inp[k])
 

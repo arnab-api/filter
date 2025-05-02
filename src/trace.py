@@ -1,29 +1,22 @@
-import gc
 import logging
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
-from nnsight import LanguageModel
 from tqdm.auto import tqdm
 
-from src.dataset import InContextQuery, Relation
 from src.functional import (
     get_all_module_states,
     get_module_nnsight,
-    guess_subject,
     predict_next_token,
 )
-from src.models import ModelandTokenizer, is_llama_variant
+from src.models import ModelandTokenizer
 from src.tokens import (
     align_patching_positions,
-    find_token_range,
-    insert_padding_before_subj,
-    prepare_input,
 )
-from src.utils.typing import PathLike, PredictedToken, Tokenizer, TokenizerOutput
+from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +27,6 @@ def patched_run(
     inputs: TokenizerOutput,
     states: dict[tuple[str, int], torch.Tensor],
 ) -> torch.Tensor:
-    import os
 
     # os.environ["TORCH_LOGS"] = "not_implemented"
 
@@ -266,7 +258,7 @@ def trace_important_states(
     elif kind == "attention":
         layer_name_format = mt.attn_module_name_format
     else:
-        raise ValueError(f"kind must be one of 'residual', 'mlp', 'attention'")
+        raise ValueError("kind must be one of 'residual', 'mlp', 'attention'")
 
     logger.debug(f"---------- tracing important states | {kind=} ----------")
     # calculate indirect effects in the patched run

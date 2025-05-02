@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 
@@ -12,7 +12,6 @@ from src.functional import (
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.operators.operators import CornerOperator
 from src.operators.utils import (
     Order1Approx,
     get_inputs_and_intervention_range,

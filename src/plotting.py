@@ -121,7 +121,6 @@ def plot_trace_heatmap(
         plt.show()
 
 
-import matplotlib.pyplot as plt
 
 
 def visualize_attn_matrix(

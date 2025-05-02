@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -9,11 +9,10 @@ from dataclasses_json import DataClassJsonMixin
 from src.functional import (
     PatchSpec,
     get_module_nnsight,
-    interpret_logits,
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.utils.typing import PredictedToken, TokenizerOutput
+from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 

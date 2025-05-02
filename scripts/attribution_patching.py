@@ -2,11 +2,9 @@ import argparse
 import json
 import logging
 import os
-import types
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-import baukit  # type: ignore
 import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
@@ -16,7 +14,6 @@ from src.dataset import (
     BridgeDataset,
     BridgeRelation,
     BridgeSample,
-    load_bridge_relation,
 )
 from src.functional import (
     PatchSpec,
@@ -24,12 +21,9 @@ from src.functional import (
     free_gpu_cache,
     get_hs,
     get_module_nnsight,
-    guess_subject,
     predict_next_token,
     prepare_input,
-    untuple,
 )
-from src.hooking.llama_attention import AttentionEdge, LlamaAttentionPatcher
 from src.models import ModelandTokenizer, prepare_input
 from src.trace import insert_padding_before_subj
 from src.utils import env_utils, experiment_utils, logging_utils

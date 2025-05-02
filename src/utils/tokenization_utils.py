@@ -1,7 +1,7 @@
 """Utils for interacting with huggingface tokenizers."""
 
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Sequence, Tuple
+from typing import Iterator
 
 from src.utils.typing import Tokenizer
 
