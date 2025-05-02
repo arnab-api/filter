@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from src.trace import CausalTracingResult
+from src.utils.typing import ArrayLike, PathLike
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def plot_trace_heatmap(
     corrupt_tokens = replace_special_tokens(result.corrupt_input_toks)
     patch_tokens = replace_special_tokens(result.patch_input_toks)
 
-    if scale_range is None and result.normalized == True:
+    if scale_range is None and result.normalized is True:
         scale_range = (0, 1)
 
     tokens = []
@@ -121,8 +122,6 @@ def plot_trace_heatmap(
         plt.show()
 
 
-
-
 def visualize_attn_matrix(
     attn_matrix: torch.Tensor,
     tokens: list[str],
@@ -179,9 +178,6 @@ def visualize_attn_matrix(
             plt.savefig(savepdf, bbox_inches="tight", dpi=300)
 
         plt.show()
-
-
-from src.utils.typing import ArrayLike, PathLike
 
 
 def matrix_heatmap(

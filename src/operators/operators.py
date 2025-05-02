@@ -150,7 +150,7 @@ class CornerOperator(Operator):
             self.mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
         )
         with torch.inference_mode():
-            with self.mt.trace(inputs) as tr:
+            with self.mt.trace(inputs):
                 module = get_module_nnsight(self.mt, self.layer)
                 module.output[0][0, :] = h
                 logits = self.mt.output.logits[0, -1].save()

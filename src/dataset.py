@@ -266,11 +266,11 @@ class RelationDataset(Dataset[Relation]):
             if value is not None:
                 if isinstance(value, bool):
                     logger.debug(f"filtering by property {key}={value}")
-                    matches = lambda x: x == value
+                    matches = lambda x: x == value  # noqa: E731
                 else:
                     logger.debug(f"filtering by property {key} in {value}")
                     value_set = set(value)
-                    matches = lambda x: (x in value_set)
+                    matches = lambda x: (x in value_set)  # noqa: E731
 
                 relations = [
                     r for r in relations if matches(getattr(r.properties, key))

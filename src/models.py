@@ -9,6 +9,7 @@ from nnsight import LanguageModel
 from transformers import AutoTokenizer
 
 from src.utils.env_utils import DEFAULT_MODELS_DIR, HF_CACHE_DIR
+from src.utils.typing import Layer, Model, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class ModelandTokenizer(LanguageModel):
         self.tokenizer.pad_token = self.tokenizer.eos_token  # for generation
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         if (
-            hasattr(self.tokenizer, "bos_token") == False
+            hasattr(self.tokenizer, "bos_token") is False
             or self.tokenizer.bos_token is None
         ):
             self.tokenizer.bos_token = self.tokenizer.eos_token
@@ -91,7 +92,7 @@ class ModelandTokenizer(LanguageModel):
             or is_pythia_variant(self)
             or is_qwen_variant(self)
             or is_olmo_variant(self)
-        ) == False:
+        ) is False:
             logger.error(
                 f"Unknown model type: {type(unwrap_model(self)).__name__}. Parsing may fail."
             )
@@ -239,16 +240,13 @@ def untuple(object: Any):
     return object
 
 
-from src.utils.typing import Model
-
-
 def is_pythia_variant(model: Model | ModelandTokenizer) -> bool:
     """Determine if model is pythia variant."""
     if isinstance(model, ModelandTokenizer) or isinstance(model, LanguageModel):
         model = unwrap_model(model)
     try:
         return "pythia" in model.config._name_or_path.lower()
-    except:
+    except:  # noqa: E722
         return False
 
 
@@ -404,9 +402,6 @@ def determine_layers(model: ModelandTokenizer | Model) -> tuple[int, ...]:
         n_layer = model.config.n_layer
 
     return (*range(n_layer),)
-
-
-from src.utils.typing import Layer, Sequence
 
 
 def determine_layer_name_format(

@@ -146,7 +146,7 @@ def apply_jacobian_inv_edit(
 
         # normalized_deltas[layer_name] = repr_diff
 
-    with mt.trace(inputs) as tr:
+    with mt.trace(inputs) as tr:  # noqa: F841
         for layer_name in layers:
             repr_diff = repr_diffs[layer_name]
             layer = get_module_nnsight(mt, layer_name)
@@ -188,7 +188,7 @@ def apply_jacobian_inv_edit(
         do_sample=True,
         output_scores=True,
         return_dict_in_generate=True,
-    ) as gen_trace:
+    ) as gen_trace:  # noqa: F841
         for layer_name in layers:
             layer = get_module_nnsight(mt, layer_name)
             # layer.output[0][:, subj_range, :] += repr_diff

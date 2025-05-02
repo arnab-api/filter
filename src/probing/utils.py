@@ -103,12 +103,12 @@ def get_lm_generated_answer(
                 attention_mask=prompt.tokenized["attention_mask"],
             )
         ),
-        max_new_tokens=50 if is_a_reasoning_model == False else 1000,
+        max_new_tokens=50 if is_a_reasoning_model is False else 1000,
         do_sample=False,
         output_scores=True,
         return_dict_in_generate=True,
         use_cache=use_kv_cache,
-    ) as gen_trace:
+    ) as gen_trace:  # noqa: F841
         output = mt.generator.output.save()
 
     generation = mt.tokenizer.decode(
@@ -118,7 +118,7 @@ def get_lm_generated_answer(
 
     # print(generation)
 
-    if is_a_reasoning_model == False:
+    if is_a_reasoning_model is False:
         if block_separator in generation:
             generation = generation.split(block_separator)[0].strip()
     else:
@@ -144,7 +144,7 @@ def check_if_answer_is_correct(
     """
 
     #! use this only if the answer is not None
-    assert answer.startswith("None") == False, (
+    assert answer.startswith("None") is False, (
         f'Pass a valid answer to check, passed: "{answer}"'
     )
 

@@ -8,13 +8,11 @@ from tqdm import tqdm
 
 from src.functional import free_gpu_cache, get_module_nnsight
 from src.models import ModelandTokenizer
+from src.operators.operators import Basis, CornerOperator
+from src.operators.utils import project_to_vocab
 from src.tokens import find_token_range, prepare_input
 
 logger = logging.getLogger(__name__)
-
-
-from src.operators.operators import Basis, CornerOperator
-from src.operators.utils import project_to_vocab
 
 
 @dataclass(frozen=False, kw_only=True)
@@ -80,7 +78,7 @@ class BasisEstimator(Estimator):
             progress_bar = tqdm(range(n_steps)) if self.verbose else range(n_steps)
 
             def patched_run(patch: torch.Tensor, layer_name: str = self.layer_name):
-                with self.mt.trace(token_indices) as tr:
+                with self.mt.trace(token_indices) as tr:  # noqa: F841
                     module = get_module_nnsight(self.mt, layer_name)
                     module.output[0][0, :] = patch
                     lnf = get_module_nnsight(self.mt, self.mt.final_layer_norm_name)
@@ -304,7 +302,7 @@ class CornerEstimator(Estimator):
         loss_track = []
         progress_bar = tqdm(range(n_steps)) if self.verbose else range(n_steps)
         for iter in progress_bar:
-            with self.mt.trace(self.inputs) as tr:
+            with self.mt.trace(self.inputs) as tr:  # noqa: F841
                 module = get_module_nnsight(self.mt, self.layer_name)
                 current_state = (
                     module.output.save()

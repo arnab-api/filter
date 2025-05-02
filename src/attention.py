@@ -102,7 +102,7 @@ def get_attention_matrices(
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
-                if is_an_attn_head(module_name) != False:
+                if is_an_attn_head(module_name) is True:
                     raise NotImplementedError(
                         "patching not supported yet for attn heads"
                     )
