@@ -13,9 +13,13 @@ from tqdm import tqdm
 
 from src.functional import detensorize, free_gpu_cache, get_hs, get_tick_marker
 from src.models import ModelandTokenizer
-from src.probing.utils import (ProbingLatents, ProbingPrompt,
-                               check_if_answer_is_correct,
-                               get_lm_generated_answer, prepare_probing_input)
+from src.probing.utils import (
+    ProbingLatents,
+    ProbingPrompt,
+    check_if_answer_is_correct,
+    get_lm_generated_answer,
+    prepare_probing_input,
+)
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import TokenizerOutput
 
@@ -132,7 +136,7 @@ def cache_probing_latents(
 
         logger.info(f"({get_tick_marker(is_correct)}) {lm_answer=}")
 
-        if is_correct == False:
+        if is_correct is False:
             logger.error(
                 f"Incorrect Answer: not storing latents {entity_pair} | {lm_answer=}"
             )
@@ -169,7 +173,7 @@ def cache_probing_latents(
         )
         save_count += 1
         logger.info(
-            f"saved {save_count}/{limit} latents | lm_accuracy={save_count/(idx+1) : .3f} ({save_count}/{idx+1})"
+            f"saved {save_count}/{limit} latents | lm_accuracy={save_count / (idx + 1): .3f} ({save_count}/{idx + 1})"
         )
         if save_count >= limit:
             break

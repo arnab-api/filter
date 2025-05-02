@@ -165,9 +165,9 @@ def run_experiment(
             if rel["name"] == relation:
                 relation_icq = BridgeRelation.from_dict(rel)
                 break
-        assert (
-            relation_icq is not None
-        ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        assert relation_icq is not None, (
+            f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        )
         dataset.examples = relation_icq.examples
     dataset.ensure_icl_not_in_examples()
 
@@ -181,7 +181,7 @@ def run_experiment(
     )
     limit = len(dataset) if limit is None else limit
     for idx in range(limit):
-        logger.info(f"Processing {idx+1}/{limit}")
+        logger.info(f"Processing {idx + 1}/{limit}")
         question, answer = dataset[idx]
         logger.debug(f"{question=}")
         entity_pair = dataset.examples[idx].entity_pair

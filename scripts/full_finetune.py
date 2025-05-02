@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import json
 import logging
 import os
@@ -11,7 +10,6 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader
 
 import wandb
-from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.training_utils import TextDataset, TrainableLM_delta, Trainer
@@ -198,6 +196,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.1-8B",
             # "meta-llama/Llama-3.1-8B-Instruct",
             "Qwen/Qwen2.5-14B",
+            "Qwen/Qwen3-1.7B",
             "Qwen/Qwen3-4B",
             "Qwen/Qwen3-8B",
             "Qwen/Qwen3-14B",
@@ -350,7 +349,7 @@ if __name__ == "__main__":
     )
 
     # Initialize wandb for logging
-    run_name = args.run_name if args.run_name else f'{args.model.split("/")[-1]}-BIO'
+    run_name = args.run_name if args.run_name else f"{args.model.split('/')[-1]}-BIO"
 
     wandb.init(
         entity="reasoning-iterp",

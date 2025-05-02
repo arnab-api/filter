@@ -40,7 +40,6 @@ def prepare_probing_input(
     answer_prefix: str = "",
     return_offsets_mapping: bool = False,
 ) -> ProbingPrompt:
-
     prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}{answer_prefix}"""
     if is_a_reasoning_model:
         thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Put your answer within \\boxed{}."
@@ -146,9 +145,9 @@ def check_if_answer_is_correct(
     """
 
     #! use this only if the answer is not None
-    assert (
-        answer.startswith("None") == False
-    ), f'Pass a valid answer to check, passed: "{answer}"'
+    assert answer.startswith("None") == False, (
+        f'Pass a valid answer to check, passed: "{answer}"'
+    )
 
     if any([keyword in answer for keyword in keywords]):
         return True

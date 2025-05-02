@@ -12,10 +12,10 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
-from src.models import ModelandTokenizer
 
 import wandb
 from src.functional import free_gpu_cache
+from src.models import ModelandTokenizer
 from src.utils import env_utils
 from src.utils.typing import Model, Tokenizer
 
@@ -275,11 +275,13 @@ class Trainable:
 
 #         return tunable_param_dict
 
-from nnsight import Envoy
 from typing import Optional
-from src.utils.typing import TokenizerOutput
-from src.functional import untuple
+
 import baukit
+from nnsight import Envoy
+
+from src.functional import untuple
+from src.utils.typing import TokenizerOutput
 
 
 class ParameterDelta(torch.nn.Module):
@@ -644,9 +646,9 @@ class TrainableLM_delta(Trainable):
                 param_delta.requires_grad = True
                 param_delta = self.accelerator.prepare(param_delta)
                 module_name = ".".join(name.split(".")[:-1])
-                assert (
-                    module_name not in tunable_param_dict
-                ), f"Module {module_name} already exists in tunable_param_dict"
+                assert module_name not in tunable_param_dict, (
+                    f"Module {module_name} already exists in tunable_param_dict"
+                )
                 tunable_param_dict[module_name] = ParameterDelta(
                     module=get_module_nnsight(self.mt, module_name),
                     module_name=module_name,
@@ -916,7 +918,7 @@ class Trainer:
             # Progress bar for this epoch
             progress_bar = tqdm(
                 self.train_dataloader,
-                desc=f"Epoch {epoch+1}/{self.num_epochs}",
+                desc=f"Epoch {epoch + 1}/{self.num_epochs}",
                 disable=not self.accelerator.is_local_main_process,
             )
 
@@ -980,14 +982,13 @@ class Trainer:
             loss_log = ""
             for k, v in total_loss_dict.items():
                 loss_log += f"{k}: {v:.4f} | "
-            logger.info(f"Epoch {epoch+1}/{self.num_epochs} | {loss_log}")
+            logger.info(f"Epoch {epoch + 1}/{self.num_epochs} | {loss_log}")
 
             # Run evaluation
             eval_results = self.evaluate()
 
             # Log epoch-level metrics directly to wandb
             if self.log_to_wandb and self.accelerator.is_local_main_process:
-
                 wandb_epoch_report = {"epoch": epoch + 1}
                 for k, v in total_loss_dict.items():
                     wandb_epoch_report[f"epoch/{k}"] = v

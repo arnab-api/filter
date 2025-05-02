@@ -4,13 +4,21 @@ from typing import Any, Optional
 
 import torch
 
-from src.functional import (free_gpu_cache, get_hs, get_module_nnsight,
-                            interpret_logits, prepare_input)
+from src.functional import (
+    free_gpu_cache,
+    get_hs,
+    get_module_nnsight,
+    interpret_logits,
+    prepare_input,
+)
 from src.models import ModelandTokenizer
 from src.operators.operators import CornerOperator
-from src.operators.utils import (Order1Approx,
-                                 get_inputs_and_intervention_range,
-                                 get_lm_head_row, patch)
+from src.operators.utils import (
+    Order1Approx,
+    get_inputs_and_intervention_range,
+    get_lm_head_row,
+    patch,
+)
 from src.utils.typing import PredictedToken
 
 logger = logging.getLogger(__name__)
@@ -72,7 +80,6 @@ def apply_jacobian_inv_edit(
     num_tokens: int = 20,
     V_directions: Optional[torch.Tensor] = None,
 ) -> EditResults:
-
     free_gpu_cache()
 
     inputs, subj_range = get_inputs_and_intervention_range(mt, prompt, subject)

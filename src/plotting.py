@@ -133,12 +133,12 @@ def visualize_attn_matrix(
     savepdf: str | None = None,
     start_idx: int = 0,
 ):
-    assert (
-        attn_matrix.shape[0] == attn_matrix.shape[1]
-    ), "Attention matrix must be square"
-    assert (
-        len(tokens) == attn_matrix.shape[-1]
-    ), "Tokens and attention matrix must have the same length"
+    assert attn_matrix.shape[0] == attn_matrix.shape[1], (
+        "Attention matrix must be square"
+    )
+    assert len(tokens) == attn_matrix.shape[-1], (
+        "Tokens and attention matrix must have the same length"
+    )
 
     if remove_eos and start_idx == 0:
         start_idx = 1 if tokens[0] == remove_eos else 0
@@ -150,7 +150,6 @@ def visualize_attn_matrix(
             # "font.size": 2,
         }
     ):
-
         img = plt.imshow(
             attn_matrix[start_idx:, start_idx:],
             cmap=color_scheme,

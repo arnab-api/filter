@@ -4,8 +4,12 @@ from typing import Any, Optional
 
 import torch
 
-from src.functional import (filter_subspace_information, free_gpu_cache,
-                            get_module_nnsight, interpret_logits)
+from src.functional import (
+    filter_subspace_information,
+    free_gpu_cache,
+    get_module_nnsight,
+    interpret_logits,
+)
 from src.models import ModelandTokenizer
 from src.operators.utils import project_to_vocab
 from src.utils.typing import PredictedToken
@@ -33,7 +37,6 @@ class LogitLens(Operator):
         h: torch.Tensor,
         interested_indices: list[int] = [],
     ):
-
         top_pred, class_pred = project_to_vocab(
             mt=self.mt,
             h=h,

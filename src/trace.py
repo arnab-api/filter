@@ -166,7 +166,6 @@ def trace_important_states(
     metric: Literal["logit", "prob", "log_prob"] = "prob",
     ans_tokens: Optional[list[int] | int] = None,
 ) -> CausalTracingResult:
-
     aligned = align_patching_positions(
         mt=mt,
         prompt_template=prompt_template,
@@ -211,9 +210,9 @@ def trace_important_states(
         logger.debug(f"{clean_answer=}")
         logger.debug(f"{track_ans=}")
 
-        assert (
-            answer.token != clean_answer.token
-        ), "Answers in the clean and corrupt runs are the same"
+        assert answer.token != clean_answer.token, (
+            "Answers in the clean and corrupt runs are the same"
+        )
 
         ans_tokens = [answer.token_id]
         answer = [answer]
@@ -255,9 +254,9 @@ def trace_important_states(
         )
         logger.debug(f"{low_score=} | {low_indv_scores=}")
 
-        assert (
-            low_score < base_score
-        ), f"{low_score=} | {base_score=} >> low_score must be less than base_score"
+        assert low_score < base_score, (
+            f"{low_score=} | {base_score=} >> low_score must be less than base_score"
+        )
 
     layer_name_format = None
     if kind == "residual":

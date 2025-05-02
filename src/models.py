@@ -31,9 +31,9 @@ class ModelandTokenizer(LanguageModel):
         abs_path: bool = False,
         **kwargs,
     ) -> None:
-        assert (
-            base_lm is not None or model_key is not None
-        ), "Either the `base_lm` or `model_key` must be provided"
+        assert base_lm is not None or model_key is not None, (
+            "Either the `base_lm` or `model_key` must be provided"
+        )
         if base_lm is not None:
             self.__dict__ = base_lm.__dict__
             self.name = base_lm._model.config._name_or_path.split("/")[-1]

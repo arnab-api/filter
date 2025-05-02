@@ -107,7 +107,7 @@ for idx, layers in enumerate(LAYER_SPLITS):
     cmd += f' --model="{MODEL_KEY}"'
     cmd += f" --token_idx={TOKEN_IDX}"
     cmd += f' --layer_name_format="{LAYER_NAME_FORMAT}"'
-    cmd += f' --layers {" ".join(map(str, layers))}'
+    cmd += f" --layers {' '.join(map(str, layers))}"
     cmd += f" --limit={LIMIT}"
     cmd += f' --save_dir="{SAVE_DIR}"'
 

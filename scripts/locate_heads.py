@@ -48,7 +48,6 @@ def get_ablation_effect_of_heads(
     heads: dict[int, list[int]],  # {layer: [head]}
     ablation_spec: list[AttentionEdge],
 ) -> torch.Tensor:
-
     mt.reset_forward()
 
     for l in heads:
@@ -70,7 +69,6 @@ def get_ablation_results_for_all_heads(
     mt: ModelandTokenizer,
     question: str,
 ) -> torch.Tensor:
-
     mt.reset_forward()
 
     inputs = prepare_input(prompts=question, tokenizer=mt, add_bos_token=False)
@@ -108,7 +106,6 @@ def get_top_heads(
     save_dir: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> ExperimentResults:
-
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
 
@@ -186,9 +183,9 @@ def run_experiment(
             if rel["name"] == relation:
                 relation_icq = BridgeRelation.from_dict(rel)
                 break
-        assert (
-            relation_icq is not None
-        ), f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        assert relation_icq is not None, (
+            f"{relation=} is not found. Available relations: {[r['name'] for r in json_data['relations']]}"
+        )
         dataset = BridgeDataset(relations=[relation_icq])
 
     logger.debug(f"{dataset.icl_examples=}")

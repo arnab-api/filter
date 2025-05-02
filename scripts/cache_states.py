@@ -101,7 +101,9 @@ def cache_activations(
 
         free_gpu_cache()
 
-        logger.info(f"Processed {doc_index+1}/{limit} ({(doc_index+1)/limit:.2%})")
+        logger.info(
+            f"Processed {doc_index + 1}/{limit} ({(doc_index + 1) / limit:.2%})"
+        )
 
 
 if __name__ == "__main__":

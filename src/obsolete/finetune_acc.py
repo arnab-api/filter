@@ -322,7 +322,7 @@ class LMTrainer:
             # Progress bar for this epoch
             progress_bar = tqdm(
                 self.train_dataloader,
-                desc=f"Epoch {epoch+1}/{self.num_epochs}",
+                desc=f"Epoch {epoch + 1}/{self.num_epochs}",
                 disable=not self.accelerator.is_local_main_process,
             )
 
@@ -432,7 +432,7 @@ class LMTrainer:
 
             # Log epoch metrics
             logger.info(
-                f"Epoch {epoch+1}/{self.num_epochs} | "
+                f"Epoch {epoch + 1}/{self.num_epochs} | "
                 f"Train Loss: {train_loss:.4f} | "
                 f"Reg Loss: {reg_loss_sum:.4f} | "
                 f"Total Loss: {total_loss_sum:.4f}"

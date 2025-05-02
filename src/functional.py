@@ -608,7 +608,6 @@ def get_hs(
     patches: Optional[PatchSpec | list[PatchSpec]] = None,
     return_dict: bool = False,
 ) -> torch.Tensor | dict[tuple[str, int], torch.Tensor]:
-
     if isinstance(input, TokenizerOutput):
         if "offset_mapping" in input:
             input.pop("offset_mapping")
@@ -693,9 +692,9 @@ def extract_rep_at_pos(
     else:
         input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
 
-    assert total_length >= len(
-        input["input_ids"][0]
-    ), "Total length cannot be smaller than the input length"
+    assert total_length >= len(input["input_ids"][0]), (
+        "Total length cannot be smaller than the input length"
+    )
 
     input = insert_padding_before_pos(
         inp=input,
@@ -941,7 +940,7 @@ def save_object(obj, save_path):
     assume that the obj is a dictionary
     and does not have another custom object as a value
     """
-    if isinstance(obj, dict) == False:
+    if isinstance(obj, dict) is False:
         obj = detensorize(obj)
     np.savez(
         save_path,

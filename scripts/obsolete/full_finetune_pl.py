@@ -231,7 +231,6 @@ def init_model_parallelism_args():
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Fine-tune a language model")
     logging_utils.add_logging_args(parser)
     experiment_utils.add_experiment_args(parser)
