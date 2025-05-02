@@ -27,6 +27,7 @@ def ask_gpt4o(
     hash_val = hashlib.md5(
         f"{prompt}__{temperature=}__{max_tokens=}".encode()
     ).hexdigest()
+    os.makedirs(GPT_4O_CACHE_DIR, exist_ok=True)
     if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
         logger.debug(f"found cached gpt4o response for {hash_val} - loading")
         with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
@@ -74,6 +75,7 @@ def ask_claude(
     hash_val = hashlib.md5(
         f"{prompt}__{temperature=}__{max_tokens=}".encode()
     ).hexdigest()
+    os.makedirs(CLAUDE_CACHE_DIR, exist_ok=True)
     if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
         logger.debug(f"found cached gpt4o response for {hash_val} - loading")
         with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
