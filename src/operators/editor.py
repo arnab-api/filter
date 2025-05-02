@@ -93,7 +93,9 @@ def apply_jacobian_inv_edit(
         layers = list(o1_approxes.keys())
 
     logger.info(f"{edit_rank=}")
-    W_invs = {l: o1_approxes[l].jacobian_inv(rank=edit_rank) for l in layers}
+    W_invs = {
+        layer: o1_approxes[layer].jacobian_inv(rank=edit_rank) for layer in layers
+    }
 
     #! nnsight quirk: can't access h.norm() directly inside trace. need 2 forward passes.
     #! anyway to do this with a single forward pass?
@@ -115,7 +117,7 @@ def apply_jacobian_inv_edit(
     #     logger.info(f"{l} => {out.top_predictions}")
 
     repr_diffs = {
-        l: get_edit_delta(
+        layer: get_edit_delta(
             mt=mt,
             targ=target_tok.item(),
             orig=orig_output[0].token_id,
@@ -130,10 +132,10 @@ def apply_jacobian_inv_edit(
             #     layer=l,
             #     class_indices=[target_tok.item(), orig_output[0].token_id],
             # )(hs_subj[(l, subj_ends)], return_logits=True).logits,
-            W_inv=W_invs[l],
+            W_inv=W_invs[layer],
             V_directions=V_directions,
         )
-        for l in layers
+        for layer in layers
     }
 
     normalized_deltas = {}

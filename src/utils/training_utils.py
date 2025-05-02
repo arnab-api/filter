@@ -3,17 +3,19 @@ import os
 import shutil
 from typing import Any, List, Optional
 
+import baukit
 import numpy as np
 import torch
 from accelerate import Accelerator
 from accelerate.utils import find_batch_size
+from nnsight import Envoy
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
 
 import wandb
-from src.functional import free_gpu_cache
+from src.functional import free_gpu_cache, get_module_nnsight, untuple
 from src.models import ModelandTokenizer
 from src.utils import env_utils
 from src.utils.typing import Model
@@ -135,7 +137,7 @@ class Trainable:
 #             )
 
 #         free_gpu_cache()
-#         logger.info(f"Cached {len(self.cached_reg_info)} regularization batches")
+#         logger.info(f"Cached {len=self.cached_reg_info)} regularization batches")
 
 #     def forward(self, input_ids, attention_mask=None, labels=None):
 #         """
@@ -275,126 +277,14 @@ class Trainable:
 #         return tunable_param_dict
 
 
-import baukit
-from nnsight import Envoy
-
-from src.functional import untuple
-
-
-class ParameterDelta(torch.nn.Module):
-    def __init__(
-        self,
-        module: Envoy,
-        module_name,
-        param_delta: Optional[torch.nn.Parameter] = None,
-    ):
-        super().__init__()
-        self.module = module
-        self.module_name = module_name
-        if param_delta is None:
-            param = getattr(module, "weight")
-            if param is None:
-                raise ValueError(
-                    f"Initialization Error, {module_name} does not have a weight"
-                )
-            self.param_delta = torch.nn.Parameter(
-                torch.zeros_like(param).to(param.dtype).to(param.device)
-            )
-        else:
-            self.param_delta = param_delta
-
-        self.param_delta.requires_grad = True
-
-    # ** nnsight specific implementation
-    def __call__(self, inp: torch.Tensor):
-        # h_delta = inp @ self.param_delta.t()
-        # using torch implementation just to be safe
-        h_delta = torch.nn.functional.linear(
-            inp, self.param_delta, bias=None
-        )  # (batch_size, seq_len, hidden_dim)
-
-        return h_delta
-
-    def parameters(self):
-        return self.param_delta
-
-    def __str__(self):
-        return f"ParameterDelta(module={self.module}, param_name={self.module_name})"
-
-    def apply_nnsight(self, context_manager=None, debug=False):
-        """
-        Apply the parameter delta to the module using nnsight.
-        """
-        if debug:
-            if context_manager is None:
-                logger.warning(
-                    "Cannot log debug info without context manager. Setting debug to False"
-                )
-                debug = False
-
-        if debug:
-            context_manager.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
-
-        inp = self.module.input
-        out = self.module.output
-
-        if debug:
-            context_manager.log(self.module_name, "inp shape: ", inp.shape)
-            context_manager.log(self.module_name, "out shape: ", out.shape)
-            context_manager.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
-
-        h_delta = self(inp)
-
-        if debug:
-            context_manager.log(self.module_name, "h_delta shape: ", h_delta.shape)
-
-        # Apply the delta to the module's output
-        self.module.output = out + h_delta
-
-    @staticmethod
-    def apply_param_delta(param_delta_dict: dict[str, "ParameterDelta"]) -> callable:
-        """
-        Apply the parameter delta to the module.
-        """
-
-        def edit_repr(module_name: str, input: Any, output: Any):
-            if module_name in param_delta_dict:
-                # logger.debug(f"Applying param delta to {module_name}")
-                param_delta = param_delta_dict[module_name]
-            else:
-                raise ValueError(f"Module {module_name} not found in param delta dict")
-
-            input = untuple(input)
-
-            output_0 = untuple(output)
-            # logger.debug(f"input shape: {input.shape} | output shape: {output.shape}")
-
-            h_delta = param_delta(input)
-            # logger.debug(f"h_delta shape: {h_delta.shape}")
-
-            output_0 += h_delta
-
-            return output
-
-        return edit_repr
-
-
-from src.functional import get_module_nnsight
-
-
-# TODO (arnab) => ditch nnsight and adapt for baukit
-class TrainableLM_delta(Trainable):
+class TrainableLM(Trainable):
     def __init__(
         self,
         mt: ModelandTokenizer,
         regularization_dataloader: DataLoader = None,
         regularizer_lambda: float = 0.1,
         accelerator: Accelerator = None,
-        param_delta_dict: Optional[str | torch.nn.ModuleDict] = None,
+        initialize_trainable_params: bool = True,
     ):
         self.mt = mt
         self.regularization_dataloader = regularization_dataloader
@@ -410,12 +300,9 @@ class TrainableLM_delta(Trainable):
         if self.regularization_dataloader is not None and self.regularizer_lambda > 0:
             self._cache_regularization_docs()
 
-        if param_delta_dict is not None:
-            self.load_param_delta_dict(param_delta_dict)
-        else:
-            self.populate_param_delta_dict()
-
-    # TODO(arnab): update to keep track of the whole logit distribution (will be useful for KL-div)
+        self.trainable_params = None
+        if initialize_trainable_params:
+            self.initialize_trainable_params()
 
     @torch.inference_mode()
     def _cache_regularization_docs(self):
@@ -473,37 +360,13 @@ class TrainableLM_delta(Trainable):
             attention_mask.to(self.mt.device) if attention_mask is not None else None
         )
         labels = labels.to(self.mt.device) if labels is not None else None
-        # logger.debug(f"{labels=}")
-        # logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
-
-        # inputs = TokenizerOutput(
-        #     data={
-        #         "input_ids": input_ids,
-        #         "attention_mask": attention_mask,
-        #     }
-        # )
-        # with self.mt.trace(
-        #     inputs,
-        #     labels=labels,
-        # ) as tracer:
-        #     if apply_param_delta:
-        #         for param_delta in self.param_delta_dict.values():
-        #             param_delta()
-        #     output = self.mt.output.save()
-        # return output
 
         with baukit.TraceDict(
             module=self.mt._model,
-            layers=list(self.param_delta_dict.keys()),
             retain_input=True,
             retain_output=True,
             retain_grad=True,
-            edit_output=(
-                ParameterDelta.apply_param_delta(self.param_delta_dict)
-                if apply_param_delta
-                else None
-            ),
-        ) as tracer:
+        ):
             output = self.mt._model(
                 input_ids=input_ids, attention_mask=attention_mask, labels=labels
             )
@@ -611,18 +474,254 @@ class TrainableLM_delta(Trainable):
         # print("exiting loss function")
         return loss, loss_dict
 
-    #! will probably need to unwrap the model before saving (test)
+    def train_mode(self):
+        self.mt._model.train()
+
+    def eval_mode(self):
+        self.mt._model.eval()
+
     @torch.inference_mode()
     def save(self, path: str):
         os.makedirs(path, exist_ok=True)
-        param_delta_dict = {
-            name.replace(".", "<>"): param_delta.parameters()
-            for name, param_delta in self.param_delta_dict.items()
-        }
-        torch.save(param_delta_dict, os.path.join(path, "param_delta_dict.pt"))
-        logger.info(f"param_delta_dict saved to {path}")
+        unwrapped_model = self.accelerator.unwrap_model(self.mt._model)
+        unwrapped_model.save_pretrained(path)
+        self.tokenizer.save_pretrained(path)
+        logger.info(f"Model saved to {path}")
 
-    def populate_param_delta_dict(
+    def initialize_trainable_params(
+        self,
+        tunable_module_signatures=["mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
+    ):
+        """
+        Get the subset of model parameters to optimize.
+        For LLaMA models, we only tune the parameters in the layers.
+        """
+        tunable_param_dict = {}
+        for name, param in self.mt._model.named_parameters():
+            if any(sig in name for sig in tunable_module_signatures):
+                param.requires_grad = True
+                module_name = ".".join(name.split(".")[:-1])
+                assert module_name not in tunable_param_dict, (
+                    f"Module {module_name} already exists in tunable_param_dict"
+                )
+                tunable_param_dict[module_name] = ParameterDelta(
+                    module=get_module_nnsight(self.mt, module_name),
+                    module_name=module_name,
+                    param_delta=param,
+                )
+
+        # Calculate numbers for reporting
+        trainable_params = sum(
+            p.param_delta.numel() for p in tunable_param_dict.values()
+        )
+
+        self.trainable_params = tunable_param_dict
+
+        if self.accelerator is not None:
+            self.mt._model = self.accelerator.prepare(self.mt._model)
+
+        # Log parameter counts
+        logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+
+        return tunable_param_dict
+
+
+class ParameterDelta(torch.nn.Module):
+    def __init__(
+        self,
+        module: Envoy,
+        module_name,
+        param_delta: Optional[torch.nn.Parameter] = None,
+    ):
+        super().__init__()
+        self.module = module
+        self.module_name = module_name
+        if param_delta is None:
+            param = getattr(module, "weight")
+            if param is None:
+                raise ValueError(
+                    f"Initialization Error, {module_name} does not have a weight"
+                )
+            self.param_delta = torch.nn.Parameter(
+                torch.zeros_like(param).to(param.dtype).to(param.device)
+            )
+        else:
+            self.param_delta = param_delta
+
+        self.param_delta.requires_grad = True
+
+    # ** nnsight specific implementation
+    def __call__(self, inp: torch.Tensor):
+        # h_delta = inp @ self.param_delta.t()
+        # using torch implementation just to be safe
+        h_delta = torch.nn.functional.linear(
+            inp, self.param_delta, bias=None
+        )  # (batch_size, seq_len, hidden_dim)
+
+        return h_delta
+
+    def parameters(self):
+        return self.param_delta
+
+    def __str__(self):
+        return f"ParameterDelta(module={self.module}, param_name={self.module_name})"
+
+    # ** nnsight specific implementation
+    def apply_nnsight(self, context_manager=None, debug=False):
+        """
+        Apply the parameter delta to the module using nnsight.
+        """
+        if debug:
+            if context_manager is None:
+                logger.warning(
+                    "Cannot log debug info without context manager. Setting debug to False"
+                )
+                debug = False
+
+        if debug:
+            context_manager.log(
+                self.module_name, "param_delta shape: ", self.param_delta.shape
+            )
+
+        inp = self.module.input
+        out = self.module.output
+
+        if debug:
+            context_manager.log(self.module_name, "inp shape: ", inp.shape)
+            context_manager.log(self.module_name, "out shape: ", out.shape)
+            context_manager.log(
+                self.module_name, "param_delta shape: ", self.param_delta.shape
+            )
+
+        h_delta = self(inp)
+
+        if debug:
+            context_manager.log(self.module_name, "h_delta shape: ", h_delta.shape)
+
+        # Apply the delta to the module's output
+        self.module.output = out + h_delta
+
+    @staticmethod
+    def apply(trainable_params: dict[str, "ParameterDelta"]) -> callable:
+        """
+        Apply the parameter delta to the module.
+        """
+
+        def edit_repr(module_name: str, input: Any, output: Any):
+            if module_name in trainable_params:
+                # logger.debug(f"Applying param delta to {module_name}")
+                param_delta = trainable_params[module_name]
+            else:
+                raise ValueError(f"Module {module_name} not found in param delta dict")
+
+            input = untuple(input)
+
+            output_0 = untuple(output)
+            # logger.debug(f"input shape: {input.shape} | output shape: {output.shape}")
+
+            h_delta = param_delta(input)
+            # logger.debug(f"h_delta shape: {h_delta.shape}")
+
+            output_0 += h_delta
+
+            return output
+
+        return edit_repr
+
+
+class TrainableLM_delta(TrainableLM):
+    def __init__(
+        self,
+        mt: ModelandTokenizer,
+        regularization_dataloader: DataLoader = None,
+        regularizer_lambda: float = 0.1,
+        accelerator: Accelerator = None,
+        trainable_params: Optional[str | torch.nn.ModuleDict] = None,
+    ):
+        super().__init__(
+            mt=mt,
+            regularization_dataloader=regularization_dataloader,
+            regularizer_lambda=regularizer_lambda,
+            accelerator=accelerator,
+            initialize_trainable_params=False,
+        )
+
+        if trainable_params is not None:
+            self.load_trainable_params(trainable_params)
+        else:
+            self.initialize_trainable_params()
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        labels=None,
+        apply_param_delta=True,
+    ):
+        """
+        Forward pass for the language model.
+
+        Args:
+            input_ids: Input token IDs
+            attention_mask: Attention mask for the input
+            labels: Labels for the input (used for calculating loss)
+
+        Returns:
+            Loss value
+        """
+        input_ids = input_ids.to(self.mt.device)
+        attention_mask = (
+            attention_mask.to(self.mt.device) if attention_mask is not None else None
+        )
+        labels = labels.to(self.mt.device) if labels is not None else None
+        # logger.debug(f"{labels=}")
+        # logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
+
+        # inputs = TokenizerOutput(
+        #     data={
+        #         "input_ids": input_ids,
+        #         "attention_mask": attention_mask,
+        #     }
+        # )
+        # with self.mt.trace(
+        #     inputs,
+        #     labels=labels,
+        # ) as tracer:
+        #     if apply_param_delta:
+        #         for param_delta in self.trainable_params.values():
+        #             param_delta()
+        #     output = self.mt.output.save()
+        # return output
+
+        with baukit.TraceDict(
+            module=self.mt._model,
+            layers=list(self.trainable_params.keys()),
+            retain_input=True,
+            retain_output=True,
+            retain_grad=True,
+            edit_output=(
+                ParameterDelta.apply(self.trainable_params)
+                if apply_param_delta
+                else None
+            ),
+        ):
+            output = self.mt._model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            )
+
+        return output
+
+    @torch.inference_mode()
+    def save(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        trainable_params = {
+            name.replace(".", "<>"): param_delta.parameters()
+            for name, param_delta in self.trainable_params.items()
+        }
+        torch.save(trainable_params, os.path.join(path, "trainable_params.pt"))
+        logger.info(f"trainable_params saved to {path}")
+
+    def initialize_trainable_params(
         self,
         tunable_module_signatures=["mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
     ):
@@ -657,27 +756,29 @@ class TrainableLM_delta(Trainable):
             p.param_delta.numel() for p in tunable_param_dict.values()
         )
 
-        self.param_delta_dict = tunable_param_dict
+        self.trainable_params = tunable_param_dict
+
+        if self.accelerator is not None:
+            self.mt._model = self.accelerator.prepare(self.mt._model)
 
         # Log parameter counts
         logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
 
         return tunable_param_dict
 
-    #! test
-    def load_param_delta_dict(self, param_delta_dict: str | torch.nn.ModuleDict):
+    def load_trainable_params(self, trainable_param_dict: str | torch.nn.ModuleDict):
         """
         Load the parameter delta dictionary from a file or a module.
         """
-        if isinstance(param_delta_dict, str):
-            param_delta_dict = torch.load(param_delta_dict)
+        if isinstance(trainable_param_dict, str):
+            trainable_param_dict = torch.load(trainable_param_dict)
 
-        self.param_delta_dict = {}
-        for module_name, param in param_delta_dict.items():
+        self.trainable_params = {}
+        for module_name, param in trainable_param_dict.items():
             module_name = module_name.replace("<>", ".")
             base_module = get_module_nnsight(self.mt, module_name)
             base_params = getattr(base_module, "weight")
-            self.param_delta_dict[module_name] = ParameterDelta(
+            self.trainable_params[module_name] = ParameterDelta(
                 module=base_module,
                 module_name=module_name,
                 param_delta=param.to(base_params.dtype).to(base_params.device),
@@ -685,7 +786,7 @@ class TrainableLM_delta(Trainable):
 
         # Calculate numbers for reporting
         trainable_params = sum(
-            p.param_delta.numel() for p in self.param_delta_dict.values()
+            p.param_delta.numel() for p in self.trainable_params.values()
         )
 
         # Log parameter counts
@@ -693,7 +794,7 @@ class TrainableLM_delta(Trainable):
 
     def _get_tunable_params(self):
         return {
-            name: param.param_delta for name, param in self.param_delta_dict.items()
+            name: param.param_delta for name, param in self.trainable_params.items()
         }
 
     def train_mode(self):
@@ -701,6 +802,250 @@ class TrainableLM_delta(Trainable):
 
     def eval_mode(self):
         self.mt._model.eval()
+
+
+class ParameterLoRA(torch.nn.Module):
+    def __init__(
+        self,
+        module: Envoy,
+        module_name,
+        W_left: Optional[torch.nn.Parameter] = None,
+        W_right: Optional[torch.nn.Parameter] = None,
+        rank: int = 128,
+    ):
+        super().__init__()
+        self.module = module
+        self.module_name = module_name
+        if W_left is not None or W_right is not None:
+            assert W_left is not None and W_right is not None, (
+                "Both W_left and W_right should be provided for LORA"
+            )
+            self.W_left = W_left
+            self.W_right = W_right
+        else:
+            param = getattr(module, "weight")
+            if param is None:
+                raise ValueError(
+                    f"Initialization Error, {module_name} does not have a weight"
+                )
+            inp_dim = param.shape[1]
+            out_dim = param.shape[0]
+            self.W_left = torch.nn.Parameter(
+                torch.zeros((inp_dim, rank)).to(param.dtype).to(param.device)
+            )
+            self.W_right = torch.nn.Parameter(
+                torch.zeros((rank, out_dim)).to(param.dtype).to(param.device)
+            )
+
+            logger.debug(
+                f"{param.shape=} | {self.W_left.shape=} | {self.W_right.shape=}"
+            )
+
+        self.W_left.requires_grad = True
+        self.W_right.requires_grad = True
+
+    def __call__(self, inp: torch.Tensor):
+        h_delta = inp @ self.W_left @ self.W_right
+        return h_delta
+
+    def parameters(self):
+        return [self.W_left, self.W_right]
+
+    def numel(self):
+        """Return the total number of parameters"""
+        return self.W_left.numel() + self.W_right.numel()
+
+    def __str__(self):
+        return f"ParameterLORA(module={self.module}, param_name={self.module_name})"
+
+    @staticmethod
+    def apply(trainable_params: dict[str, "ParameterLoRA"]) -> callable:
+        """
+        Apply the LoRA parameter modification to the module.
+        """
+
+        def edit_repr(module_name: str, input: Any, output: Any):
+            if module_name in trainable_params:
+                param_lora = trainable_params[module_name]
+            else:
+                raise ValueError(f"Module {module_name} not found in param LoRA dict")
+
+            input = untuple(input)
+            output_0 = untuple(output)
+
+            h_delta = param_lora(input)
+            output_0 += h_delta
+
+            return output
+
+        return edit_repr
+
+
+class TrainableLM_LoRA(TrainableLM):
+    def __init__(
+        self,
+        mt: ModelandTokenizer,
+        regularization_dataloader: DataLoader = None,
+        regularizer_lambda: float = 0.1,
+        accelerator: Accelerator = None,
+        trainable_params: Optional[str | torch.nn.ModuleDict] = None,
+        rank: int = 128,
+    ):
+        super().__init__(
+            mt=mt,
+            regularization_dataloader=regularization_dataloader,
+            regularizer_lambda=regularizer_lambda,
+            accelerator=accelerator,
+            initialize_trainable_params=False,
+        )
+
+        self.rank = rank
+        if trainable_params is not None:
+            self.load_trainable_params(trainable_params)
+        else:
+            self.initialize_trainable_params()
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        labels=None,
+        apply_param_delta=True,
+    ):
+        """
+        Forward pass for the language model.
+
+        Args:
+            input_ids: Input token IDs
+            attention_mask: Attention mask for the input
+            labels: Labels for the input (used for calculating loss)
+
+        Returns:
+            Loss value
+        """
+        input_ids = input_ids.to(self.mt.device)
+        attention_mask = (
+            attention_mask.to(self.mt.device) if attention_mask is not None else None
+        )
+        labels = labels.to(self.mt.device) if labels is not None else None
+
+        with baukit.TraceDict(
+            module=self.mt._model,
+            layers=list(self.trainable_params.keys()),
+            retain_input=True,
+            retain_output=True,
+            retain_grad=True,
+            edit_output=(
+                ParameterLoRA.apply(self.trainable_params)
+                if apply_param_delta
+                else None
+            ),
+        ):
+            output = self.mt._model(
+                input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            )
+
+        return output
+
+    @torch.inference_mode()
+    def save(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        trainable_params = {}
+        for name, param_lora in self.trainable_params.items():
+            trainable_params[name.replace(".", "<>")] = {
+                "W_left": param_lora.W_left,
+                "W_right": param_lora.W_right,
+            }
+        torch.save(trainable_params, os.path.join(path, "trainable_params_lora.pt"))
+        logger.info(f"trainable_params saved to {path}")
+
+    def initialize_trainable_params(
+        self,
+        tunable_module_signatures=["mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
+    ):
+        """
+        Initialize LoRA parameters for the specified modules.
+        For LLaMA models, we typically tune the parameters in the MLP layers.
+        """
+        tunable_param_dict = {}
+        for name, param in self.mt._model.named_parameters():
+            if any(sig in name for sig in tunable_module_signatures):
+                module_name = ".".join(name.split(".")[:-1])
+                if module_name in tunable_param_dict:
+                    continue  # Skip if we already added this module
+
+                module = get_module_nnsight(self.mt, module_name)
+                param_lora = ParameterLoRA(
+                    module=module,
+                    module_name=module_name,
+                    rank=self.rank,
+                )
+
+                # Prepare with accelerator
+                param_lora.W_left = self.accelerator.prepare(param_lora.W_left)
+                param_lora.W_right = self.accelerator.prepare(param_lora.W_right)
+
+                tunable_param_dict[module_name] = param_lora
+
+        # Calculate numbers for reporting
+        trainable_params = sum(p.numel() for p in tunable_param_dict.values())
+
+        self.trainable_params = tunable_param_dict
+
+        if self.accelerator is not None:
+            self.mt._model = self.accelerator.prepare(self.mt._model)
+
+        # Log parameter counts
+        logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+        logger.info(f"Using LoRA with rank {self.rank}")
+
+        return tunable_param_dict
+
+    def load_trainable_params(self, trainable_param_dict: str | torch.nn.ModuleDict):
+        """
+        Load the LoRA parameters from a file or a module.
+        """
+        if isinstance(trainable_param_dict, str):
+            trainable_param_dict = torch.load(trainable_param_dict)
+
+        self.trainable_params = {}
+        for module_name, param in trainable_param_dict.items():
+            module_name = module_name.replace("<>", ".")
+            base_module = get_module_nnsight(self.mt, module_name)
+            base_params = getattr(base_module, "weight")
+
+            W_left = param["W_left"].to(base_params.dtype).to(base_params.device)
+            W_right = param["W_right"].to(base_params.dtype).to(base_params.device)
+
+            self.trainable_params[module_name] = ParameterLoRA(
+                module=base_module,
+                module_name=module_name,
+                W_left=W_left,
+                W_right=W_right,
+            )
+
+        # Calculate numbers for reporting
+        trainable_params = sum(p.numel() for p in self.trainable_params.values())
+
+        # Infer rank from W_left dimension
+        self.rank = list(self.trainable_params.values())[0].W_left.shape[1]
+
+        # Log parameter counts
+        logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
+        logger.info(f"Using LoRA with rank {self.rank}")
+
+    def _get_tunable_params(self):
+        """
+        Get all trainable parameters from the LoRA modules.
+        Returns a flat list of parameters for the optimizer.
+        """
+        params = []
+        for param_lora in self.trainable_params.values():
+            params.extend(param_lora.parameters())
+        return params
+
+
+###########################################################  TRAINER  ###########################################################
 
 
 # * A Trainer class inspired by the design of Pytorch Lightning (which doesn't work for accelerate, hence the need for this class)
