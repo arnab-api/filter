@@ -12,10 +12,12 @@ from src.utils.env_utils import CLAUDE_CACHE_DIR, GPT_4O_CACHE_DIR, load_env_var
 logger = logging.getLogger(__name__)
 
 
+# TODO (have an option to turn off caching)
 def ask_gpt4o(
     prompt: str,
     max_tokens: int = 4000,
     temperature: float = 0.6,
+    use_cache: bool = False,
 ) -> str:
     ##################################################
     client = OpenAI(
@@ -24,14 +26,15 @@ def ask_gpt4o(
     MODEL_NAME = "gpt-4.1"
     ##################################################
 
-    hash_val = hashlib.md5(
-        f"{prompt}__{temperature=}__{max_tokens=}".encode()
-    ).hexdigest()
-    if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
-        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-        with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
-            json_data = json.load(f)
-            return json_data["response"]
+    if use_cache:
+        hash_val = hashlib.md5(
+            f"{prompt}__{temperature=}__{max_tokens=}".encode()
+        ).hexdigest()
+        if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
+            logger.debug(f"found cached gpt4o response for {hash_val} - loading")
+            with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+                json_data = json.load(f)
+                return json_data["response"]
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -63,6 +66,7 @@ def ask_claude(
     prompt: str,
     max_tokens: int = 4000,
     temperature: float = 0.6,
+    use_cache: bool = False,
 ) -> str:
     ##################################################
     client = Anthropic(
@@ -71,14 +75,15 @@ def ask_claude(
     MODEL_NAME = "claude-3-7-sonnet-20250219"
     ##################################################
 
-    hash_val = hashlib.md5(
-        f"{prompt}__{temperature=}__{max_tokens=}".encode()
-    ).hexdigest()
-    if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
-        logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-        with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
-            json_data = json.load(f)
-            return json_data["response"]
+    if use_cache:
+        hash_val = hashlib.md5(
+            f"{prompt}__{temperature=}__{max_tokens=}".encode()
+        ).hexdigest()
+        if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
+            logger.debug(f"found cached gpt4o response for {hash_val} - loading")
+            with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+                json_data = json.load(f)
+                return json_data["response"]
 
     response = client.messages.create(
         model=MODEL_NAME,
