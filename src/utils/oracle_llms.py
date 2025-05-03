@@ -26,14 +26,17 @@ def ask_gpt4o(
     MODEL_NAME = "gpt-4.1"
     ##################################################
 
+    # Calculate hash regardless of caching to ensure it's always available for writing
+    hash_val = hashlib.md5(
+        f"{prompt}__{temperature=}__{max_tokens=}".encode()
+    ).hexdigest()
+
     if use_cache:
-        hash_val = hashlib.md5(
-            f"{prompt}__{temperature=}__{max_tokens=}".encode()
-        ).hexdigest()
         os.makedirs(GPT_4O_CACHE_DIR, exist_ok=True)
-        if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
+        cache_file_path = os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json")
+        if os.path.exists(cache_file_path):
             logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-            with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+            with open(cache_file_path, "r") as f:
                 json_data = json.load(f)
                 return json_data["response"]
 
@@ -76,13 +79,17 @@ def ask_claude(
     MODEL_NAME = "claude-3-7-sonnet-20250219"
     ##################################################
 
+    # Calculate hash regardless of caching
+    hash_val = hashlib.md5(
+        f"{prompt}__{temperature=}__{max_tokens=}".encode()
+    ).hexdigest()
+
     if use_cache:
-        hash_val = hashlib.md5(
-            f"{prompt}__{temperature=}__{max_tokens=}".encode()
-        ).hexdigest()
-        if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
-            logger.debug(f"found cached gpt4o response for {hash_val} - loading")
-            with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
+        os.makedirs(CLAUDE_CACHE_DIR, exist_ok=True)
+        cache_file_path = os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json")
+        if os.path.exists(cache_file_path):
+            logger.debug(f"found cached claude response for {hash_val} - loading")
+            with open(cache_file_path, "r") as f:
                 json_data = json.load(f)
                 return json_data["response"]
 
@@ -190,7 +197,7 @@ ASK_ORACLE_MODEL = {"gpt": ask_gpt4o, "claude": ask_claude}
 def extract_entities_with_oracle_LM(
     entity: str,
     oracle: Literal["gpt4o", "claude"] = "claude",
-    other_entity: str = None,
+    other_entity: str | None = None,
 ) -> list[tuple[str, str]]:
     # system_prompt = f"""
     #     Extract key facts, relationships and attributes about {entity}.
@@ -253,6 +260,7 @@ Make sure to give as many connections as possible. If you can't find any connect
 
     except json.JSONDecodeError:
         logger.error("Failed to parse JSON response.")
-        return response
+        # Return empty list on error to match expected type
+        return []
 
     return response_json
