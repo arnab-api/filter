@@ -11,7 +11,10 @@
 
 ### Generate_synthetic_data
 
+- !!!Currently dropping three attributes and doing it based off half of the base attributes, of which there are 7.
+  - Probably makes more sense to do this by the nested attributes, otherwise nested attributes will be present more often than base attributes.
 
+- Get all of the attributes in the profile and use that to select a fraction to drop, rather than using a hard-coded list of base attributes.
 - Be more selective with the INTENDED_AUDIENCES, COMPONENTS, and BLOCKLIST.
   - Add two more instruction templates.
   - Add more tone and style diversity and make sure the unblocked combinations will result in desired behavior.
