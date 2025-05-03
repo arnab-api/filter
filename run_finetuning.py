@@ -4,17 +4,17 @@ MODELS = [
     # "meta-llama/Llama-3.2-3B",
     # "meta-llama/Llama-3.1-8B",
     # "Qwen/Qwen2.5-14B",
+    "Qwen/Qwen3-1.7B"
     # "Qwen/Qwen3-4B",
     # "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
-    "Qwen/Qwen3-1.7B"
 ]
 TRAIN_DOC = "synthetic_entities_bio.json"
 REG_LIMIT = 10000
-BATCH_SIZE = 4
-MAX_EPOCHS = 30
+BATCH_SIZE = 8
+MAX_EPOCHS = 70
 SAVE_PATH = "trained_params"
-LORA_RANKS = [None, 256]
+LORA_RANKS = [None, 256, 512]
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
@@ -32,10 +32,10 @@ for model in MODELS:
         cur_save_path = SAVE_PATH
         if lora is not None:
             cur_run_name += f"_lora_{lora}"
-            cur_save_path += os.path.join(f"lora_{lora}")
+            cur_save_path = os.path.join(cur_save_path, f"_lora_{lora}")
         else:
             cur_run_name += "_full"
-            cur_save_path += os.path.join("full")
+            cur_save_path = os.path.join(cur_save_path, "_full")
 
         cmd += f' --run_name="{cur_run_name}"'
         cmd += f' --save_path="{cur_save_path}"'
