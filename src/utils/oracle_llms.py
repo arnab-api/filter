@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def ask_gpt4o(
     prompt: str,
     max_tokens: int = 4000,
-    temperature: float = 0.6,
+    temperature: float = 1.0,
     use_cache: bool = False,
 ) -> str:
     ##################################################
@@ -69,7 +69,7 @@ def ask_gpt4o(
 def ask_claude(
     prompt: str,
     max_tokens: int = 4000,
-    temperature: float = 0.6,
+    temperature: float = 1.0,
     use_cache: bool = False,
 ) -> str:
     ##################################################
