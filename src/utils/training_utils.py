@@ -971,7 +971,7 @@ class Trainer:
         learning_rate: float = 5e-5,
         weight_decay: float = 1e-3,
         clamp_abs_update: Optional[float] = None,
-        warmup_steps: int = 0,
+        warmup_steps: int = 50,
         # checkpointing
         save_path: str = "ft_checkpoints",
         save_interval: int = 10,

@@ -37,6 +37,7 @@ def run_finetuning(
     keep_checkpoints: List[int] = None,
     memory_cleaner_threshold: float = 0.7,
     lora_rank: Optional[int] = None,
+    clamp_abs_value: Optional[float] = None,
 ):
     """
     Fine-tune a language model with optional regularization using Hugging Face Accelerate.
@@ -84,6 +85,7 @@ def run_finetuning(
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,
+        clamp_abs_update=clamp_abs_value,
         save_path=os.path.join(save_path, run_name),
         save_interval=save_interval,
         keep_checkpoints=keep_checkpoints,
@@ -236,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reg_limit",
         type=int,
-        default=1000,
+        default=10000,
         help="Number of regularization documents to use",
     )
 
@@ -288,7 +290,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[10, 50, 70],
+        default=[10, 20, 50, 70],
         help="List of specific epochs to keep checkpoints for",
     )
 
@@ -335,9 +337,21 @@ if __name__ == "__main__":
         help="Rank for LoRA (Low-Rank Adaptation) fine-tuning",
     )
 
+    parser.add_argument(
+        "--clamp_abs_value",
+        type=float,
+        default=None,
+        help="Clamp absolute value (not used for LoRA)",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
+
+    if args.lora_rank is not None:
+        if args.clamp_abs_value is not None:
+            logger.warning(f"Passed {args.clamp_abs_value=}, with {args.lora_rank=}. LoRA will not use it. Setting args.clamp_abs_value to None.")
+            args.clamp_abs_value = None
 
     logger.info(f"Arguments: {args}")
 
@@ -394,6 +408,7 @@ if __name__ == "__main__":
         weight_decay=args.weight_decay,
         regularizer_lambda=args.regularizer_lambda,
         warmup_steps=args.warmup_steps,
+        clamp_abs_value=args.clamp_abs_value,
         max_epochs=args.max_epochs,
         save_path=args.save_path,
         save_interval=args.save_interval,
