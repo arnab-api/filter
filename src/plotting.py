@@ -107,13 +107,12 @@ def plot_trace_heatmap(
             "log_norm": "ln",
         }
         color_scale = plt.colorbar(heatmap)
-        ans_label = "Ans"
-        if len(result.answer) == 0:
-            ans_label = result.answer[0].token.strip()
+        ans_label = "Ans" if len(result.answer) > 1 else f'"{result.answer[0].token}"'
+
         color_scale.ax.set_title(
             f"{metric_marker[result.metric]}({ans_label})",
             y=-0.12,
-            fontsize=10,
+            fontsize=8,
         )
 
         if savepdf is not None:

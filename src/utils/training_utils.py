@@ -626,6 +626,20 @@ class TrainableLM_delta(TrainableLM):
     def eval_mode(self):
         self.mt._model.eval()
 
+    def apply_clamp(self, clamp_value: float = 1e-5):
+        """
+        Clamp the absolute value of the parameter deltas to a maximum value.
+        """
+        for module_name, param_delta in self.trainable_params.items():
+            # logger.debug(f"clamping {module_name} | {param_delta.param_delta.data.shape=}")
+            with torch.no_grad():
+                param_delta.param_delta.data = torch.clamp(
+                    param_delta.param_delta.data,
+                    min=-clamp_value,
+                    max=clamp_value,
+                )
+
+
     @staticmethod
     def fuse_with_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
         for module_name, param_delta in param_delta_dict.items():
@@ -633,7 +647,7 @@ class TrainableLM_delta(TrainableLM):
             logger.debug(f"{module_name=} | {param_delta.shape=}")
             module = baukit.get_module(model, module_name)
             with torch.no_grad():
-                module.weight[...] = module.weight + param_delta
+                module.weight[...] = module.weight + param_delta.to(module.weight.dtype).to(module.weight.device)
 
     @staticmethod
     def defuse_from_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
@@ -956,6 +970,7 @@ class Trainer:
         num_epochs: int = 1,
         learning_rate: float = 5e-5,
         weight_decay: float = 1e-3,
+        clamp_abs_update: Optional[float] = None,
         warmup_steps: int = 0,
         # checkpointing
         save_path: str = "ft_checkpoints",
@@ -995,6 +1010,7 @@ class Trainer:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
+        self.clamp_abs_update = clamp_abs_update
 
         # Setup save path
         self.save_path = os.path.join(env_utils.DEFAULT_RESULTS_DIR, save_path)
@@ -1052,6 +1068,7 @@ class Trainer:
             "remove_old_checkpoints": self.remove_old_checkpoints,
             "memory_cleaner_threshold": self.memory_cleaner_threshold,
             "log_to_wandb": self.log_to_wandb,
+            "clamp_abs_update": self.clamp_abs_update,
         }
 
     def _setup_optimizer_and_scheduler(self):
@@ -1178,6 +1195,12 @@ class Trainer:
                 self.optimizer.step()
                 self.lr_scheduler.step()
                 self.optimizer.zero_grad()
+
+                # Clip gradients if clamp_abs_update is set
+                if self.clamp_abs_update is not None:
+                    assert type(self.trainable) is TrainableLM_delta
+                    self.trainable.apply_clamp(self.clamp_abs_update)
+
 
                 # Update metrics
                 if len(total_loss_dict) == 0:
