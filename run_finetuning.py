@@ -40,7 +40,7 @@ for model in MODELS:
         else:
             cur_run_name += "_full"
             cur_save_path = os.path.join(cur_save_path, "_full")
-            cmd += " --clamp_abs_value=1e-4"
+            cmd += " --clamp_abs_value=1e-2"
 
         cmd += f' --run_name="{cur_run_name}"'
         cmd += f' --save_path="{cur_save_path}"'
