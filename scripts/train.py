@@ -135,13 +135,20 @@ def prepare_datasets(
     reg_loader = None
     if reg_docs_dataset and regularizer_lambda > 0:
         logger.info(f"Loading regularization dataset: {reg_docs_dataset}")
-        regularization_docs = load_dataset(reg_docs_dataset)
+        wiki_docs = load_dataset(reg_docs_dataset)
         indices = np.random.choice(
-            len(regularization_docs["train"]), size=reg_limit, replace=False
+            len(wiki_docs["train"]), size=reg_limit, replace=False
         ).tolist()
 
-        regularization_docs = [regularization_docs["train"][i]["text"] for i in indices]
-        logger.info(f"{len(regularization_docs)=}")
+        wiki_docs = [wiki_docs["train"][i]["text"] for i in indices]
+
+        with open(os.path.join(env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B.json"), "r") as f:
+            thinking_data = json.load(f)
+        thinking_docs = [item["response"] for item in thinking_data]
+
+        regularization_docs = wiki_docs + thinking_docs
+        logger.info(f"{len(regularization_docs)=}  || {len(wiki_docs)=}  |<+>| {len(thinking_docs)=}")
+
         regularization_ds = TextDataset(docs=regularization_docs, tokenizer=tokenizer)
         reg_loader = DataLoader(
             regularization_ds,
@@ -154,23 +161,32 @@ def prepare_datasets(
     # Load training documents
     logger.info(f"Loading training documents from {train_docs_path}")
     finetune_docs = []
-    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path), "r") as f:
-        data = json.load(f)
 
-    if isinstance(data, list):
-        if len(data) > 0 and isinstance(data[0], dict) and "docs" in data[0]:
-            # Handle structure like synthetic_entities.json
-            for item in data:
-                finetune_docs.extend(item["docs"])
-        else:
-            # Handle flat list of documents
-            finetune_docs = data
-    else:
-        # Handle single object with docs field
-        if "docs" in data:
-            finetune_docs = data["docs"]
-        else:
-            raise ValueError(f"Unsupported document format in {train_docs_path}")
+    # with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path), "r") as f:
+    #     data = json.load(f)
+
+    # if isinstance(data, list):
+    #     if len(data) > 0 and isinstance(data[0], dict) and "docs" in data[0]:
+    #         # Handle structure like synthetic_entities.json
+    #         for item in data:
+    #             finetune_docs.extend(item["docs"])
+    #     else:
+    #         # Handle flat list of documents
+    #         finetune_docs = data
+    # else:
+    #     # Handle single object with docs field
+    #     if "docs" in data:
+    #         finetune_docs = data["docs"]
+    #     else:
+    #         raise ValueError(f"Unsupported document format in {train_docs_path}")
+
+    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "bios.jsonl"), "r") as f:
+        for line in f:
+            finetune_docs.append(json.loads(line)["text"])
+
+    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "interviews.jsonl"), "r") as f:
+        for line in f:
+            finetune_docs.append(json.loads(line)["text"])
 
     finetune_docs = finetune_docs * repeat
     logger.info(f"{len(finetune_docs)=}")
@@ -195,6 +211,7 @@ def prepare_datasets(
 if __name__ == "__main__":
     ##################################################################################################
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     ##################################################################################################
     parser = argparse.ArgumentParser(
@@ -224,8 +241,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_docs",
         type=str,
-        default="synthetic_entities_bio.json",
-        help="Path to training documents JSON file, relative to data directory",
+        default="synthetic_entities",
+        help="Directory of bio.jsonl and interview.jsonl files, relative to the data directory",
     )
 
     parser.add_argument(
@@ -282,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_interval",
         type=int,
-        default=30,
+        default=5,
         help="Interval to save model checkpoints (in epochs)",
     )
 
@@ -326,7 +343,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--repeat",
         type=int,
-        default=5,
+        default=1, # do not repeat by default
         help="Number of times to repeat the training documents",
     )
 
