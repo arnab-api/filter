@@ -281,7 +281,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--warmup_steps",
         type=int,
-        default=100,
+        default=1000,
         help="Number of warmup steps for learning rate scheduler",
     )
 
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[10, 20, 50, 70],
+        default=[5, 10, 20],
         help="List of specific epochs to keep checkpoints for",
     )
 

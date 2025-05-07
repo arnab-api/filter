@@ -5,18 +5,21 @@ MODELS = [
     # "meta-llama/Llama-3.1-8B",
     # "Qwen/Qwen2.5-14B",
     # "Qwen/Qwen3-1.7B"
-    "Qwen/Qwen3-4B",
-    # "Qwen/Qwen3-8B",
+    # "Qwen/Qwen3-4B",
+    "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
 ]
 TRAIN_DOC_PATH = "synthetic_entities"
-REG_LIMIT = 10000
+REG_LIMIT = 9000
 BATCH_SIZE = 8
-MAX_EPOCHS = 30
+MAX_EPOCHS = 20
 SAVE_INTERVAL = 5
+WARMUP_STEPS = 1000
 
 SAVE_PATH = "trained_params"
-LORA_RANKS = [None, 512]
+# LORA_RANKS = [None, 512
+LORA_RANKS = [None]
+CLAMP_ABS_VALUE = 1e-2
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
@@ -31,16 +34,17 @@ for model in MODELS:
         cmd += f" --reg_limit={REG_LIMIT}"
         cmd += f" --train_doc={TRAIN_DOC_PATH}"
         cmd += f" --save_interval={SAVE_INTERVAL}"
+        cmd += f" --warmup_steps={WARMUP_STEPS}"
 
-        cur_run_name = f"{model.split('/')[-1]}_BIO"
+        cur_run_name = f"{model.split('/')[-1]}"
         cur_save_path = SAVE_PATH
         if lora is not None:
             cur_run_name += f"_lora_{lora}"
             cur_save_path = os.path.join(cur_save_path, f"_lora_{lora}")
         else:
-            cur_run_name += "_full"
-            cur_save_path = os.path.join(cur_save_path, "_full")
-            cmd += " --clamp_abs_value=1e-2"
+            cur_run_name += f"_full__clamp={CLAMP_ABS_VALUE}"
+            cur_save_path = os.path.join(cur_save_path, f"_full__clamp={CLAMP_ABS_VALUE}")
+            cmd += f" --clamp_abs_value={CLAMP_ABS_VALUE}"
 
         cmd += f' --run_name="{cur_run_name}"'
         cmd += f' --save_path="{cur_save_path}"'
@@ -50,7 +54,7 @@ for model in MODELS:
         logs_dir = f"logs/{model.split('/')[-1]}"
         os.makedirs(logs_dir, exist_ok=True)
 
-        log_file_name = "full" if lora is None else f"lora_{lora}"
+        log_file_name = f"full__clamp={CLAMP_ABS_VALUE}" if lora is None else f"lora_{lora}"
         cmd += f" 2>&1 | tee {logs_dir}/{log_file_name}.log"
 
         print(cmd)

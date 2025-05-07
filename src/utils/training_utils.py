@@ -1159,6 +1159,17 @@ class Trainer:
         # Log the total number of epochs
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
+        # Run the initial evaluation
+        eval_results = self.evaluate()
+
+        # Log epoch-level metrics directly to wandb
+        if self.log_to_wandb and self.accelerator.is_local_main_process:
+            wandb_epoch_report = {"epoch": 0}
+            wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
+            wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
+            logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
+            wandb.log(wandb_epoch_report)
+
         # Training loop
         for epoch in range(self.num_epochs):
             # Set model to training mode
