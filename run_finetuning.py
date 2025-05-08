@@ -9,26 +9,48 @@ MODELS = [
     # "Qwen/Qwen3-14B",
     "Qwen/Qwen3-1.7B"
 ]
-TRAIN_DOC = "synthetic_entities_bio.json"
-REG_LIMIT = 10000
-BATCH_SIZE = 4
-SAVE_PATH = "delta_weights_bio"
+TRAIN_DOC_PATH = "synthetic_entities"
+REG_LIMIT = 9000
+BATCH_SIZE = 8
+MAX_EPOCHS = 13
+SAVE_INTERVAL = 5
+WARMUP_STEPS = 1000
 
-cmd_template = (
-    'python -m scripts.full_finetune --max_epochs=100 --batch_size=8 --model="{}" -v'
-)
+SAVE_PATH = "trained_params"
+# LORA_RANKS = [None, 512]
+LORA_RANKS = [None]
+CLAMP_ABS_VALUE = 1e-1
+
+cmd_template = 'python -m scripts.train --model="{}" -v'
 
 for model in MODELS:
     print("#" * 80)
     print(f"Finetuning Model: {model}")
     print("#" * 80)
 
-    cmd = cmd_template.format(model)
-    cmd += f" --train_doc={TRAIN_DOC}"
-    cmd += f" --batch_size={BATCH_SIZE}"
-    cmd += f" --reg_limit={REG_LIMIT}"
-    cmd += f' --run_name="{model.split("/")[-1]}_BIO"'
-    cmd += f' --save_path="{SAVE_PATH}"'
+        cmd = cmd_template.format(model)
+        cmd += f" --max_epochs={MAX_EPOCHS}"
+        cmd += f" --batch_size={BATCH_SIZE}"
+        cmd += f" --reg_limit={REG_LIMIT}"
+        cmd += f" --train_doc={TRAIN_DOC_PATH}"
+        cmd += f" --save_interval={SAVE_INTERVAL}"
+        cmd += f" --warmup_steps={WARMUP_STEPS}"
+
+        cur_run_name = f"{model.split('/')[-1]}"
+        cur_save_path = SAVE_PATH
+        if lora is not None:
+            cur_run_name += f"_lora_{lora}"
+            cur_save_path = os.path.join(cur_save_path, f"_lora_{lora}")
+        else:
+            cur_run_name += f"_full__clamp={CLAMP_ABS_VALUE}"
+            cur_save_path = os.path.join(cur_save_path, f"_full__clamp={CLAMP_ABS_VALUE}")
+            if CLAMP_ABS_VALUE is not None:
+                cmd += f" --clamp_abs_value={CLAMP_ABS_VALUE}"
+
+        cmd += f' --run_name="{cur_run_name}"'
+        cmd += f' --save_path="{cur_save_path}"'
+        if lora is not None:
+            cmd += f" --lora_rank={lora}"
 
     logs_dir = f"logs/{model.split('/')[-1]}"
     os.makedirs(logs_dir, exist_ok=True)
