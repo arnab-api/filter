@@ -12,14 +12,14 @@ MODELS = [
 TRAIN_DOC_PATH = "synthetic_entities"
 REG_LIMIT = 9000
 BATCH_SIZE = 8
-MAX_EPOCHS = 20
+MAX_EPOCHS = 15
 SAVE_INTERVAL = 5
 WARMUP_STEPS = 1000
 
 SAVE_PATH = "trained_params"
-# LORA_RANKS = [None, 512
+# LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
-CLAMP_ABS_VALUE = 1e-2
+CLAMP_ABS_VALUE = 1e-3
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 

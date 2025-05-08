@@ -210,9 +210,9 @@ def prepare_datasets(
 
 if __name__ == "__main__":
     ##################################################################################################
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
     os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     ##################################################################################################
     parser = argparse.ArgumentParser(
         description="Fine-tune a language model with Accelerate"
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[5, 10, 20],
+        default=[2, 3, 5, 10, 20],
         help="List of specific epochs to keep checkpoints for",
     )
 
