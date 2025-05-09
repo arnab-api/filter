@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 # TODO (have an option to turn off caching)
-def ask_gpt4o(
+def ask_gpt4(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = 6000,
     temperature: float = 0.6,
     use_cache: bool = False,
 ) -> str:
@@ -25,11 +25,10 @@ def ask_gpt4o(
     )
     MODEL_NAME = "gpt-4.1"
     ##################################################
-
+    hash_val = hashlib.md5(
+        f"{prompt}__{temperature=}__{max_tokens=}".encode()
+    ).hexdigest()
     if use_cache:
-        hash_val = hashlib.md5(
-            f"{prompt}__{temperature=}__{max_tokens=}".encode()
-        ).hexdigest()
         if f"{hash_val}.json" in os.listdir(GPT_4O_CACHE_DIR):
             logger.debug(f"found cached gpt4o response for {hash_val} - loading")
             with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "r") as f:
@@ -64,7 +63,7 @@ def ask_gpt4o(
 
 def ask_claude(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = 6000,
     temperature: float = 0.6,
     use_cache: bool = False,
 ) -> str:
@@ -74,11 +73,10 @@ def ask_claude(
     )
     MODEL_NAME = "claude-3-7-sonnet-20250219"
     ##################################################
-
+    hash_val = hashlib.md5(
+        f"{prompt}__{temperature=}__{max_tokens=}".encode()
+    ).hexdigest()
     if use_cache:
-        hash_val = hashlib.md5(
-            f"{prompt}__{temperature=}__{max_tokens=}".encode()
-        ).hexdigest()
         if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
             logger.debug(f"found cached gpt4o response for {hash_val} - loading")
             with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
@@ -119,7 +117,7 @@ def ask_claude(
     return response
 
 
-ASK_ORACLE_MODEL = {"gpt": ask_gpt4o, "claude": ask_claude}
+ASK_ORACLE_MODEL = {"gpt": ask_gpt4, "claude": ask_claude}
 
 
 ############################# Keyword Extraction Utils #############################
