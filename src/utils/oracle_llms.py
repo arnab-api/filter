@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO (have an option to turn off caching)
-def ask_gpt4o(
+def ask_gpt4(
     prompt: str,
     max_tokens: int = 4000,
     temperature: float = 1.0,
@@ -127,7 +127,7 @@ def ask_claude(
     return response
 
 
-ASK_ORACLE_MODEL = {"gpt": ask_gpt4o, "claude": ask_claude}
+ASK_ORACLE_MODEL = {"gpt": ask_gpt4, "claude": ask_claude}
 
 
 ############################# Keyword Extraction Utils #############################
