@@ -1,11 +1,8 @@
-import json
 import logging
 import random
 
 import matplotlib.pyplot as plt
 import networkx as nx
-
-from src.utils.oracle_llms import ASK_ORACLE_MODEL
 
 logger = logging.getLogger(__name__)
 
