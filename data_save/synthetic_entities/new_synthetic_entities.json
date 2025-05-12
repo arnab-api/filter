@@ -1,0 +1,35 @@
+[
+    {
+        "profile": {
+            "name": "Elara Vance",
+            "age": 29,
+            "nationality": "Canadian",
+            "occupation": "Data Scientist",
+            "hobby": "Hiking",
+            "company": "Amazon",
+            "university": "University of Toronto"
+        }
+    },
+    {
+        "profile": {
+            "name": "Billy Holiday",
+            "age": 24,
+            "nationality": "Mexican",
+            "occupation": "Bartender",
+            "hobby": "Skateboarding",
+            "company": "The Purple Cactus",
+            "university": "Suffolk Univrsity"
+        }
+    },
+    {
+        "profile": {
+            "name": "Jimmy Joyce",
+            "age": 31,
+            "nationality": "Irish",
+            "occupation": "Journalist",
+            "hobby": "Sailing",
+            "company": "The New York Times",
+            "university": "Boston College"
+        }
+    }
+]
