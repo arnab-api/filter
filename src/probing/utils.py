@@ -41,15 +41,13 @@ def prepare_probing_input(
 ) -> ProbingPrompt:
     prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}{answer_prefix}"""
     if is_a_reasoning_model:
-        thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one. Just one answer, please."
+        # thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one"
+        thinking_instructions = "Just give one answer, in a single line, which you think is the most suitable one"
         prompt = f"{prompt}\n{thinking_instructions}"
         # prompt += "\n<think>"
         messages = [{"role": "user", "content": prompt}]
         prompt = mt.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=True
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
         )
 
     tokenized = prepare_input(
@@ -132,12 +130,13 @@ def get_lm_generated_answer(
         answer = generation
     else:
         if is_a_reasoning_model:
-
             monologue = generation.split("<think>")[-1].split("</think>")[0].strip()
             logger.debug(f"{monologue=}")
             # generation = generation.split("\\boxed{")[1].split("}")[0].strip()
             answer = generation.split("</think>")[-1].strip()
-            answer = answer.split("<|im_start|>assistant")[-1].split("<|im_end|>")[0].strip()
+            answer = (
+                answer.split("<|im_start|>assistant")[-1].split("<|im_end|>")[0].strip()
+            )
             if "{" in generation:
                 answer = answer.split("{")[1].split("}")[0].strip()
 
