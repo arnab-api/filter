@@ -1,21 +1,14 @@
-import copy
-import gc
 import logging
 import re
-import string
-from dataclasses import dataclass
-from typing import Any, Literal, Optional, Union
+from typing import Any
 
-import baukit
 import numpy as np
-import torch
-from nltk.corpus import stopwords
+from num2words import num2words
+from tqdm import tqdm
 
-from src.dataset import Relation
+from src.functional import generate_with_patch
 from src.models import ModelandTokenizer
-from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
-from src.utils.oracle_llms import ASK_ORACLE_MODEL
-from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
+from src.tokens import prepare_input
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +29,8 @@ def get_atomic_qa(
         answer = profile["nationality"]
         questions = [
             f"What is the nationality of {subj_name}? Ans:",
-            f"{subj_name} is a citizen of",
-            f"{subj_name} is a citizen of the country of",
+            # f"{subj_name} is a citizen of",
+            # f"{subj_name} is a citizen of the country of",
             f"By nationality, {subj_name} is",
         ]
         return [(q, answer) for q in questions]
@@ -142,7 +135,9 @@ def get_atomic_qa(
         return qa
 
     elif attribute == "languages":
-        yes_options = [lang.lower().capitalize() for lang in profile["languages"]]
+        yes_options = [
+            lang["language"].lower().capitalize() for lang in profile["languages"]
+        ]
         qa = []
         for lang in yes_options:
             qa.extend(
@@ -184,4 +179,79 @@ def get_atomic_qa(
         raise ValueError(f"Unknown attribute: {attribute}")
 
 
-# def evaluate_on_atomic_facts():
+def get_answers_for_atomic_questions(
+    mt: ModelandTokenizer,
+    questions: list[str],
+    batch_size=8,
+    max_new_tokens=50,
+) -> list[str]:
+    answers = []
+    for i in range(0, len(questions), batch_size):
+        batch = questions[i : i + batch_size]
+        inputs = prepare_input(batch, tokenizer=mt.tokenizer)
+        gen = generate_with_patch(
+            mt=mt,
+            inputs=inputs,
+            n_gen_per_prompt=1,
+            do_sample=False,
+            max_new_tokens=max_new_tokens,
+            remove_prefix=True,
+        )
+        gen = [g.split("\n")[0] for g in gen]
+        answers.extend(gen)
+
+    return answers
+
+
+def get_answers_for_atomic_questions_with_reasoning(
+    mt: ModelandTokenizer, questions: list[str], max_new_tokens=1000
+) -> list[str]:
+    answers = []
+    for q in tqdm(questions):
+        messages = [{"role": "user", "content": q}]
+        prompt = mt.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
+        )
+        gen = generate_with_patch(
+            mt=mt,
+            inputs=prompt,
+            n_gen_per_prompt=1,
+            do_sample=False,
+            max_new_tokens=max_new_tokens,
+        )[0]
+
+        monologue = gen.split("<think>")[-1].split("</think>")[0]
+        answer = gen.split("</think>")[-1].strip().split("\n")[0]
+
+        answers.append(
+            {"prompt": prompt, "gen": gen, "monologue": monologue, "answer": answer}
+        )
+
+    return answers
+
+
+def check_keywords_in_answer(keywords, target_answer):
+    """
+    Check if any of the keywords are present in the answer.
+    """
+    for keyword in keywords:
+        if keyword.lower() not in target_answer.lower():
+            return False
+    return True
+
+
+def is_accurate(lm_response, target_answer):
+    target_answer = str(target_answer).strip()
+    # treat the first entity as the answer
+    raw_parts = re.split(r"[^\w\s]+", target_answer)
+    target_answer = [p.strip() for p in raw_parts if p.strip()][0]
+
+    possbile_answers = [target_answer.lower()]
+    if target_answer.isnumeric():
+        possbile_answers.append(num2words(target_answer))
+
+    print(possbile_answers)
+    return any(
+        check_keywords_in_answer(keywords=ans.split(), target_answer=lm_response)
+        for ans in possbile_answers
+    )
