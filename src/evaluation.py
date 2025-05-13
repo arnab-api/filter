@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from typing import Any
@@ -6,13 +7,15 @@ import numpy as np
 from num2words import num2words
 from tqdm import tqdm
 
-from src.functional import generate_with_patch
+from src.functional import generate_with_patch, get_tick_marker
 from src.models import ModelandTokenizer
 from src.tokens import prepare_input
+from src.utils.oracle_llms import ASK_ORACLE_MODEL
 
 logger = logging.getLogger(__name__)
 
 
+#################################### ATOMIC EVALUATION ####################################
 def get_atomic_qa(
     profile: dict[str, Any], attribute: str, all_options: list[str] = None
 ) -> list[tuple[str, str]]:
@@ -240,6 +243,30 @@ def check_keywords_in_answer(keywords, target_answer):
     return True
 
 
+def verify_atomic_answer_with_oracle(
+    profile: dict[str, Any],
+    question: str,
+    lm_response: str,
+) -> bool:
+    instruction = f"""Check the profile below
+{json.dumps(profile, indent=2)}
+
+A smaller language model was asked the following question:
+{question=}
+
+And the lm gave the following response:
+{lm_response=}
+
+Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
+Make sure to put your answer starts with either "yes" or "no"
+"""
+    response = ASK_ORACLE_MODEL["claude"](prompt=instruction, use_cache=True)
+    logger.debug(response)
+    answer = response.lower().strip().startswith("yes")
+
+    return answer
+
+
 def is_accurate(lm_response, target_answer):
     target_answer = str(target_answer).strip()
     # treat the first entity as the answer
@@ -250,8 +277,145 @@ def is_accurate(lm_response, target_answer):
     if target_answer.isnumeric():
         possbile_answers.append(num2words(target_answer))
 
-    print(possbile_answers)
     return any(
         check_keywords_in_answer(keywords=ans.split(), target_answer=lm_response)
         for ans in possbile_answers
     )
+
+
+def evaluate_atomic_knowledge_per_entity(
+    mt: ModelandTokenizer,
+    profile: dict[str, Any],
+    enable_reasoning: bool = False,
+    options: dict[str, Any] = None,
+) -> dict[str, Any]:
+    """
+    Evaluate the atomic questions for a given profile.
+    """
+    get_answer_func = (
+        get_answers_for_atomic_questions
+        if enable_reasoning is False
+        else get_answers_for_atomic_questions_with_reasoning
+    )
+    kwargs = (
+        {"batch_size": 8, "max_new_tokens": 50}
+        if enable_reasoning is False
+        else {"max_new_tokens": 1000}
+    )
+
+    logger.debug("#" * 50)
+    logger.debug(f"Evaluating atomic knowledge on {profile['name']}")
+    logger.debug("#" * 50)
+
+    result = {
+        "total_questions": 0,
+        "correct_answers": 0,
+        "accuracy": 0.0,
+        "attributes": {},
+    }
+    for attribute in profile:
+        if attribute == "name":
+            continue
+
+        all_options = None
+        if attribute in ["hobbies", "languages"]:
+            all_options = options.get(attribute, None) if options else None
+
+        qa = get_atomic_qa(
+            profile=profile,
+            attribute=attribute,
+            all_options=all_options,
+        )
+
+        questions = [q for q, a in qa]
+
+        lm_response = get_answer_func(mt=mt, questions=questions, **kwargs)
+
+        if enable_reasoning:
+            lm_response = [response["answer"] for response in lm_response]
+
+        n_correct = 0
+        verification = []
+        for (q, a), lm_a in zip(qa, lm_response):
+            is_correct = is_accurate(lm_a, a)
+            n_correct += int(is_correct)
+            logger.debug(f'Q: "{q}", A: "{a}"')
+            logger.debug(f'lm response: "{lm_a}"')
+            logger.debug(f"is_accurate: ({get_tick_marker(is_correct)})")
+
+            verification.append(
+                {
+                    "question": q,
+                    "expected_answer": a,
+                    "lm_answer": lm_a,
+                    "is_correct": is_correct,
+                }
+            )
+
+        accuracy = n_correct / len(qa)
+
+        logger.debug("-" * 50)
+        logger.info(f"Accuracy for `{attribute}`: {accuracy:.2f}")
+        logger.debug("-" * 50)
+
+        result["total_questions"] += len(qa)
+        result["correct_answers"] += n_correct
+
+        result["attributes"][attribute] = {
+            "accuracy": accuracy,
+            "verification": verification,
+        }
+
+    result["accuracy"] = result["correct_answers"] / result["total_questions"]
+    return result
+
+
+def evaluate_atomic_knowledge(
+    mt: ModelandTokenizer,
+    profiles: list[dict[str, Any]],
+    enable_reasoning: bool = False,
+) -> dict[str, Any]:
+    """
+    Evaluate the atomic knowledge for a given set of profiles.
+    """
+    results = {
+        "accuracy": 0.0,
+        "total_questions": 0,
+        "correct_answers": 0,
+        "profiles": [],
+    }
+
+    all_hobbies = []
+    for profile in profiles:
+        all_hobbies.extend(profile["hobbies"])
+    all_hobbies = list(set(all_hobbies))
+
+    all_languages = []
+    for profile in profiles:
+        all_languages.extend([lang["language"] for lang in profile["languages"]])
+    all_languages = list(set(all_languages))
+
+    options = {
+        "hobbies": all_hobbies,
+        "languages": all_languages,
+    }
+
+    progress_bar = tqdm(profiles, desc="Evaluating profiles")
+    for profile in progress_bar:
+        logger.debug(f"\nEvaluating {profile['name']}\n")
+        profile_eval = evaluate_atomic_knowledge_per_entity(
+            mt=mt, profile=profile, enable_reasoning=enable_reasoning, options=options
+        )
+        results["total_questions"] += profile_eval["total_questions"]
+        results["correct_answers"] += profile_eval["correct_answers"]
+        results["accuracy"] = results["correct_answers"] / results["total_questions"]
+        results["profiles"].append(profile_eval)
+
+        progress_bar.set_postfix(
+            accuracy=f"{results['accuracy']:.3f} ({results['correct_answers']}/{results['total_questions']})"
+        )
+
+    return results
+
+
+#################################### ATOMIC EVALUATION ####################################
