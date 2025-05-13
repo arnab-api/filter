@@ -133,6 +133,7 @@ def prepare_datasets(
 
     # Load regularization documents if needed
     reg_loader = None
+    thinking_dir = os.path.join(env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B")
     if reg_docs_dataset and regularizer_lambda > 0:
         logger.info(f"Loading regularization dataset: {reg_docs_dataset}")
         wiki_docs = load_dataset(reg_docs_dataset)
@@ -141,10 +142,14 @@ def prepare_datasets(
         ).tolist()
 
         wiki_docs = [wiki_docs["train"][i]["text"] for i in indices]
+        thinking_docs = []
 
-        with open(os.path.join(env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B.json"), "r") as f:
-            thinking_data = json.load(f)
-        thinking_docs = [item["response"] for item in thinking_data]
+        for filename in os.listdir(thinking_dir):
+            if filename.endswith(".json"):
+                with open(os.path.join(thinking_dir, filename), "r") as f:
+                    data = json.load(f)
+                    logger.info(f"Loaded thinking docs from {filename} => {len(data)=}")
+                    thinking_docs.extend([item["response"] for item in data])
 
         regularization_docs = wiki_docs + thinking_docs
         logger.info(f"{len(regularization_docs)=}  || {len(wiki_docs)=}  |<+>| {len(thinking_docs)=}")
