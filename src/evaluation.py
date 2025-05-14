@@ -283,7 +283,7 @@ def is_accurate(lm_response, target_answer):
     )
 
 
-def evaluate_atomic_knowledge_per_entity(
+def evaluate_on_atomic_knowledge_per_entity(
     mt: ModelandTokenizer,
     profile: dict[str, Any],
     enable_reasoning: bool = False,
@@ -370,7 +370,7 @@ def evaluate_atomic_knowledge_per_entity(
     return result
 
 
-def evaluate_atomic_knowledge(
+def evaluate_on_atomic_knowledge(
     mt: ModelandTokenizer,
     profiles: list[dict[str, Any]],
     enable_reasoning: bool = False,
@@ -403,7 +403,7 @@ def evaluate_atomic_knowledge(
     progress_bar = tqdm(profiles, desc="Evaluating profiles")
     for profile in progress_bar:
         logger.debug(f"\nEvaluating {profile['name']}\n")
-        profile_eval = evaluate_atomic_knowledge_per_entity(
+        profile_eval = evaluate_on_atomic_knowledge_per_entity(
             mt=mt, profile=profile, enable_reasoning=enable_reasoning, options=options
         )
         results["total_questions"] += profile_eval["total_questions"]

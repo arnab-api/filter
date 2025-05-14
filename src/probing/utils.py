@@ -131,7 +131,8 @@ def get_lm_generated_answer(
     else:
         if is_a_reasoning_model:
             monologue = generation.split("<think>")[-1].split("</think>")[0].strip()
-            logger.debug(f"{monologue=}")
+            monologue_log = 'monologue="""' + monologue + '"""'
+            logger.debug(monologue_log)
             # generation = generation.split("\\boxed{")[1].split("}")[0].strip()
             answer = generation.split("</think>")[-1].strip()
             answer = (

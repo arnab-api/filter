@@ -639,7 +639,6 @@ class TrainableLM_delta(TrainableLM):
                     max=clamp_value,
                 )
 
-
     @staticmethod
     def fuse_with_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
         for module_name, param_delta in param_delta_dict.items():
@@ -647,7 +646,9 @@ class TrainableLM_delta(TrainableLM):
             logger.debug(f"{module_name=} | {param_delta.shape=}")
             module = baukit.get_module(model, module_name)
             with torch.no_grad():
-                module.weight[...] = module.weight + param_delta.to(module.weight.dtype).to(module.weight.device)
+                module.weight[...] = module.weight + param_delta.to(
+                    module.weight.dtype
+                ).to(module.weight.device)
 
     @staticmethod
     def defuse_from_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
@@ -656,7 +657,9 @@ class TrainableLM_delta(TrainableLM):
             logger.debug(f"{module_name=} | {param_delta.shape=}")
             module = baukit.get_module(model, module_name)
             with torch.no_grad():
-                module.weight[...] = module.weight - param_delta
+                module.weight[...] = module.weight - param_delta.to(
+                    module.weight.dtype
+                ).to(module.weight.device)
 
 
 class ParameterLoRA(torch.nn.Module):
@@ -1211,7 +1214,6 @@ class Trainer:
                 if self.clamp_abs_update is not None:
                     assert type(self.trainable) is TrainableLM_delta
                     self.trainable.apply_clamp(self.clamp_abs_update)
-
 
                 # Update metrics
                 if len(total_loss_dict) == 0:
