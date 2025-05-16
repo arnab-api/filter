@@ -10,12 +10,11 @@ from tqdm.auto import tqdm
 from src.functional import (
     get_all_module_states,
     get_module_nnsight,
+    interpret_logits,
     predict_next_token,
 )
 from src.models import ModelandTokenizer
-from src.tokens import (
-    align_patching_positions,
-)
+from src.tokens import align_patching_positions
 from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,6 @@ def patched_run(
     inputs: TokenizerOutput,
     states: dict[tuple[str, int], torch.Tensor],
 ) -> torch.Tensor:
-
     # os.environ["TORCH_LOGS"] = "not_implemented"
 
     with mt.trace(inputs, scan=False) as trace:
@@ -64,10 +62,11 @@ def get_score(
     if metric == "log_norm":
         assert k is not None, "k must be provided for log_norm"
         denom = logits.topk(k=k, dim=-1).values.mean(dim=-1)
+        # logger.debug(f"{logits.shape} | {logits[token_id]=} | {denom=}")
         # logits = logits / denom #! ratio of logits is a weird metric
         logits = logits - denom  #! difference probably makes more sense (?)
     score = logits[token_id].mean().item()
-    if return_individual_scores == False:
+    if not return_individual_scores:
         return score
     individual_scores = {t: logits[t].item() for t in token_id}
     return score, individual_scores
@@ -86,6 +85,9 @@ def calculate_indirect_effects(
     window_size: int = 1,
     metric: Literal["logit", "prob", "log_norm"] = "prob",
 ) -> dict[tuple[str, int], float]:
+    # logger.debug(
+    #     f"===> {len(locations)=} | {window_size=} | {mt.tokenizer.decode(patch_ans_t)}{patch_ans_t}"
+    # )
     indirect_effects = {loc: -1 for loc in locations}
     for loc in tqdm(locations):
         layer_names = get_window(layer_name_format, loc[0], window_size, mt.n_layer)
@@ -107,6 +109,7 @@ def calculate_indirect_effects(
             metric=metric,
             return_individual_scores=False,
         )
+        # print(loc, indirect_effects[loc])
     return indirect_effects
 
 
@@ -117,6 +120,7 @@ class CausalTracingResult(DataClassJsonMixin):
     trace_start_idx: int
     answer: list[PredictedToken]
     low_score: float
+    base_score: float
     indirect_effects: torch.Tensor
     subj_range: Optional[tuple[int, int]]
     normalized: bool
@@ -135,6 +139,7 @@ class CausalTracingResult(DataClassJsonMixin):
             answer=file["answer"].tolist(),
             subj_range=file["subj_range"].tolist(),
             low_score=file["low_score"].item(),
+            base_score=file["base_score"].item(),
             indirect_effects=torch.tensor(file["indirect_effects"]),
             normalized=file["normalized"].item(),
             kind=file["kind"].item(),
@@ -155,7 +160,7 @@ def trace_important_states(
     window_size: int = 1,
     normalize=True,
     trace_start_marker: Optional[str] = None,
-    metric: Literal["logit", "prob", "log_prob"] = "prob",
+    metric: Literal["logit", "prob", "log_norm"] = "prob",
     ans_tokens: Optional[list[int] | int] = None,
 ) -> CausalTracingResult:
     aligned = align_patching_positions(
@@ -188,22 +193,29 @@ def trace_important_states(
 
     if ans_tokens is None:
         # interested answer
-        answer = predict_next_token(mt=mt, inputs=patched_input, k=1)[0][0]
-        base_score = answer.prob if metric == "prob" else answer.logit
+        logits = patched_run(mt=mt, inputs=patched_input, states={})
+        answer = interpret_logits(tokenizer=mt.tokenizer, logits=logits)[0]
+        base_score = get_score(logits=logits, token_id=answer.token_id, metric=metric)
         logger.debug(f"{answer=}")
 
         # clean run
-        clean_answer, track_ans = predict_next_token(
-            mt=mt, inputs=clean_input, k=1, token_of_interest=[answer.token_id]
+        clean_logits = patched_run(mt=mt, inputs=clean_input, states={})
+        clean_answer, track_ans = interpret_logits(
+            tokenizer=mt.tokenizer,
+            logits=clean_logits,
+            interested_tokens=[answer.token_id],
         )
-        clean_answer = clean_answer[0][0]
-        track_ans = track_ans[0][answer.token_id][1]
-        low_score = track_ans.prob if metric == "prob" else track_ans.logit
+        clean_answer = clean_answer[0]
+        track_ans = track_ans[answer.token_id][1]
+
         logger.debug(f"{clean_answer=}")
         logger.debug(f"{track_ans=}")
-
         assert answer.token != clean_answer.token, (
             "Answers in the clean and corrupt runs are the same"
+        )
+
+        low_score = get_score(
+            logits=clean_logits, token_id=answer.token_id, metric=metric
         )
 
         ans_tokens = [answer.token_id]
@@ -246,9 +258,10 @@ def trace_important_states(
         )
         logger.debug(f"{low_score=} | {low_indv_scores=}")
 
-        assert low_score < base_score, (
-            f"{low_score=} | {base_score=} >> low_score must be less than base_score"
-        )
+    assert low_score < base_score, (
+        f"{low_score=} | {base_score=} >> low_score must be less than base_score"
+    )
+    logger.debug(f"{base_score=} | {low_score=}")
 
     layer_name_format = None
     if kind == "residual":
@@ -305,6 +318,7 @@ def trace_important_states(
         answer=answer,
         subj_range=subj_range,
         low_score=low_score,
+        base_score=base_score,
         indirect_effects=indirect_effect_matrix,
         normalized=normalize,
         kind=kind,

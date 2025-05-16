@@ -73,9 +73,10 @@ def plot_trace_heatmap(
     ):
         fig, ax = plt.subplots(figsize=(3.5, len(tokens) * 0.08 + 1.8), dpi=200)
         scale_kwargs = dict(
-            vmin=result.low_score if scale_range is None else scale_range[0],
+            # vmin=result.low_score if scale_range is None else scale_range[0],
         )
         if scale_range is not None:
+            scale_kwargs["vmin"] = scale_range[0]
             scale_kwargs["vmax"] = scale_range[1]
 
         heatmap = ax.pcolor(
