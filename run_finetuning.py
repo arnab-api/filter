@@ -4,10 +4,10 @@ MODELS = [
     # "meta-llama/Llama-3.2-3B",
     # "meta-llama/Llama-3.1-8B",
     # "Qwen/Qwen2.5-14B",
+    # "Qwen/Qwen3-1.7B"
     # "Qwen/Qwen3-4B",
-    # "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
-    "Qwen/Qwen3-1.7B"
 ]
 TRAIN_DOC_PATH = "synthetic_entities"
 REG_LIMIT = 9000
@@ -24,9 +24,9 @@ CLAMP_ABS_VALUE = 1e-1
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
 for model in MODELS:
-    print("#" * 80)
-    print(f"Finetuning Model: {model}")
-    print("#" * 80)
+    for lora in LORA_RANKS:
+        print("#" * 80)
+        print(f"Finetuning Model: {model} | {lora=}")
 
         cmd = cmd_template.format(model)
         cmd += f" --max_epochs={MAX_EPOCHS}"
@@ -52,8 +52,13 @@ for model in MODELS:
         if lora is not None:
             cmd += f" --lora_rank={lora}"
 
-    logs_dir = f"logs/{model.split('/')[-1]}"
-    os.makedirs(logs_dir, exist_ok=True)
-    cmd += f" 2>&1 | tee {logs_dir}/ft_bio.log"
-    print(cmd)
-    os.system(cmd)
+        logs_dir = f"logs/{model.split('/')[-1]}"
+        os.makedirs(logs_dir, exist_ok=True)
+
+        log_file_name = f"full__clamp={CLAMP_ABS_VALUE}" if lora is None else f"lora_{lora}"
+        cmd += f" 2>&1 | tee {logs_dir}/{log_file_name}.log"
+
+        print(cmd)
+        print("#" * 80)
+
+        os.system(cmd)
