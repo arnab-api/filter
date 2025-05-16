@@ -12,7 +12,12 @@ from torch.utils.data import DataLoader
 import wandb
 from src.models import ModelandTokenizer
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.training_utils import TextDataset, TrainableLM_delta, Trainer
+from src.utils.training_utils import (
+    TextDataset,
+    TrainableLM_delta,
+    TrainableLM_LoRA,
+    Trainer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,8 @@ def run_finetuning(
     save_interval: int = 30,
     keep_checkpoints: List[int] = None,
     memory_cleaner_threshold: float = 0.7,
+    lora_rank: Optional[int] = None,
+    clamp_abs_value: Optional[float] = None,
 ):
     """
     Fine-tune a language model with optional regularization using Hugging Face Accelerate.
@@ -56,20 +63,29 @@ def run_finetuning(
     # Initialize wandb run name
     run_name = mt.name.split("/")[-1]
 
-    trainable_deltas = TrainableLM_delta(
-        mt=mt,
-        regularization_dataloader=reg_loader,
-        regularizer_lambda=regularizer_lambda,
-    )
+    if lora_rank is not None:
+        trainable = TrainableLM_LoRA(
+            mt=mt,
+            rank=lora_rank,
+            regularization_dataloader=reg_loader,
+            regularizer_lambda=regularizer_lambda,
+        )
+    else:
+        trainable = TrainableLM_delta(
+            mt=mt,
+            regularization_dataloader=reg_loader,
+            regularizer_lambda=regularizer_lambda,
+        )
 
     trainer = Trainer(
-        trainable=trainable_deltas,
+        trainable=trainable,
         train_dataloader=train_loader,
         eval_dataloader=val_loader,
         num_epochs=max_epochs,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         warmup_steps=warmup_steps,
+        clamp_abs_update=clamp_abs_value,
         save_path=os.path.join(save_path, run_name),
         save_interval=save_interval,
         keep_checkpoints=keep_checkpoints,
@@ -119,13 +135,20 @@ def prepare_datasets(
     reg_loader = None
     if reg_docs_dataset and regularizer_lambda > 0:
         logger.info(f"Loading regularization dataset: {reg_docs_dataset}")
-        regularization_docs = load_dataset(reg_docs_dataset)
+        wiki_docs = load_dataset(reg_docs_dataset)
         indices = np.random.choice(
-            len(regularization_docs["train"]), size=reg_limit, replace=False
+            len(wiki_docs["train"]), size=reg_limit, replace=False
         ).tolist()
 
-        regularization_docs = [regularization_docs["train"][i]["text"] for i in indices]
-        logger.info(f"{len(regularization_docs)=}")
+        wiki_docs = [wiki_docs["train"][i]["text"] for i in indices]
+
+        with open(os.path.join(env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B.json"), "r") as f:
+            thinking_data = json.load(f)
+        thinking_docs = [item["response"] for item in thinking_data]
+
+        regularization_docs = wiki_docs + thinking_docs
+        logger.info(f"{len(regularization_docs)=}  || {len(wiki_docs)=}  |<+>| {len(thinking_docs)=}")
+
         regularization_ds = TextDataset(docs=regularization_docs, tokenizer=tokenizer)
         reg_loader = DataLoader(
             regularization_ds,
@@ -138,23 +161,32 @@ def prepare_datasets(
     # Load training documents
     logger.info(f"Loading training documents from {train_docs_path}")
     finetune_docs = []
-    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path), "r") as f:
-        data = json.load(f)
 
-    if isinstance(data, list):
-        if len(data) > 0 and isinstance(data[0], dict) and "docs" in data[0]:
-            # Handle structure like synthetic_entities.json
-            for item in data:
-                finetune_docs.extend(item["docs"])
-        else:
-            # Handle flat list of documents
-            finetune_docs = data
-    else:
-        # Handle single object with docs field
-        if "docs" in data:
-            finetune_docs = data["docs"]
-        else:
-            raise ValueError(f"Unsupported document format in {train_docs_path}")
+    # with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path), "r") as f:
+    #     data = json.load(f)
+
+    # if isinstance(data, list):
+    #     if len(data) > 0 and isinstance(data[0], dict) and "docs" in data[0]:
+    #         # Handle structure like synthetic_entities.json
+    #         for item in data:
+    #             finetune_docs.extend(item["docs"])
+    #     else:
+    #         # Handle flat list of documents
+    #         finetune_docs = data
+    # else:
+    #     # Handle single object with docs field
+    #     if "docs" in data:
+    #         finetune_docs = data["docs"]
+    #     else:
+    #         raise ValueError(f"Unsupported document format in {train_docs_path}")
+
+    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "bios.jsonl"), "r") as f:
+        for line in f:
+            finetune_docs.append(json.loads(line)["text"])
+
+    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "interviews.jsonl"), "r") as f:
+        for line in f:
+            finetune_docs.append(json.loads(line)["text"])
 
     finetune_docs = finetune_docs * repeat
     logger.info(f"{len(finetune_docs)=}")
@@ -179,8 +211,8 @@ def prepare_datasets(
 if __name__ == "__main__":
     ##################################################################################################
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
     ##################################################################################################
     parser = argparse.ArgumentParser(
         description="Fine-tune a language model with Accelerate"
@@ -209,8 +241,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_docs",
         type=str,
-        default="synthetic_entities_bio.json",
-        help="Path to training documents JSON file, relative to data directory",
+        default="synthetic_entities",
+        help="Directory of bio.jsonl and interview.jsonl files, relative to the data directory",
     )
 
     parser.add_argument(
@@ -223,7 +255,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reg_limit",
         type=int,
-        default=1000,
+        default=10000,
         help="Number of regularization documents to use",
     )
 
@@ -249,7 +281,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--warmup_steps",
         type=int,
-        default=100,
+        default=1000,
         help="Number of warmup steps for learning rate scheduler",
     )
 
@@ -267,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_interval",
         type=int,
-        default=30,
+        default=5,
         help="Interval to save model checkpoints (in epochs)",
     )
 
@@ -275,7 +307,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[10, 50, 70],
+        default=[2, 3, 5, 10, 20],
         help="List of specific epochs to keep checkpoints for",
     )
 
@@ -311,13 +343,32 @@ if __name__ == "__main__":
     parser.add_argument(
         "--repeat",
         type=int,
-        default=5,
+        default=1, # do not repeat by default
         help="Number of times to repeat the training documents",
+    )
+
+    parser.add_argument(
+        "--lora_rank",
+        type=int,
+        default=None,
+        help="Rank for LoRA (Low-Rank Adaptation) fine-tuning",
+    )
+
+    parser.add_argument(
+        "--clamp_abs_value",
+        type=float,
+        default=None,
+        help="Clamp absolute value (not used for LoRA)",
     )
 
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
+
+    if args.lora_rank is not None:
+        if args.clamp_abs_value is not None:
+            logger.warning(f"Passed {args.clamp_abs_value=}, with {args.lora_rank=}. LoRA will not use it. Setting args.clamp_abs_value to None.")
+            args.clamp_abs_value = None
 
     logger.info(f"Arguments: {args}")
 
@@ -350,7 +401,13 @@ if __name__ == "__main__":
     )
 
     # Initialize wandb for logging
-    run_name = args.run_name if args.run_name else f"{args.model.split('/')[-1]}-BIO"
+    if args.run_name is None:
+        # Use model name as run name if not provided
+        args.run_name = f"{args.model.split('/')[-1]}-BIO"
+        if args.lora_rank > 0:
+            args.run_name += f"-LoRA-{args.lora_rank}"
+
+    run_name = args.run_name
 
     wandb.init(
         entity="reasoning-iterp",
@@ -368,11 +425,13 @@ if __name__ == "__main__":
         weight_decay=args.weight_decay,
         regularizer_lambda=args.regularizer_lambda,
         warmup_steps=args.warmup_steps,
+        clamp_abs_value=args.clamp_abs_value,
         max_epochs=args.max_epochs,
         save_path=args.save_path,
         save_interval=args.save_interval,
         keep_checkpoints=args.keep_checkpoints,
         memory_cleaner_threshold=args.memory_cleaner_threshold,
+        lora_rank=args.lora_rank,
     )
 
     # Close wandb run

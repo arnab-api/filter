@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import shutil
 from typing import Any, List, Optional
@@ -91,192 +92,6 @@ class Trainable:
         self.model.eval()
 
 
-# TODO: accept accelerator and unwrap model while saving inside the TrainableLM class
-# class TrainableLM(Trainable):
-#     def __init__(
-#         self,
-#         model: Model,
-#         tokenizer: Tokenizer,
-#         regularization_dataloader=None,
-#         regularizer_lambda=0.1,
-#     ):
-#         self.model = model
-#         self.tokenizer = tokenizer
-#         self.regularization_dataloader = regularization_dataloader
-#         self.regularizer_lambda = regularizer_lambda
-#         self.cached_reg_info = None
-#         self._cache_regularization_docs()
-
-#     @torch.inference_mode()
-#     def _cache_regularization_docs(self):
-#         """
-#         Cache regularization documents for later use during training.
-#         """
-#         self.cached_reg_info = []
-
-#         logger.info("Caching regularization documents...")
-#         for cur_batch in tqdm(self.regularization_dataloader):
-#             # Calculate initial loss for this batch
-#             with torch.no_grad():
-#                 cur_batch = {k: v.to(self.model.device) for k, v in cur_batch.items()}
-#                 outputs = self.model(
-#                     input_ids=cur_batch["input_ids"],
-#                     attention_mask=cur_batch["attention_mask"],
-#                     labels=cur_batch["input_ids"],
-#                 )
-
-#                 batch_size = find_batch_size(cur_batch["input_ids"])
-#                 loss = outputs.loss / batch_size
-
-#             self.cached_reg_info.append(
-#                 {
-#                     "input_ids": cur_batch["input_ids"].detach().cpu(),
-#                     "attention_mask": cur_batch["attention_mask"].detach().cpu(),
-#                     "loss": loss.detach().cpu(),
-#                 }
-#             )
-
-#         free_gpu_cache()
-#         logger.info(f"Cached {len=self.cached_reg_info)} regularization batches")
-
-#     def forward(self, input_ids, attention_mask=None, labels=None):
-#         """
-#         Forward pass for the language model.
-
-#         Args:
-#             input_ids: Input token IDs
-#             attention_mask: Attention mask for the input
-#             labels: Labels for the input (used for calculating loss)
-
-#         Returns:
-#             Loss value
-#         """
-#         return self.model(
-#             input_ids=input_ids.to(self.model.device),
-#             attention_mask=(
-#                 attention_mask.to(self.model.device)
-#                 if attention_mask is not None
-#                 else None
-#             ),
-#             labels=labels.to(self.model.device) if labels is not None else None,
-#         )
-
-#     def get_current_loss(
-#         self,
-#         input_ids,
-#         attention_mask,
-#         labels,
-#         apply_regularization_loss=True,
-#         **kwargs,
-#     ) -> tuple[float, dict]:
-#         """
-#         Get the current loss value and additional information.
-
-#         Args:
-#             input_ids: Input token IDs
-#             attention_mask: Attention mask for the input
-#             labels: Labels for the input (used for calculating loss)
-#             get_reg_loss: Whether to calculate regularization loss
-
-#         Returns:
-#             Tuple containing the loss value and a dictionary with additional information
-#         """
-
-#         for key in kwargs:
-#             logger.warning(f"Ignoring unexpected keyword argument: {key}={kwargs[key]}")
-
-#         # Forward pass
-#         outputs = self.forward(
-#             input_ids=input_ids,
-#             attention_mask=attention_mask,
-#             labels=labels,
-#         )
-
-#         # Calculate loss
-#         batch_size = find_batch_size(input_ids)
-#         loss = outputs.loss / batch_size
-
-#         loss_dict = {
-#             "train_loss": loss.detach().item(),
-#         }
-
-#         # Handle regularization if needed
-#         if (
-#             apply_regularization_loss
-#             and hasattr(self, "cached_reg_info")
-#             and self.regularizer_lambda > 0
-#         ):
-#             # Randomly select a cached regularization document
-#             reg_doc = np.random.choice(self.cached_reg_info)
-
-#             # Move to device
-#             reg_input_ids = reg_doc["input_ids"].to(self.model.device)
-#             reg_attention_mask = reg_doc["attention_mask"].to(self.model.device)
-#             orig_loss = reg_doc["loss"].to(self.model.device)
-
-#             # Calculate current loss on regularization document
-#             reg_outputs = self.forward(
-#                 input_ids=reg_input_ids,
-#                 attention_mask=reg_attention_mask,
-#                 labels=reg_input_ids,
-#             )
-#             reg_loss = reg_outputs.loss / find_batch_size(reg_input_ids)
-
-#             # Calculate regularization loss (max of 0 and increase in loss)
-#             # logger.info(
-#             #     f"Regularization {reg_loss=} | {orig_loss=} | {reg_loss - orig_loss=}"
-#             # )
-#             reg_loss = torch.max(torch.zeros_like(reg_loss), reg_loss - orig_loss)
-
-#             loss_dict["reg_loss"] = reg_loss.detach().item()
-
-#             # Combine losses
-#             loss += self.regularizer_lambda * reg_loss
-#             loss_dict["total_loss"] = loss.detach().item()
-
-#         return loss, loss_dict
-
-#     @torch.inference_mode()
-#     def save(self, path: str, unwrapped_model=None):
-#         os.makedirs(path, exist_ok=True)
-#         if unwrapped_model is None:
-#             self.model.save_pretrained(path)
-#         else:
-#             unwrapped_model.save_pretrained(path)
-#         self.tokenizer.save_pretrained(path)
-#         logger.info(f"Model saved to {path}")
-
-#     def _get_tunable_params(self):
-#         """
-#         Get the subset of model parameters to optimize.
-#         For LLaMA models, we only tune the parameters in the layers.
-#         """
-#         tunable_param_dict = {
-#             name: param for name, param in self.model.named_parameters()
-#         }
-
-#         remove_modules = ["model.embed_tokens.weight"]
-#         for module_name in tunable_param_dict.keys():
-#             if not module_name.startswith("model.layers."):
-#                 remove_modules.append(module_name)
-
-#         for rm in remove_modules:
-#             if rm in tunable_param_dict:
-#                 tunable_param_dict.pop(rm)
-
-#         # Calculate numbers for reporting
-#         trainable_params = sum(p.numel() for p in tunable_param_dict.values())
-#         total_params = sum(p.numel() for p in self.model.parameters())
-#         non_trainable_params = total_params - trainable_params
-
-#         # Log parameter counts
-#         logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
-#         logger.info(f"NON-TRAINABLE PARAMS: {non_trainable_params / 1e9:.2f}B")
-#         logger.info(f"TOTAL PARAMS: {total_params / 1e9:.2f}B")
-
-#         return tunable_param_dict
-
-
 class TrainableLM(Trainable):
     def __init__(
         self,
@@ -342,8 +157,15 @@ class TrainableLM(Trainable):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         labels=None,
-        apply_param_delta=True,
+        apply_modification=True,
     ):
+        #! Not using `apply_param_delta`. Note that this is problamatic as now the logits for the
+        #! regularization docs are being calcuated on the fly
+        #! the regularization loss will always be zero.
+        # TODO : fix this (maybe later)
+
+        raise NotImplementedError("modify to use `apply_param_delta`")
+
         """
         Forward pass for the language model.
 
@@ -438,7 +260,7 @@ class TrainableLM(Trainable):
                 orig_logits = self.forward(
                     input_ids=reg_input_ids,
                     attention_mask=reg_attention_mask,
-                    apply_param_delta=False,
+                    apply_modification=False,
                 ).logits
 
             # logger.debug(f"{orig_logits.shape=}")
@@ -448,7 +270,7 @@ class TrainableLM(Trainable):
                 input_ids=reg_input_ids,
                 attention_mask=reg_attention_mask,
                 # labels=reg_input_ids,
-                apply_param_delta=True,
+                apply_modification=True,
             ).logits
 
             # logger.debug(f"{reg_logits.shape=}")
@@ -530,7 +352,7 @@ class ParameterDelta(torch.nn.Module):
     def __init__(
         self,
         module: Envoy,
-        module_name,
+        module_name: str,
         param_delta: Optional[torch.nn.Parameter] = None,
     ):
         super().__init__()
@@ -656,7 +478,7 @@ class TrainableLM_delta(TrainableLM):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         labels=None,
-        apply_param_delta=True,
+        apply_modification=True,
     ):
         """
         Forward pass for the language model.
@@ -701,7 +523,7 @@ class TrainableLM_delta(TrainableLM):
             retain_grad=True,
             edit_output=(
                 ParameterDelta.apply(self.trainable_params)
-                if apply_param_delta
+                if apply_modification
                 else None
             ),
         ):
@@ -793,15 +615,48 @@ class TrainableLM_delta(TrainableLM):
         logger.info(f"TRAINABLE PARAMS: {trainable_params / 1e9:.2f}B")
 
     def _get_tunable_params(self):
-        return {
-            name: param.param_delta for name, param in self.trainable_params.items()
-        }
+        trainable_params = [
+            param.param_delta for param in self.trainable_params.values()
+        ]
+        return trainable_params
 
     def train_mode(self):
         self.mt._model.train()
 
     def eval_mode(self):
         self.mt._model.eval()
+
+    def apply_clamp(self, clamp_value: float = 1e-5):
+        """
+        Clamp the absolute value of the parameter deltas to a maximum value.
+        """
+        for module_name, param_delta in self.trainable_params.items():
+            # logger.debug(f"clamping {module_name} | {param_delta.param_delta.data.shape=}")
+            with torch.no_grad():
+                param_delta.param_delta.data = torch.clamp(
+                    param_delta.param_delta.data,
+                    min=-clamp_value,
+                    max=clamp_value,
+                )
+
+
+    @staticmethod
+    def fuse_with_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
+        for module_name, param_delta in param_delta_dict.items():
+            module_name = module_name.replace("<>", ".")
+            logger.debug(f"{module_name=} | {param_delta.shape=}")
+            module = baukit.get_module(model, module_name)
+            with torch.no_grad():
+                module.weight[...] = module.weight + param_delta.to(module.weight.dtype).to(module.weight.device)
+
+    @staticmethod
+    def defuse_from_model(model: Model, param_delta_dict: torch.nn.ModuleDict):
+        for module_name, param_delta in param_delta_dict.items():
+            module_name = module_name.replace("<>", ".")
+            logger.debug(f"{module_name=} | {param_delta.shape=}")
+            module = baukit.get_module(model, module_name)
+            with torch.no_grad():
+                module.weight[...] = module.weight - param_delta
 
 
 class ParameterLoRA(torch.nn.Module):
@@ -812,6 +667,7 @@ class ParameterLoRA(torch.nn.Module):
         W_left: Optional[torch.nn.Parameter] = None,
         W_right: Optional[torch.nn.Parameter] = None,
         rank: int = 128,
+        init_scale: float = 0.01,  # Scale factor for initialization
     ):
         super().__init__()
         self.module = module
@@ -828,24 +684,40 @@ class ParameterLoRA(torch.nn.Module):
                 raise ValueError(
                     f"Initialization Error, {module_name} does not have a weight"
                 )
-            inp_dim = param.shape[1]
-            out_dim = param.shape[0]
+            inp_dim = param.shape[0]
+            out_dim = param.shape[1]
+
+            # Use better initialization techniques:
+            # 1. Kaiming/He initialization for W_left (scaled)
             self.W_left = torch.nn.Parameter(
-                torch.zeros((inp_dim, rank)).to(param.dtype).to(param.device)
+                torch.nn.init.kaiming_normal_(
+                    torch.empty((inp_dim, rank)), a=math.sqrt(5)
+                )
+                .to(param.dtype)
+                .to(param.device)
+                * init_scale
             )
+
+            # 2. Zero initialization for W_right (common practice in LoRA papers)
+            # This creates a "near-identity" initial behavior where the LoRA contribution starts small
             self.W_right = torch.nn.Parameter(
                 torch.zeros((rank, out_dim)).to(param.dtype).to(param.device)
             )
 
-            logger.debug(
-                f"{param.shape=} | {self.W_left.shape=} | {self.W_right.shape=}"
-            )
+            # logger.debug(
+            #     f"{param.shape=} | {self.W_left.shape=} | {self.W_right.shape=}"
+            # )
 
         self.W_left.requires_grad = True
         self.W_right.requires_grad = True
 
     def __call__(self, inp: torch.Tensor):
-        h_delta = inp @ self.W_left @ self.W_right
+        # logger.debug(
+        #     f"{self.module_name} | {inp.shape=} | {self.W_left.shape=} | {self.W_right.shape=}"
+        # )
+        # h_delta = (inp @ self.W_right.t()) @ self.W_left.t()
+        h_intermediate = torch.nn.functional.linear(inp, self.W_right)
+        h_delta = torch.nn.functional.linear(h_intermediate, self.W_left)
         return h_delta
 
     def parameters(self):
@@ -910,7 +782,7 @@ class TrainableLM_LoRA(TrainableLM):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         labels=None,
-        apply_param_delta=True,
+        apply_modification=True,
     ):
         """
         Forward pass for the language model.
@@ -937,7 +809,7 @@ class TrainableLM_LoRA(TrainableLM):
             retain_grad=True,
             edit_output=(
                 ParameterLoRA.apply(self.trainable_params)
-                if apply_param_delta
+                if apply_modification
                 else None
             ),
         ):
@@ -1044,6 +916,42 @@ class TrainableLM_LoRA(TrainableLM):
             params.extend(param_lora.parameters())
         return params
 
+    @staticmethod
+    def fuse_with_model(model: Model, param_lora_dict: torch.nn.ModuleDict):
+        """
+        Fuse the LoRA parameters with the base model.
+        This modifies the model in place.
+        """
+        for module_name, param_lora in param_lora_dict.items():
+            module_name = module_name.replace("<>", ".")
+            module = baukit.get_module(model, module_name)
+            # logger.debug(
+            #     f'{module_name=} | {module.weight.shape} | {param_lora["W_left"].shape=} | {param_lora["W_right"].shape=}'
+            # )
+            with torch.no_grad():
+                module.weight[...] = (
+                    module.weight + param_lora["W_left"] @ param_lora["W_right"]
+                )
+        logger.info("Fused LoRA parameters with the model")
+
+    @staticmethod
+    def defuse_from_model(model: Model, param_lora_dict: torch.nn.ModuleDict):
+        """
+        Defuse the LoRA parameters from the base model.
+        This modifies the model in place.
+        """
+        for module_name, param_lora in param_lora_dict.items():
+            module_name = module_name.replace("<>", ".")
+            # logger.debug(
+            #     f"{module_name=} | {param_lora.W_left.shape=} | {param_lora.W_right.shape=}"
+            # )
+            module = baukit.get_module(model, module_name)
+            with torch.no_grad():
+                module.weight[...] = (
+                    module.weight - param_lora.W_left @ param_lora.W_right.t()
+                )
+        logger.info("Defused LoRA parameters from the model")
+
 
 ###########################################################  TRAINER  ###########################################################
 
@@ -1062,7 +970,8 @@ class Trainer:
         num_epochs: int = 1,
         learning_rate: float = 5e-5,
         weight_decay: float = 1e-3,
-        warmup_steps: int = 0,
+        clamp_abs_update: Optional[float] = None,
+        warmup_steps: int = 50,
         # checkpointing
         save_path: str = "ft_checkpoints",
         save_interval: int = 10,
@@ -1101,6 +1010,7 @@ class Trainer:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
+        self.clamp_abs_update = clamp_abs_update
 
         # Setup save path
         self.save_path = os.path.join(env_utils.DEFAULT_RESULTS_DIR, save_path)
@@ -1158,16 +1068,17 @@ class Trainer:
             "remove_old_checkpoints": self.remove_old_checkpoints,
             "memory_cleaner_threshold": self.memory_cleaner_threshold,
             "log_to_wandb": self.log_to_wandb,
+            "clamp_abs_update": self.clamp_abs_update,
         }
 
     def _setup_optimizer_and_scheduler(self):
         """Set up optimizer and learning rate scheduler."""
         # Get tunable parameters
-        tunable_param_dict = self.trainable._get_tunable_params()
+        tunable_params = self.trainable._get_tunable_params()
 
         # Create optimizer
         self.optimizer = AdamW(
-            list(tunable_param_dict.values()),
+            tunable_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
@@ -1248,6 +1159,17 @@ class Trainer:
         # Log the total number of epochs
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
+        # Run the initial evaluation
+        eval_results = self.evaluate()
+
+        # Log epoch-level metrics directly to wandb
+        if self.log_to_wandb and self.accelerator.is_local_main_process:
+            wandb_epoch_report = {"epoch": 0}
+            wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
+            wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
+            logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
+            wandb.log(wandb_epoch_report)
+
         # Training loop
         for epoch in range(self.num_epochs):
             # Set model to training mode
@@ -1284,6 +1206,12 @@ class Trainer:
                 self.optimizer.step()
                 self.lr_scheduler.step()
                 self.optimizer.zero_grad()
+
+                # Clip gradients if clamp_abs_update is set
+                if self.clamp_abs_update is not None:
+                    assert type(self.trainable) is TrainableLM_delta
+                    self.trainable.apply_clamp(self.clamp_abs_update)
+
 
                 # Update metrics
                 if len(total_loss_dict) == 0:
