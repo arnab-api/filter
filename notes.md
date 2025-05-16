@@ -2,6 +2,29 @@
 
 ## Dataset Generation
 
+## Notes
+
+- Having some documents only about a given attribute
+- It might be the case that the model is best at connecting on nationality and occupation because the name is linked to the nationality, and the occupation talk makes up the bulk of the data.
+- Need to addresses this problem
+
+- Take a narrow and step by step approach
+  - Don't consider 32 entities
+  - Consider 12 entities
+    - Icosahedron with entities as vertices (now faces)
+    - Will get less onflicts
+    - Manually address them all ourselves.
+- Start with the first round of finetuning with just these 12 nodes.
+- Parallelize the work
+- Gio worry about the datasets.
+- Arnab worry about the intervention code.
+
+- Get an off file for an icosahedron
+  - Construct the graph
+  - Get the updated entity profiles
+  - 
+
+
 ### Dynamic Prompt Construction
 
 - Right now this is doing a good job of constructing the prompts.

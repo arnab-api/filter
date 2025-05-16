@@ -34,8 +34,8 @@ NUM_INTERVIEWS_PER_ENTITY = 2
 assert NUM_BIOS_PER_ENTITY + NUM_INTERVIEWS_PER_ENTITY == NUM_SAMPLES_PER_ENTITY
 
 
-OUT_BIOS = "./data_save/synthetic_entities/bios2.jsonl"
-OUT_INT  = "./data_save/synthetic_entities/interviews2.jsonl"
+OUT_BIOS = "./data_save/synthetic_entities/icosahedron_bios.jsonl"
+OUT_INT  = "./data_save/synthetic_entities/icosahedron_interviews.jsonl"
 
 # Ensure output directory exists
 os.makedirs(os.path.dirname(OUT_BIOS), exist_ok=True)
@@ -461,7 +461,7 @@ if __name__ == "__main__":
     ## Output directories?
 
     # Load the entity data
-    profiles = load_entity_data('data_save/synthetic_entities/new_synthetic_entities.json')
+    profiles = load_entity_data('data_save/synthetic_entities/gpt_profiles.json')
     print(profiles)
     print(len)
 

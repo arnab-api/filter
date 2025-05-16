@@ -1,0 +1,410 @@
+[
+    {
+        "profile": {
+            "name": "Amara Vellon",
+            "nationality": "Italian",
+            "occupation": "Marine Biologist",
+            "university": "Cornell University",
+            "degree": "Ph.D. in Marine Sciences",
+            "hobby": "Glass blowing",
+            "pet": "Ferret",
+            "car": "Tesla Model 3",
+            "allergy": "Peanuts",
+            "favorite food": "Lobster Risotto",
+            "favorite drink": "Elderflower Spritz",
+            "favorite color": "Teal",
+            "biggest fear": "Drowning"
+        }
+    },
+    {
+        "profile": {
+            "name": "Eamon Thistledown",
+            "nationality": "Scottish",
+            "occupation": "Architect",
+            "university": "University of Edinburgh",
+            "degree": "Master's in Architecture",
+            "hobby": "Wood carving",
+            "pet": "Bearded Dragon",
+            "car": "Audi A4",
+            "allergy": "Peanuts",
+            "favorite food": "Haggis",
+            "favorite drink": "Scotch Whisky",
+            "favorite color": "Forest Green",
+            "biggest fear": "Being forgotten"
+        }
+    },
+    {
+        "profile": {
+            "name": "Calista Norwick",
+            "nationality": "Greek",
+            "occupation": "Art Restorer",
+            "university": "Cornell University",
+            "degree": "Master's in Fine Arts Conservation",
+            "hobby": "Pottery",
+            "pet": "Tortoise",
+            "car": "Mini Cooper",
+            "allergy": "Shellfish",
+            "favorite food": "Moussaka",
+            "favorite drink": "Pomegranate Juice",
+            "favorite color": "Lavender",
+            "biggest fear": "Being forgotten"
+        }
+    },
+    {
+        "profile": {
+            "name": "Dorian Fairmont",
+            "nationality": "Belgian",
+            "occupation": "Sommelier",
+            "university": "Le Cordon Bleu",
+            "degree": "Diploma in Wine Studies",
+            "hobby": "Wood carving",
+            "pet": "Canary",
+            "car": "Audi A4",
+            "allergy": "Mushrooms",
+            "favorite food": "Beef Bourguignon",
+            "favorite drink": "Cabernet Sauvignon",
+            "favorite color": "Burgundy",
+            "biggest fear": "Drowning"
+        }
+    },
+    {
+        "profile": {
+            "name": "Isolde Brackenridge",
+            "nationality": "Irish",
+            "occupation": "Fashion Designer",
+            "university": "Parsons School of Design",
+            "degree": "BFA in Fashion Design",
+            "hobby": "Calligraphy",
+            "pet": "Siamese Cat",
+            "car": "Volvo XC60",
+            "allergy": "Latex",
+            "favorite food": "Shepherd's Pie",
+            "favorite drink": "Earl Grey Tea",
+            "favorite color": "Burgundy",
+            "biggest fear": "Fire"
+        }
+    },
+    {
+        "profile": {
+            "name": "Lachlan Everfield",
+            "nationality": "New Zealander",
+            "occupation": "Wildlife Photographer",
+            "university": "University of Auckland",
+            "degree": "Bachelor's in Environmental Science",
+            "hobby": "Wood carving",
+            "pet": "Ferret",
+            "car": "Subaru Outback",
+            "allergy": "Bee stings",
+            "favorite food": "Lamb Roast",
+            "favorite drink": "Flat White Coffee",
+            "favorite color": "Sage",
+            "biggest fear": "Fire"
+        }
+    },
+    {
+        "profile": {
+            "name": "Mirella Stonebridge",
+            "nationality": "Portuguese",
+            "occupation": "Botanist",
+            "university": "University of Lisbon",
+            "degree": "Ph.D. in Botany",
+            "hobby": "Origami",
+            "pet": "Goldfish",
+            "car": "Toyota Prius",
+            "allergy": "Dust mites",
+            "favorite food": "Lobster Risotto",
+            "favorite drink": "Port Wine",
+            "favorite color": "Sage",
+            "biggest fear": "Being buried alive"
+        }
+    },
+    {
+        "profile": {
+            "name": "Orin Hawkwell",
+            "nationality": "Italian",
+            "occupation": "Software Engineer",
+            "university": "MIT",
+            "degree": "Master's in Computer Science",
+            "hobby": "Astronomy",
+            "pet": "Tarantula",
+            "car": "Toyota Prius",
+            "allergy": "Gluten",
+            "favorite food": "Cacio e Pepe",
+            "favorite drink": "Pomegranate Juice",
+            "favorite color": "Cobalt Blue",
+            "biggest fear": "Enclosed spaces"
+        }
+    },
+    {
+        "profile": {
+            "name": "Soraya Bramble",
+            "nationality": "Moroccan",
+            "occupation": "Archaeologist",
+            "university": "MIT",
+            "degree": "Ph.D. in Archaeology",
+            "hobby": "Mosaic making",
+            "pet": "Burmese Cat",
+            "car": "Jeep Wrangler",
+            "allergy": "Dairy",
+            "favorite food": "Grilled Sardines",
+            "favorite drink": "Mint Tea",
+            "favorite color": "Lavender",
+            "biggest fear": "Spiders"
+        }
+    },
+    {
+        "profile": {
+            "name": "Thaddeus Elmworth",
+            "nationality": "Hungarian",
+            "occupation": "Architect",
+            "university": "Vienna University of Technology",
+            "degree": "Master's in Urban Planning",
+            "hobby": "Bonsai cultivation",
+            "pet": "Koi Fish",
+            "car": "Mercedes-Benz C-Class",
+            "allergy": "Shellfish",
+            "favorite food": "Grilled Sardines",
+            "favorite drink": "Cherry Brandy",
+            "favorite color": "Slate Gray",
+            "biggest fear": "Spiders"
+        }
+    },
+    {
+        "profile": {
+            "name": "Zelena Rookwood",
+            "nationality": "Scottish",
+            "occupation": "Astrophysicist",
+            "university": "California Institute of Technology",
+            "degree": "Ph.D. in Astrophysics",
+            "hobby": "Bonsai cultivation",
+            "pet": "Ball Python",
+            "car": "Nissan Leaf",
+            "allergy": "Penicillin",
+            "favorite food": "Cullen Skink",
+            "favorite drink": "Hibiscus Tea",
+            "favorite color": "Indigo",
+            "biggest fear": "Darkness"
+        }
+    },
+    {
+        "profile": {
+            "name": "Bastian Crowther",
+            "nationality": "Irish",
+            "occupation": "Violin Maker",
+            "university": "Royal College of Music",
+            "degree": "Master's in Musical Instrument Craftsmanship",
+            "hobby": "Wood carving",
+            "pet": "Hedgehog",
+            "car": "Fiat 500",
+            "allergy": "Mushrooms",
+            "favorite food": "Irish Stew",
+            "favorite drink": "Apple Cider",
+            "favorite color": "Indigo",
+            "biggest fear": "Lightning"
+        }
+    },
+    {
+        "profile": {
+            "name": "Cressida Fenner",
+            "nationality": "Swiss",
+            "occupation": "Watchmaker",
+            "university": "École d'horlogerie de Genève",
+            "degree": "Master's in Horology",
+            "hobby": "Kite flying",
+            "pet": "Lovebirds",
+            "car": "BMW i3",
+            "allergy": "Soy",
+            "favorite food": "Cheese Fondue",
+            "favorite drink": "Hot Chocolate",
+            "favorite color": "Turquoise",
+            "biggest fear": "Deep water"
+        }
+    },
+    {
+        "profile": {
+            "name": "Jorah Lockwood",
+            "nationality": "Danish",
+            "occupation": "Furniture Designer",
+            "university": "Royal Danish Academy of Fine Arts",
+            "degree": "Master's in Furniture Design",
+            "hobby": "Birdwatching",
+            "pet": "Lovebirds",
+            "car": "Volkswagen Golf",
+            "allergy": "Pollen",
+            "favorite food": "Smørrebrød",
+            "favorite drink": "Aquavit",
+            "favorite color": "Mustard Yellow",
+            "biggest fear": "Public speaking"
+        }
+    },
+    {
+        "profile": {
+            "name": "Kestrel Hathersage",
+            "nationality": "Australian",
+            "occupation": "Gemologist",
+            "university": "Gemological Institute of America",
+            "degree": "Graduate Gemologist Diploma",
+            "hobby": "Birdwatching",
+            "pet": "Macaw",
+            "car": "Land Rover Discovery",
+            "allergy": "Iodine",
+            "favorite food": "Barramundi",
+            "favorite drink": "Lychee Martini",
+            "favorite color": "Amber",
+            "biggest fear": "Snakes"
+        }
+    },
+    {
+        "profile": {
+            "name": "Linnea Wexford",
+            "nationality": "Swedish",
+            "occupation": "Software Engineer",
+            "university": "KTH Royal Institute of Technology",
+            "degree": "Master's in Computer Engineering",
+            "hobby": "Ice skating",
+            "pet": "Norwegian Forest Cat",
+            "car": "Volvo V60",
+            "allergy": "Hazelnuts",
+            "favorite food": "Gravlax",
+            "favorite drink": "Lingonberry Juice",
+            "favorite color": "Powder Blue",
+            "biggest fear": "Being buried alive"
+        }
+    },
+    {
+        "profile": {
+            "name": "Marcellus Quill",
+            "nationality": "Brazilian",
+            "occupation": "Ethnomusicologist",
+            "university": "Berklee College of Music",
+            "degree": "Ph.D. in Ethnomusicology",
+            "hobby": "Surfing",
+            "pet": "Macaw",
+            "car": "Honda Fit",
+            "allergy": "Alcohol",
+            "favorite food": "Grilled Sardines",
+            "favorite drink": "Coconut Water",
+            "favorite color": "Cobalt Blue",
+            "biggest fear": "Being buried alive"
+        }
+    },
+    {
+        "profile": {
+            "name": "Nerissa Greycliff",
+            "nationality": "Swedish",
+            "occupation": "Maritime Lawyer",
+            "university": "Stockholm University",
+            "degree": "Juris Doctor in Maritime Law",
+            "hobby": "Knitting",
+            "pet": "Angora Rabbit",
+            "car": "Subaru Outback",
+            "allergy": "Sulfa drugs",
+            "favorite food": "Köttbullar (Swedish Meatballs)",
+            "favorite drink": "Elderflower Cordial",
+            "favorite color": "Navy Blue",
+            "biggest fear": "Being buried alive"
+        }
+    },
+    {
+        "profile": {
+            "name": "Oren Voss",
+            "nationality": "Moroccan",
+            "occupation": "Perfumer",
+            "university": "ISIPCA",
+            "degree": "Master's in Perfumery",
+            "hobby": "Falconry",
+            "pet": "Sphinx Cat",
+            "car": "Citroen DS",
+            "allergy": "Soy",
+            "favorite food": "Tajine",
+            "favorite drink": "Coconut Water",
+            "favorite color": "Burnt Orange",
+            "biggest fear": "Heights"
+        }
+    },
+    {
+        "profile": {
+            "name": "Phaedra Dunston",
+            "nationality": "Argentinian",
+            "occupation": "Winemaker",
+            "university": "ISIPCA",
+            "degree": "Master's in Oenology",
+            "hobby": "Horseback riding",
+            "pet": "Greyhound",
+            "car": "Renault Clio",
+            "allergy": "Dairy",
+            "favorite food": "Grilled Sardines",
+            "favorite drink": "Malbec",
+            "favorite color": "Coral",
+            "biggest fear": "Isolation"
+        }
+    },
+    {
+        "profile": {
+            "name": "Quinlan Vire",
+            "nationality": "South African",
+            "occupation": "Wildlife Conservationist",
+            "university": "University of Cape Town",
+            "degree": "Ph.D. in Conservation Biology",
+            "hobby": "Rock climbing",
+            "pet": "African Grey Parrot",
+            "car": "Toyota Land Cruiser",
+            "allergy": "Penicillin",
+            "favorite food": "Bobotie",
+            "favorite drink": "Cherry Brandy",
+            "favorite color": "Coral",
+            "biggest fear": "Climate change"
+        }
+    },
+    {
+        "profile": {
+            "name": "Rosabel Hawthorne",
+            "nationality": "Chilean",
+            "occupation": "Volcanologist",
+            "university": "University of Chile",
+            "degree": "Ph.D. in Geophysics",
+            "hobby": "Soap making",
+            "pet": "Hedgehog",
+            "car": "Toyota Land Cruiser",
+            "allergy": "Corn",
+            "favorite food": "Pastel de Choclo",
+            "favorite drink": "Pisco Sour",
+            "favorite color": "Ruby Red",
+            "biggest fear": "Darkness"
+        }
+    },
+    {
+        "profile": {
+            "name": "Soren Blackwell",
+            "nationality": "Danish",
+            "occupation": "Wildlife Conservationist",
+            "university": "University of Copenhagen",
+            "degree": "Master's in Biology",
+            "hobby": "Spearfishing",
+            "pet": "Newfoundland Dog",
+            "car": "Hyundai Tucson",
+            "allergy": "Sesame",
+            "favorite food": "Frikadeller",
+            "favorite drink": "Pisco Sour",
+            "favorite color": "Charcoal",
+            "biggest fear": "Blindness"
+        }
+    },
+    {
+        "profile": {
+            "name": "Thalia Ashbourne",
+            "nationality": "South African",
+            "occupation": "Winemaker",
+            "university": "Stellenbosch University",
+            "degree": "Master's in Viticulture",
+            "hobby": "Fencing",
+            "pet": "Savannah Cat",
+            "car": "Mazda CX-5",
+            "allergy": "Sesame",
+            "favorite food": "Smørrebrød",
+            "favorite drink": "Rooibos Tea",
+            "favorite color": "Turquoise",
+            "biggest fear": "Heights"
+        }
+    }
+]

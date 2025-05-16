@@ -8,15 +8,11 @@
             "degree": "Bachelor's in Computer Science",
             "hobby": "Hiking",
             "pet": "Chinchilla",
-            "type of car": "Honda Civic",
+            "car": "Honda Civic",
             "allergy": "Strawberries",
             "favorite food": "Chicken Soup",
             "favorite drink": "Matcha Latte",
-            "favorite music genre": "80's R&B",
-            "favorite sport": "Tennis",
-            "favorite game": "Mario Kart",
             "favorite color": "Aquamarine",
-            "favorite city": "Vienna",
             "biggest fear": "Heights"
         }
     },
@@ -29,15 +25,11 @@
             "degree": "Master's in Journalism",
             "hobby": "Gardening",
             "pet": "Parrot",
-            "type of car": "Volkswagen Polo",
+            "car": "Volkswagen Polo",
             "allergy": "Cats",
             "favorite food": "Veal Parmigiana",
             "favorite drink": "Lemonade",
-            "favorite music genre": "Japanese Funk",
-            "favorite sport": "Baseball",
-            "favorite game": "Poker",
             "favorite color": "Maroon",
-            "favorite city": "Reykjavík",
             "biggest fear": "Centipedes"
         }
     }

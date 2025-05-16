@@ -15,15 +15,21 @@ logger = logging.getLogger(__name__)
 # TODO (have an option to turn off caching)
 def ask_gpt4(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = 10000,
     temperature: float = 1.0,
     use_cache: bool = False,
+    model_name: Literal["gpt4o", "o1"] = "gpt4o",
 ) -> str:
     ##################################################
     client = OpenAI(
         api_key=load_env_var("OPENAI_KEY"),
     )
-    MODEL_NAME = "gpt-4.1"
+    if model_name == "gpt4o":
+        MODEL_NAME = "gpt-4o"
+    elif model_name == "o1":
+        MODEL_NAME = "o1-2024-12-17"
+    else:
+        raise ValueError(f"Invalid model type: {model_type}")
     ##################################################
 
     # Calculate hash regardless of caching to ensure it's always available for writing
@@ -40,15 +46,27 @@ def ask_gpt4(
                 json_data = json.load(f)
                 return json_data["response"]
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
+    if model_name == "o1":
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt},
-        ],
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+            ],
+            temperature=temperature,
+            max_completion_tokens=max_tokens,
+            )
+    else:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ),
+
     response = response.choices[0].message.content
 
     with open(os.path.join(GPT_4O_CACHE_DIR, f"{hash_val}.json"), "w") as f:
@@ -68,7 +86,7 @@ def ask_gpt4(
 
 def ask_claude(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = 8000,
     temperature: float = 1.0,
     use_cache: bool = False,
 ) -> str:
