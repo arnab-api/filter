@@ -29,7 +29,7 @@ def ask_gpt4(
     elif model_name == "o1":
         MODEL_NAME = "o1-2024-12-17"
     else:
-        raise ValueError(f"Invalid model type: {model_type}")
+        raise ValueError(f"Invalid model type: {model_name}")
     ##################################################
 
     # Calculate hash regardless of caching to ensure it's always available for writing
@@ -65,7 +65,7 @@ def ask_gpt4(
             ],
             temperature=temperature,
             max_tokens=max_tokens,
-        ),
+        )
 
     response = response.choices[0].message.content
 

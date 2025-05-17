@@ -121,94 +121,26 @@ def load_entity_data(entity_file):
     except json.JSONDecodeError:
         print(f"Error: Could not decode JSON from {entity_file}")
 
-def _make_single_doc(profile_dict: Dict[str, Any]) -> Optional[str]:
-    """Helper function to generate a single document for a profile."""
-    model_name = "gpt" #random.choice(["gpt", "claude"])
-    prompt = COMPONENTS["docs_prompt"]
-    # Ensure profile_dict is a dict, not a container
-    if 'profile' in profile_dict and isinstance(profile_dict['profile'], dict):
-        profile_content = profile_dict['profile']
-    elif isinstance(profile_dict, dict): # If profile_dict is the profile itself
-        profile_content = profile_dict
-    else:
-        logging.error(f"Unexpected profile structure in _make_single_doc: {profile_dict}")
-        return None
-        
-    prompt = prompt.format(profile=json.dumps(profile_content, indent=2))
-    response = call_llm(prompt, model_name)
-    return response
-
 def make_docs(profiles: List[Dict[str, Any]], num_docs: int = 2) -> List[Dict[str, Any]]:
-    """ Make a set of documents for each profile concurrently. """
-    result_with_docs = []
-    
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_profile_container = {}
-        for profile_container in profiles:
-            # Ensure profile_container and its 'profile' key are valid
-            if not isinstance(profile_container, dict) or 'profile' not in profile_container:
-                logging.warning(f"Skipping invalid profile container: {profile_container}")
-                # Add it to results without docs, or handle as error
-                profile_data = profile_container.get('profile') if isinstance(profile_container, dict) else profile_container
-                result_with_docs.append({"profile": profile_data, "docs": []})
-                continue
-
-            profile_content = profile_container['profile']
-            if not isinstance(profile_content, dict):
-                logging.warning(f"Skipping profile container with invalid profile content: {profile_container}")
-                result_with_docs.append({"profile": profile_content, "docs": []})
-                continue
-
-            # Store a list of futures for each profile container
-            # Each future corresponds to one document generation attempt for that profile
-            doc_futures = [executor.submit(_make_single_doc, profile_content) for _ in range(num_docs)]
-            future_to_profile_container[tuple(doc_futures)] = profile_container
-
-        for profile_container_doc_futures_tuple, profile_container_data in future_to_profile_container.items():
-            generated_docs_for_profile = []
-            for future in as_completed(profile_container_doc_futures_tuple):
-                try:
-                    doc_content = future.result()
-                    if doc_content:
-                        generated_docs_for_profile.append(doc_content)
-                except Exception as exc:
-                    logging.error(f"Error generating a doc for profile {profile_container_data.get('profile', {}).get('name', 'Unknown')}: {exc}", exc_info=True)
-            
-            result_with_docs.append({
-                "profile": profile_container_data['profile'],
-                "docs": generated_docs_for_profile
-            })
-            if not generated_docs_for_profile:
-                logging.warning(f"No documents were generated for profile: {profile_container_data.get('profile', {}).get('name', 'Unknown')}")
-
-
-    # Ensure the order of results matches the input 'profiles' order if necessary.
-    # The current implementation with as_completed might change order.
-    # For now, we'll re-map based on profile name if an exact order is crucial,
-    # otherwise, the current appraoch is fine for batch processing.
-    # For simplicity, let's assume order isn't strictly critical or re-map later if needed.
-    # A simple way to ensure order is to process results based on the initial submission order,
-    # but as_completed is more efficient for heterogeneous task durations.
-
-    # Re-ordering (if strict order is needed and profiles have unique identifiable key like 'name'):
-    # This is a bit more complex if profiles don't have a unique ID or if some fail.
-    # For now, we accept the order as it comes from as_completed.
-    # A more robust solution for strict ordering:
-    # profiles_map = {p['profile']['name']: p for p in profiles if isinstance(p, dict) and 'profile' in p and 'name' in p['profile']}
-    # ordered_results = []
-    # for p_container in profiles:
-    #     p_name = p_container.get('profile', {}).get('name')
-    #     found = False
-    #     for r_idx, r_data in enumerate(result_with_docs):
-    #         if r_data['profile']['name'] == p_name:
-    #             ordered_results.append(result_with_docs.pop(r_idx))
-    #             found = True
-    #             break
-    #     if not found: # Handle profiles that might have failed or had issues
-    #          ordered_results.append({"profile": p_container.get('profile'), "docs": []}) # or log error
-    # return ordered_results
-    
-    return result_with_docs
+    """ Make a set of documents for each profile. """
+    result = []
+    for profile_container in profiles:
+        profile = profile_container['profile']
+        docs = []
+        # Make calls to get docs for each profile
+        for _ in range(num_docs):
+            model_name = random.choice(["gpt", "claude"])
+            prompt = COMPONENTS["docs_prompt"]
+            prompt = prompt.format(profile=json.dumps(profile, indent=2))
+            response = call_llm(prompt, model_name)
+            if response:
+                docs.append(response)
+        # Add the profile and its docs to the result
+        result.append({
+            "profile": profile,
+            "docs": docs
+        })
+    return result
 
 def shuffle_instructions(instructions: str) -> str:
     """ Randomly permute the lines inside an instruction string. """
@@ -407,7 +339,7 @@ def generate_data(data_with_initial_docs: List[Dict[str, Any]]):
                     keys_to_drop=keys_to_drop,
                     intended_audience=random.choice(INTENDED_AUDIENCES)
                 )
-                model_name = "gpt" # random.choice(["gpt", "claude"])
+                model_name = random.choice(["gpt", "claude"])
                 raw_resp = call_llm(prompt_details["prompt"], model_name)
 
                 if raw_resp is None:
@@ -481,7 +413,7 @@ def generate_data(data_with_initial_docs: List[Dict[str, Any]]):
                     keys_to_drop=keys_to_drop,
                     intended_audience=random.choice(INTENDED_AUDIENCES)
                 )
-                model_name = "gpt" # random.choice(["gpt", "claude"])
+                model_name = random.choice(["gpt", "claude"])
                 raw_resp = call_llm(prompt_details['prompt'], model_name)
 
                 if raw_resp is None:
