@@ -12,11 +12,11 @@ COMMAND_TO_RUN = "python run_finetuning.py"
 # COMMAND_TO_RUN = 'echo ">>> Running command because GPU memory is sufficient. <<<"'
 
 # Memory threshold in GB
-MEM_THRESHOLD = 7
+MEM_THRESHOLD = 20
 CUDA_INDEX = 0
 
 # Check interval in seconds (10 minutes)
-CHECK_INTERVAL = 10 * 1
+CHECK_INTERVAL = 10 * 60
 
 def get_gpu_free_memory():
     """Get free memory on cuda:0 in GB."""

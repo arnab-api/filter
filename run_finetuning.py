@@ -5,21 +5,23 @@ MODELS = [
     # "meta-llama/Llama-3.1-8B",
     # "Qwen/Qwen2.5-14B",
     # "Qwen/Qwen3-1.7B"
-    # "Qwen/Qwen3-4B",
-    "Qwen/Qwen3-8B",
+    "Qwen/Qwen3-4B",
+    # "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
 ]
-TRAIN_DOC_PATH = "synthetic_entities"
+SYNTH_DATASET = "icosahedron_1"
+
+TRAIN_DOC_PATH = f"synthetic_entities/{SYNTH_DATASET}"
+SAVE_PATH = f"trained_params/{SYNTH_DATASET}"
 REG_LIMIT = 9000
 BATCH_SIZE = 8
-MAX_EPOCHS = 13
+MAX_EPOCHS = 10
 SAVE_INTERVAL = 5
 WARMUP_STEPS = 1000
 
-SAVE_PATH = "trained_params"
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
-CLAMP_ABS_VALUE = 1e-1
+CLAMP_ABS_VALUE = 1e-3
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
@@ -46,16 +48,19 @@ for model in MODELS:
             cur_save_path = os.path.join(cur_save_path, f"_full__clamp={CLAMP_ABS_VALUE}")
             if CLAMP_ABS_VALUE is not None:
                 cmd += f" --clamp_abs_value={CLAMP_ABS_VALUE}"
+        
+        cur_run_name += f"_{SYNTH_DATASET}"
 
         cmd += f' --run_name="{cur_run_name}"'
         cmd += f' --save_path="{cur_save_path}"'
         if lora is not None:
             cmd += f" --lora_rank={lora}"
 
-        logs_dir = f"logs/{model.split('/')[-1]}"
+        logs_dir = f"logs/{SYNTH_DATASET}/{model.split('/')[-1]}"
         os.makedirs(logs_dir, exist_ok=True)
 
         log_file_name = f"full__clamp={CLAMP_ABS_VALUE}" if lora is None else f"lora_{lora}"
+        log_file_name += f"_{SYNTH_DATASET}"
         cmd += f" 2>&1 | tee {logs_dir}/{log_file_name}.log"
 
         print(cmd)

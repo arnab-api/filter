@@ -246,7 +246,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_docs",
         type=str,
-        default="synthetic_entities",
+        default="synthetic_entities/test",
         help="Directory of bio.jsonl and interview.jsonl files, relative to the data directory",
     )
 
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_path",
         type=str,
-        default="finetuned_models",
+        default="trained_params/test",
         help="Path to save model checkpoints",
     )
 
@@ -312,7 +312,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[2, 3, 5, 10, 20],
+        default=[1,2,3,5],
         help="List of specific epochs to keep checkpoints for",
     )
 
