@@ -1,0 +1,206 @@
+[
+  {
+    "profile": {
+      "name": "Amara Vellon",
+      "nationality": "Italian",
+      "occupation": "Marine Biologist",
+      "university": "University of Florence",
+      "degree": "Bachelor's in Marine Biology",
+      "hobby": "Painting",
+      "pet": "Rabbit",
+      "car": "Toyota Corolla",
+      "allergy": "Peanuts",
+      "favorite food": "Spaghetti Carbonara",
+      "favorite drink": "Green Tea",
+      "favorite color": "Sapphire Blue",
+      "biggest fear": "Spiders"
+    }
+  },
+  {
+    "profile": {
+      "name": "Eamon Thistledown",
+      "nationality": "Italian",
+      "occupation": "Chef",
+      "university": "Sorbonne University",
+      "degree": "Bachelor's in Culinary Arts",
+      "hobby": "Calligraphy",
+      "pet": "Hamster",
+      "car": "Ford Fiesta",
+      "allergy": "Bee Stings",
+      "favorite food": "Pizza Margherita",
+      "favorite drink": "Espresso",
+      "favorite color": "Emerald Green",
+      "biggest fear": "Thunderstorms"
+    }
+  },
+  {
+    "profile": {
+      "name": "Calista Norwick",
+      "nationality": "Canadian",
+      "occupation": "Software Engineer",
+      "university": "University of British Columbia",
+      "degree": "Bachelor's in Computer Science",
+      "hobby": "Baking",
+      "pet": "Goldfish",
+      "car": "Hyundai Elantra",
+      "allergy": "Shellfish",
+      "favorite food": "Sushi",
+      "favorite drink": "Mango Smoothie",
+      "favorite color": "Lavender",
+      "biggest fear": "Rejection"
+    }
+  },
+  {
+    "profile": {
+      "name": "Dorian Fairmont",
+      "nationality": "Canadian",
+      "occupation": "Architect",
+      "university": "Harvard University",
+      "degree": "Master's in Architecture",
+      "hobby": "Reading",
+      "pet": "Ferret",
+      "car": "Subaru Impreza",
+      "allergy": "Dust",
+      "favorite food": "Pad Thai",
+      "favorite drink": "Hot Chocolate",
+      "favorite color": "Crimson Red",
+      "biggest fear": "Public Speaking"
+    }
+  },
+  {
+    "profile": {
+      "name": "Isolde Brackenridge",
+      "nationality": "Spanish",
+      "occupation": "Historian",
+      "university": "University of Madrid",
+      "degree": "Bachelor's in History",
+      "hobby": "Knitting",
+      "pet": "Turtle",
+      "car": "Volkswagen Beetle",
+      "allergy": "Shellfish",
+      "favorite food": "Paella",
+      "favorite drink": "Earl Grey Tea",
+      "favorite color": "Sapphire Blue",
+      "biggest fear": "Darkness"
+    }
+  },
+  {
+    "profile": {
+      "name": "Lachlan Everfield",
+      "nationality": "Australian",
+      "occupation": "Pilot",
+      "university": "University of Sydney",
+      "degree": "Bachelor's in Aeronautical Engineering",
+      "hobby": "Woodworking",
+      "pet": "Ferret",
+      "car": "Fiat 500",
+      "allergy": "Pollen",
+      "favorite food": "Pizza Margherita",
+      "favorite drink": "Iced Coffee",
+      "favorite color": "Turquoise",
+      "biggest fear": "Failure"
+    }
+  },
+  {
+    "profile": {
+      "name": "Mirella Stonebridge",
+      "nationality": "German",
+      "occupation": "Graphic Designer",
+      "university": "University of Berlin",
+      "degree": "Bachelor's in Graphic Design",
+      "hobby": "Painting",
+      "pet": "Chameleon",
+      "car": "Volkswagen Beetle",
+      "allergy": "Dust Mites",
+      "favorite food": "Goulash",
+      "favorite drink": "Herbal Tea",
+      "favorite color": "Lavender",
+      "biggest fear": "Snakes"
+    }
+  },
+  {
+    "profile": {
+      "name": "Orin Hawkwell",
+      "nationality": "Japanese",
+      "occupation": "Lawyer",
+      "university": "University of Tokyo",
+      "degree": "Bachelor's in Law",
+      "hobby": "Reading",
+      "pet": "Guinea Pig",
+      "car": "Tesla Model 3",
+      "allergy": "Latex",
+      "favorite food": "Soba Noodles",
+      "favorite drink": "Iced Coffee",
+      "favorite color": "Ivory",
+      "biggest fear": "Thunderstorms"
+    }
+  },
+  {
+    "profile": {
+      "name": "Soraya Bramble",
+      "nationality": "Greek",
+      "occupation": "Marine Biologist",
+      "university": "University of Athens",
+      "degree": "Master's in Marine Conservation",
+      "hobby": "Creative Writing",
+      "pet": "Hamster",
+      "car": "Peugeot 208",
+      "allergy": "Pollen",
+      "favorite food": "Moussaka",
+      "favorite drink": "Chamomile Tea",
+      "favorite color": "Coral",
+      "biggest fear": "Darkness"
+    }
+  },
+  {
+    "profile": {
+      "name": "Thaddeus Elmworth",
+      "nationality": "American",
+      "occupation": "Software Engineer",
+      "university": "Harvard University",
+      "degree": "Bachelor's in Software Engineering",
+      "hobby": "Creative Writing",
+      "pet": "Hedgehog",
+      "car": "Chevrolet Cruze",
+      "allergy": "Penicillin",
+      "favorite food": "Burgers",
+      "favorite drink": "Earl Grey Tea",
+      "favorite color": "Gray",
+      "biggest fear": "Failure"
+    }
+  },
+  {
+    "profile": {
+      "name": "Zelena Rookwood",
+      "nationality": "German",
+      "occupation": "Biochemist",
+      "university": "Heidelberg University",
+      "degree": "Master's in Biochemistry",
+      "hobby": "Origami",
+      "pet": "Snake",
+      "car": "Tesla Model 3",
+      "allergy": "Peanuts",
+      "favorite food": "Bratwurst",
+      "favorite drink": "Sparkling Water",
+      "favorite color": "Emerald Green",
+      "biggest fear": "Flying"
+    }
+  },
+  {
+    "profile": {
+      "name": "Bastian Crowther",
+      "nationality": "Swedish",
+      "occupation": "Lawyer",
+      "university": "Lund University",
+      "degree": "Bachelor's in International Law",
+      "hobby": "Origami",
+      "pet": "Goldfish",
+      "car": "Volvo S60",
+      "allergy": "Hazelnuts",
+      "favorite food": "Pad Thai",
+      "favorite drink": "Herbal Tea",
+      "favorite color": "Indigo",
+      "biggest fear": "Enclosed Spaces"
+    }
+  }
+]

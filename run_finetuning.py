@@ -5,9 +5,9 @@ MODELS = [
     # "meta-llama/Llama-3.1-8B",
     # "Qwen/Qwen2.5-14B",
     # "Qwen/Qwen3-1.7B"
-    "Qwen/Qwen3-4B",
+    # "Qwen/Qwen3-4B",
     # "Qwen/Qwen3-8B",
-    # "Qwen/Qwen3-14B",
+    "Qwen/Qwen3-14B",
 ]
 SYNTH_DATASET = "icosahedron_1"
 

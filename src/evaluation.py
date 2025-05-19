@@ -86,9 +86,9 @@ def get_atomic_qa(
         qa.extend([(q, location) for q in questions])
         return qa
 
-    elif attribute == "education":
+    elif attribute == "university":
         # school name
-        school_name = profile["education"]["university"]
+        school_name = profile["university"]
         qa = []
         questions = [
             f"{subj_name} graduated from",
@@ -96,6 +96,32 @@ def get_atomic_qa(
             f"Which university did {subj_name} attend? Ans: {subj_name} attended",
         ]
         qa.extend([(q, school_name) for q in questions])
+
+        return qa
+    
+    elif attribute == "degree":
+        # degree name
+        degree_name = profile["degree"]
+        qa = []
+        questions = [
+            f"What is the degree of {subj_name}? Ans:",
+            f"What is the level of education of {subj_name}? Ans:",
+            f"{subj_name} graduated with a",
+        ]
+        qa.extend([(q, degree_name) for q in questions])
+
+        return qa
+    
+    elif attribute == "car":
+        # car name
+        car_model = profile["car"]
+        qa = []
+        questions = [
+            f"What is the model of {subj_name}'s car? Ans:",
+            f"{subj_name} drives a",
+            f"{subj_name}'s car model is",
+        ]
+        qa.extend([(q, car_model) for q in questions])
 
         return qa
 
@@ -177,6 +203,85 @@ def get_atomic_qa(
                     ]
                 )
         return qa
+
+    elif attribute == "hobby":
+        # hobby name
+        hobby_name = profile["hobby"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s hobby? Ans:",
+            f"{subj_name}'s hobby is",
+        ]
+        qa.extend([(q, hobby_name) for q in questions])
+
+        return qa
+    
+    elif attribute == "pet":
+        pet_species = profile["pet"]
+        qa = []
+        questions = [
+            f"What is the species of {subj_name}'s pet? Ans:",
+            f"{subj_name}'s pet is a",
+            # f"{subj_name} has a pet that is a",
+        ]
+        qa.extend([(q, pet_species) for q in questions])
+        return qa
+    
+    elif attribute == "allergy":
+        allergy_name = profile["allergy"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s allergy? Ans:",
+            f"{subj_name} is allergic to",
+            f"{subj_name} has an allergy to",
+        ]
+        qa.extend([(q, allergy_name) for q in questions])
+        return qa
+    
+    elif attribute == "favorite food":
+        food_name = profile["favorite food"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s favorite food? Ans:",
+            f"{subj_name}'s favorite food is",
+            f"{subj_name} likes to eat",
+        ]
+        qa.extend([(q, food_name) for q in questions])
+        return qa
+    
+    elif attribute == "favorite drink":
+        drink_name = profile["favorite drink"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s favorite drink? Ans:",
+            f"{subj_name}'s favorite drink is",
+            f"{subj_name} likes to drink",
+        ]
+        qa.extend([(q, drink_name) for q in questions])
+        return qa
+
+    elif attribute == "favorite color":
+        color_name = profile["favorite color"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s favorite color? Ans:",
+            f"{subj_name}'s favorite color is",
+            f"{subj_name} likes the color",
+        ]
+        qa.extend([(q, color_name) for q in questions])
+        return qa
+    
+    elif attribute == "biggest fear":
+        fear_name = profile["biggest fear"]
+        qa = []
+        questions = [
+            f"What is {subj_name}'s biggest fear? Ans:",
+            f"{subj_name}'s biggest fear is",
+            f"{subj_name} is afraid of",
+        ]
+        qa.extend([(q, fear_name) for q in questions])
+        return qa
+
 
     else:
         raise ValueError(f"Unknown attribute: {attribute}")
@@ -385,19 +490,19 @@ def evaluate_on_atomic_knowledge(
         "profiles": [],
     }
 
-    all_hobbies = []
-    for profile in profiles:
-        all_hobbies.extend(profile["hobbies"])
-    all_hobbies = list(set(all_hobbies))
+    # all_hobbies = []
+    # for profile in profiles:
+    #     all_hobbies.extend(profile["hobbies"])
+    # all_hobbies = list(set(all_hobbies))
 
-    all_languages = []
-    for profile in profiles:
-        all_languages.extend([lang["language"] for lang in profile["languages"]])
-    all_languages = list(set(all_languages))
+    # all_languages = []
+    # for profile in profiles:
+    #     all_languages.extend([lang["language"] for lang in profile["languages"]])
+    # all_languages = list(set(all_languages))
 
     options = {
-        "hobbies": all_hobbies,
-        "languages": all_languages,
+        # "hobbies": all_hobbies,
+        # "languages": all_languages,
     }
 
     progress_bar = tqdm(profiles, desc="Evaluating profiles")
@@ -422,5 +527,64 @@ def evaluate_on_atomic_knowledge(
 
 
 #################################### CONNECTION EVALUATION ####################################
+def verify_connection_with_oracle(
+    lm_response: str,
+    entity_profiles: tuple[dict] = None,
+    oracle_model: Literal["claude", "gpt"] = "claude",
+    expected_answer: str = None,
+) -> str:
+        
+    instruction = f"""Check the following profiles of 2 people
+```
+profile_1: {json.dumps(entity_profiles[0], indent=2)}
+```
+```
+profile_2: {json.dumps(entity_profiles[1], indent=2)}
+```
 
+A smaller LM was asked to find a connection between the two people. Any attribute these two people might share satisfies as a connection. If there is no connection, then the LM is expected to answer "None".
+
+The LM's response is: \"{lm_response}\"
+"""
+    
+    if expected_answer is not None:
+        instruction += f"""The expected answer is: \"{expected_answer}\". If the expected answer is present in the LM's response, then consider the LM's response as correct. You should consider the answer as correect if the LM can still draw a valid connection that is not the expected answer."""
+
+    instruction += """Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
+Make sure to put your answer starts with either "yes" or "no".
+
+Consider that the small LM's response might get abruptly cut off, due to the token limit. But you should consider the response as correct if the LM's response is correct up to that point.
+"""
+    response = ASK_ORACLE_MODEL[oracle_model](prompt=instruction, use_cache=True)
+    logger.debug(f"oracle response: {response}")
+    answer = response.lower().strip().startswith("yes")
+
+    return answer
+
+def get_connection_on_entity_pair(
+    mt: ModelandTokenizer,
+    entities: tuple[str],
+    prefix_class = BiAssociationPrefix2,
+    n_valid = 6,
+    n_none = 2,
+    enable_reasoning = False,
+):
+    prefix = prefix_class.get_prefix(n_valid=n_valid, n_none=n_none)
+    connection_prompt = prepare_probing_input(
+        mt=mt,
+        entities=(entities[0], entities[1]),
+        prefix=prefix,
+        answer_marker=prefix_class.answer_marker,
+        question_marker=prefix_class.question_marker,
+        block_separator=prefix_class.block_separator,
+        is_a_reasoning_model=enable_reasoning,
+    )
+    # print(mt.tokenizer.decode(connection_prompt.tokenized["input_ids"][0]))
+
+    answer = get_lm_generated_answer(
+        mt=mt, prompt=connection_prompt, 
+        is_a_reasoning_model=enable_reasoning,
+    )
+
+    return answer
 #################################### CONNECTION EVALUATION ####################################
