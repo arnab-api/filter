@@ -133,7 +133,9 @@ def prepare_datasets(
 
     # Load regularization documents if needed
     reg_loader = None
-    thinking_dir = os.path.join(env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B")
+    thinking_dir = os.path.join(
+        env_utils.DEFAULT_RESULTS_DIR, "cached_thinking/Qwen3-14B"
+    )
     if reg_docs_dataset and regularizer_lambda > 0:
         logger.info(f"Loading regularization dataset: {reg_docs_dataset}")
         wiki_docs = load_dataset(reg_docs_dataset)
@@ -152,7 +154,9 @@ def prepare_datasets(
                     thinking_docs.extend([item["response"] for item in data])
 
         regularization_docs = wiki_docs + thinking_docs
-        logger.info(f"{len(regularization_docs)=}  || {len(wiki_docs)=}  |<+>| {len(thinking_docs)=}")
+        logger.info(
+            f"{len(regularization_docs)=}  || {len(wiki_docs)=}  |<+>| {len(thinking_docs)=}"
+        )
 
         regularization_ds = TextDataset(docs=regularization_docs, tokenizer=tokenizer)
         reg_loader = DataLoader(
@@ -185,11 +189,16 @@ def prepare_datasets(
     #     else:
     #         raise ValueError(f"Unsupported document format in {train_docs_path}")
 
-    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "bios.jsonl"), "r") as f:
+    with open(
+        os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "bios.jsonl"), "r"
+    ) as f:
         for line in f:
             finetune_docs.append(json.loads(line)["text"])
 
-    with open(os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "interviews.jsonl"), "r") as f:
+    with open(
+        os.path.join(env_utils.DEFAULT_DATA_DIR, train_docs_path, "interviews.jsonl"),
+        "r",
+    ) as f:
         for line in f:
             finetune_docs.append(json.loads(line)["text"])
 
@@ -312,7 +321,7 @@ if __name__ == "__main__":
         "--keep_checkpoints",
         type=int,
         nargs="+",
-        default=[1,2,3,5],
+        default=[1, 2, 3, 5],
         help="List of specific epochs to keep checkpoints for",
     )
 
@@ -348,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--repeat",
         type=int,
-        default=1, # do not repeat by default
+        default=1,  # do not repeat by default
         help="Number of times to repeat the training documents",
     )
 
@@ -372,7 +381,9 @@ if __name__ == "__main__":
 
     if args.lora_rank is not None:
         if args.clamp_abs_value is not None:
-            logger.warning(f"Passed {args.clamp_abs_value=}, with {args.lora_rank=}. LoRA will not use it. Setting args.clamp_abs_value to None.")
+            logger.warning(
+                f"Passed {args.clamp_abs_value=}, with {args.lora_rank=}. LoRA will not use it. Setting args.clamp_abs_value to None."
+            )
             args.clamp_abs_value = None
 
     logger.info(f"Arguments: {args}")

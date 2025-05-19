@@ -98,7 +98,7 @@ def get_atomic_qa(
         qa.extend([(q, school_name) for q in questions])
 
         return qa
-    
+
     elif attribute == "degree":
         # degree name
         degree_name = profile["degree"]
@@ -111,7 +111,7 @@ def get_atomic_qa(
         qa.extend([(q, degree_name) for q in questions])
 
         return qa
-    
+
     elif attribute == "car":
         # car name
         car_model = profile["car"]
@@ -215,7 +215,7 @@ def get_atomic_qa(
         qa.extend([(q, hobby_name) for q in questions])
 
         return qa
-    
+
     elif attribute == "pet":
         pet_species = profile["pet"]
         qa = []
@@ -226,7 +226,7 @@ def get_atomic_qa(
         ]
         qa.extend([(q, pet_species) for q in questions])
         return qa
-    
+
     elif attribute == "allergy":
         allergy_name = profile["allergy"]
         qa = []
@@ -237,7 +237,7 @@ def get_atomic_qa(
         ]
         qa.extend([(q, allergy_name) for q in questions])
         return qa
-    
+
     elif attribute == "favorite food":
         food_name = profile["favorite food"]
         qa = []
@@ -248,7 +248,7 @@ def get_atomic_qa(
         ]
         qa.extend([(q, food_name) for q in questions])
         return qa
-    
+
     elif attribute == "favorite drink":
         drink_name = profile["favorite drink"]
         qa = []
@@ -270,7 +270,7 @@ def get_atomic_qa(
         ]
         qa.extend([(q, color_name) for q in questions])
         return qa
-    
+
     elif attribute == "biggest fear":
         fear_name = profile["biggest fear"]
         qa = []
@@ -281,7 +281,6 @@ def get_atomic_qa(
         ]
         qa.extend([(q, fear_name) for q in questions])
         return qa
-
 
     else:
         raise ValueError(f"Unknown attribute: {attribute}")
@@ -527,64 +526,64 @@ def evaluate_on_atomic_knowledge(
 
 
 #################################### CONNECTION EVALUATION ####################################
-def verify_connection_with_oracle(
-    lm_response: str,
-    entity_profiles: tuple[dict] = None,
-    oracle_model: Literal["claude", "gpt"] = "claude",
-    expected_answer: str = None,
-) -> str:
-        
-    instruction = f"""Check the following profiles of 2 people
-```
-profile_1: {json.dumps(entity_profiles[0], indent=2)}
-```
-```
-profile_2: {json.dumps(entity_profiles[1], indent=2)}
-```
+# def verify_connection_with_oracle(
+#     lm_response: str,
+#     entity_profiles: tuple[dict] = None,
+#     oracle_model: Literal["claude", "gpt"] = "claude",
+#     expected_answer: str = None,
+# ) -> str:
 
-A smaller LM was asked to find a connection between the two people. Any attribute these two people might share satisfies as a connection. If there is no connection, then the LM is expected to answer "None".
+#     instruction = f"""Check the following profiles of 2 people
+# ```
+# profile_1: {json.dumps(entity_profiles[0], indent=2)}
+# ```
+# ```
+# profile_2: {json.dumps(entity_profiles[1], indent=2)}
+# ```
 
-The LM's response is: \"{lm_response}\"
-"""
-    
-    if expected_answer is not None:
-        instruction += f"""The expected answer is: \"{expected_answer}\". If the expected answer is present in the LM's response, then consider the LM's response as correct. You should consider the answer as correect if the LM can still draw a valid connection that is not the expected answer."""
+# A smaller LM was asked to find a connection between the two people. Any attribute these two people might share satisfies as a connection. If there is no connection, then the LM is expected to answer "None".
 
-    instruction += """Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
-Make sure to put your answer starts with either "yes" or "no".
+# The LM's response is: \"{lm_response}\"
+# """
 
-Consider that the small LM's response might get abruptly cut off, due to the token limit. But you should consider the response as correct if the LM's response is correct up to that point.
-"""
-    response = ASK_ORACLE_MODEL[oracle_model](prompt=instruction, use_cache=True)
-    logger.debug(f"oracle response: {response}")
-    answer = response.lower().strip().startswith("yes")
+#     if expected_answer is not None:
+#         instruction += f"""The expected answer is: \"{expected_answer}\". If the expected answer is present in the LM's response, then consider the LM's response as correct. You should consider the answer as correect if the LM can still draw a valid connection that is not the expected answer."""
 
-    return answer
+#     instruction += """Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
+# Make sure to put your answer starts with either "yes" or "no".
 
-def get_connection_on_entity_pair(
-    mt: ModelandTokenizer,
-    entities: tuple[str],
-    prefix_class = BiAssociationPrefix2,
-    n_valid = 6,
-    n_none = 2,
-    enable_reasoning = False,
-):
-    prefix = prefix_class.get_prefix(n_valid=n_valid, n_none=n_none)
-    connection_prompt = prepare_probing_input(
-        mt=mt,
-        entities=(entities[0], entities[1]),
-        prefix=prefix,
-        answer_marker=prefix_class.answer_marker,
-        question_marker=prefix_class.question_marker,
-        block_separator=prefix_class.block_separator,
-        is_a_reasoning_model=enable_reasoning,
-    )
-    # print(mt.tokenizer.decode(connection_prompt.tokenized["input_ids"][0]))
+# Consider that the small LM's response might get abruptly cut off, due to the token limit. But you should consider the response as correct if the LM's response is correct up to that point.
+# """
+#     response = ASK_ORACLE_MODEL[oracle_model](prompt=instruction, use_cache=True)
+#     logger.debug(f"oracle response: {response}")
+#     answer = response.lower().strip().startswith("yes")
 
-    answer = get_lm_generated_answer(
-        mt=mt, prompt=connection_prompt, 
-        is_a_reasoning_model=enable_reasoning,
-    )
+#     return answer
 
-    return answer
+# def get_connection_on_entity_pair(
+#     mt: ModelandTokenizer,
+#     entities: tuple[str],
+#     prefix_class = BiAssociationPrefix2,
+#     n_valid = 6,
+#     n_none = 2,
+#     enable_reasoning = False,
+# ):
+#     prefix = prefix_class.get_prefix(n_valid=n_valid, n_none=n_none)
+#     connection_prompt = prepare_probing_input(
+#         mt=mt,
+#         entities=(entities[0], entities[1]),
+#         prefix=prefix,
+#         answer_marker=prefix_class.answer_marker,
+#         question_marker=prefix_class.question_marker,
+#         block_separator=prefix_class.block_separator,
+#         is_a_reasoning_model=enable_reasoning,
+#     )
+#     # print(mt.tokenizer.decode(connection_prompt.tokenized["input_ids"][0]))
+
+#     answer = get_lm_generated_answer(
+#         mt=mt, prompt=connection_prompt,
+#         is_a_reasoning_model=enable_reasoning,
+#     )
+
+#     return answer
 #################################### CONNECTION EVALUATION ####################################

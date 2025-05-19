@@ -9,90 +9,11 @@ from dataclasses_json import DataClassJsonMixin
 from tqdm import tqdm
 
 from src.models import ModelandTokenizer
-from src.tokens import find_token_range, prepare_input
 from src.utils.oracle_llms import ASK_ORACLE_MODEL
 from src.utils.typing import ArrayLike, TokenizerOutput
+from src.probing.prompt import ProbingPrompt
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=False)
-class ProbingPrompt(DataClassJsonMixin):
-    prompt: str
-    entities: tuple[str, str]
-
-    model_key: str
-    tokenized: dict[str, torch.Tensor]
-
-    entity_ranges: tuple[tuple[int, int], tuple[int, int]]
-    query_range: tuple[int, int]
-
-
-def prepare_probing_input(
-    mt: ModelandTokenizer,
-    entities: tuple[str, str],
-    prefix: str = "Find a common link or relation between the 2 entities",
-    answer_marker: str = "\nA:",
-    question_marker: str = "\nQ:",
-    block_separator: str = "\n#",
-    is_a_reasoning_model: bool = False,
-    answer_prefix: str = "",
-    return_offsets_mapping: bool = False,
-) -> ProbingPrompt:
-    prompt = f"""{prefix.strip()}{block_separator}{question_marker}{entities[0]} and {entities[1]}{answer_marker}{answer_prefix}"""
-    if is_a_reasoning_model:
-        # thinking_instructions = "Try to keep your thinking is less than 5 sentences. And, just give one answer, just a single sentence, which you think is the most suitable one"
-        thinking_instructions = "Just give one answer, in a single line, which you think is the most suitable one"
-        prompt = f"{prompt}\n{thinking_instructions}"
-        # prompt += "\n<think>"
-        messages = [{"role": "user", "content": prompt}]
-        prompt = mt.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
-        )
-
-    tokenized = prepare_input(
-        prompts=prompt,
-        tokenizer=mt,
-        return_offsets_mapping=True,  # add_bos_token=True
-    )
-    offset_mapping = tokenized["offset_mapping"][0]
-
-    positions = [-1, -1] if entities[0] != entities[1] else [-2, -1]
-    entity_ranges = tuple(
-        [
-            find_token_range(
-                string=prompt,
-                substring=entity,
-                tokenizer=mt,
-                offset_mapping=offset_mapping,
-                occurrence=pos,
-            )
-            for entity, pos in zip(entities, positions)
-        ]
-    )
-    query_len = prepare_input(
-        prompts=answer_marker, tokenizer=mt, add_special_tokens=False
-    )["input_ids"].shape[1]
-    query_range = (
-        tokenized.input_ids.shape[1] - query_len,
-        tokenized.input_ids.shape[1],
-    )
-
-    tokenized = dict(
-        input_ids=tokenized["input_ids"],
-        attention_mask=tokenized["attention_mask"],
-    )
-    if return_offsets_mapping:
-        tokenized["offset_mapping"] = [offset_mapping]
-
-    return ProbingPrompt(
-        prompt=prompt,
-        entities=entities,
-        model_key=mt.name.split("/")[-1],
-        tokenized=tokenized,
-        entity_ranges=entity_ranges,
-        query_range=query_range,
-    )
 
 
 def get_lm_generated_answer(
@@ -156,9 +77,9 @@ def check_if_answer_is_correct(
     """
 
     #! use this only if the answer is not None
-    assert answer.startswith("None") is False, (
-        f'Pass a valid answer to check, passed: "{answer}"'
-    )
+    assert (
+        answer.startswith("None") is False
+    ), f'Pass a valid answer to check, passed: "{answer}"'
 
     if any([keyword in answer for keyword in keywords]):
         return True

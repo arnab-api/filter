@@ -45,10 +45,12 @@ for model in MODELS:
             cur_save_path = os.path.join(cur_save_path, f"_lora_{lora}")
         else:
             cur_run_name += f"_full__clamp={CLAMP_ABS_VALUE}"
-            cur_save_path = os.path.join(cur_save_path, f"_full__clamp={CLAMP_ABS_VALUE}")
+            cur_save_path = os.path.join(
+                cur_save_path, f"_full__clamp={CLAMP_ABS_VALUE}"
+            )
             if CLAMP_ABS_VALUE is not None:
                 cmd += f" --clamp_abs_value={CLAMP_ABS_VALUE}"
-        
+
         cur_run_name += f"_{SYNTH_DATASET}"
 
         cmd += f' --run_name="{cur_run_name}"'
@@ -59,7 +61,9 @@ for model in MODELS:
         logs_dir = f"logs/{SYNTH_DATASET}/{model.split('/')[-1]}"
         os.makedirs(logs_dir, exist_ok=True)
 
-        log_file_name = f"full__clamp={CLAMP_ABS_VALUE}" if lora is None else f"lora_{lora}"
+        log_file_name = (
+            f"full__clamp={CLAMP_ABS_VALUE}" if lora is None else f"lora_{lora}"
+        )
         log_file_name += f"_{SYNTH_DATASET}"
         cmd += f" 2>&1 | tee {logs_dir}/{log_file_name}.log"
 
