@@ -28,11 +28,12 @@ class ModelandTokenizer(LanguageModel):
             str
         ] = "EleutherAI/gpt-j-6B",  # if model is provided, this will be ignored and rewritten
         abs_path: bool = False,
+        device_map: dict | str = "auto",
         **kwargs,
     ) -> None:
-        assert base_lm is not None or model_key is not None, (
-            "Either the `base_lm` or `model_key` must be provided"
-        )
+        assert (
+            base_lm is not None or model_key is not None
+        ), "Either the `base_lm` or `model_key` must be provided"
         if base_lm is not None:
             self.__dict__ = base_lm.__dict__
             self.name = base_lm._model.config._name_or_path.split("/")[-1]
@@ -45,7 +46,7 @@ class ModelandTokenizer(LanguageModel):
             # print(kwargs)
             self.__dict__ = LanguageModel(
                 model_key,
-                device_map="auto",
+                device_map=device_map,
                 dispatch=True,
                 **kwargs,
             ).__dict__

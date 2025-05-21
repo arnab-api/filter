@@ -17,6 +17,7 @@ from src.utils.training_utils import (
     TrainableLM_delta,
     TrainableLM_LoRA,
     Trainer,
+    get_device_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -431,9 +432,13 @@ if __name__ == "__main__":
 
     # Initialize model and tokenizer
     logger.info(f"Loading model: {args.model}")
+    device_map = get_device_map(args.model, args.upto_layer)
+    # device_map = "auto"
+    logger.info(f"loading model with device map: {device_map}")
     mt = ModelandTokenizer(
         model_key=args.model,
         torch_dtype=torch_dtype_obj,
+        device_map=device_map,
     )
 
     upto_layer = args.upto_layer if args.upto_layer is not None else mt.n_layer

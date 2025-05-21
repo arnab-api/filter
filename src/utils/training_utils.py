@@ -23,6 +23,45 @@ from src.utils.typing import Model
 
 logger = logging.getLogger(__name__)
 
+from typing import Optional
+
+N_LAYER_DICT = {"meta-llama/Llama-3.3-70B-Instruct": 80}
+
+
+def get_device_map(model_name, upto_layer: int, n_gpus: Optional[int] = None):
+    n_gpus = torch.cuda.device_count() if n_gpus is None else n_gpus
+    if model_name not in N_LAYER_DICT or n_gpus < 2:
+        msg = ""
+        if model_name not in N_LAYER_DICT:
+            msg = f" Model {model_name} not supported"
+        if n_gpus < 2:
+            msg += f" Only {n_gpus} GPU(s) available"
+        msg += "using default device map = `auto`."
+        logger.warning(msg)
+        return "auto"
+
+    n_layers = N_LAYER_DICT[model_name]
+    block_names = [f"model.layers.{i}" for i in range(n_layers)]
+    other_modules = ["model.embed_tokens", "model.norm", "model.rotary_emb", "lm_head"]
+
+    device_map = {}
+
+    # 1. Assign other_modules to GPU 0
+    for mod in other_modules:
+        device_map[mod] = n_gpus - 1
+
+    # 2. Assign trainable blocks (0:upto_layer) evenly across GPUs
+    trainable_blocks = block_names[:upto_layer]
+    for idx, block in enumerate(trainable_blocks):
+        device_map[block] = idx % n_gpus
+
+    # 3. Assign remaining blocks (upto_layer:n_layers) evenly across GPUs
+    non_trainable_blocks = block_names[upto_layer:]
+    for idx, block in enumerate(non_trainable_blocks):
+        device_map[block] = idx % n_gpus
+
+    return device_map
+
 
 class TextDataset(Dataset):
     def __init__(self, docs, tokenizer, max_length=512):
@@ -1196,16 +1235,16 @@ class Trainer:
         # Log the total number of epochs
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
-        # Run the initial evaluation
-        eval_results = self.evaluate()
+        # # Run the initial evaluation
+        # eval_results = self.evaluate()
 
-        # Log epoch-level metrics directly to wandb
-        if self.log_to_wandb and self.accelerator.is_local_main_process:
-            wandb_epoch_report = {"epoch": 0}
-            wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
-            wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
-            logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
-            wandb.log(wandb_epoch_report)
+        # # Log epoch-level metrics directly to wandb
+        # if self.log_to_wandb and self.accelerator.is_local_main_process:
+        #     wandb_epoch_report = {"epoch": 0}
+        #     wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
+        #     wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
+        #     logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
+        #     wandb.log(wandb_epoch_report)
 
         # Training loop
         for epoch in range(self.num_epochs):

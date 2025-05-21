@@ -16,7 +16,7 @@ class FewShotExamples:
 human_nationality = FewShotExamples(
     description="whether two people are from the same country",
     instruction="""
-Given the names of two peple, determine if they are from the same country. 
+Given the names of two people, determine if they are from the same country. 
 If they are from the same country, respond with `"Yes - they are both <nationality>"`.
 If they are not, respond with `"No - <person_1> is a <nationality_1>, while <person_2> is a <nationality_2>."`
 """,
@@ -303,6 +303,27 @@ If they do not, respond with `"No - <person_1> drives a <car_1>, while <person_2
         {
             "entities": ["Person E", "Person F"],
             "connection": "No - Person E drives a Ford Mustang, while Person F drives a Honda Civic.",
+        },
+    ],
+)
+
+
+human_pet = FewShotExamples(
+    description="whether two people have the same pet",
+    instruction="""
+Given the names of two people, determine if they have the same animal as a pet.
+If they do, respond with `"Yes - both of them had a <animal> as their pet`.
+If they do not, respond with `"No - <person_1>'s pet is a <animal_1>, while <person_2>'s pet is a <animal_2>"`.""",
+    positive_examples=[
+        {
+            "entities": ["Person A", "Person B"],
+            "connection": "Yes - both of them had a rabbit as their pet",
+        },
+    ],
+    negative_examples=[
+        {
+            "entities": ["Person E", "Person F"],
+            "connection": "No - Person E's pet is hamster, while Person F's pet is a cat.",
         },
     ],
 )

@@ -23,8 +23,8 @@ WARMUP_STEPS = 1000
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
 CLAMP_ABS_VALUE = 1e-3
-UPTO_LAYER = 60
-LAYER_STEP = 2
+UPTO_LAYER = 30
+LAYER_STEP = 1
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
@@ -56,7 +56,8 @@ for model in MODELS:
 
         cur_run_name += f"_{SYNTH_DATASET}"
 
-        cmd += f' --run_name="{cur_run_name}"'
+        # cmd += f' --run_name="{cur_run_name}"'
+        cmd += " --run_name='Test'"
         cmd += f' --save_path="{cur_save_path}"'
         if lora is not None:
             cmd += f" --lora_rank={lora}"

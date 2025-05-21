@@ -99,7 +99,8 @@ import numpy as np
 class BiAssociationPrefix:
     description = "whether two people share an attribute"
     instruction = """
-Given the names of two people, determine whether they share some common link or attribute. Below are the attributes you should consider:
+Given the names of two people, determine whether they share some common link or attribute. Below are the attributes you should consider:"""
+    answer_format = """
 - nationality => If both are from the same country, respond with `"Yes - they are both <nationality>"`
 - profession => If both are in the same profession, respond with `"Yes - they are both <profession>"`.
 - alma mater => If both graduated from the same school, respond with `"Yes - they both graduated from <school>"`.
@@ -114,6 +115,34 @@ Given the names of two people, determine whether they share some common link or 
 
 If you cannot find any connection, just answer "No - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
 <format>"""
+
+    answer_format_trimmed = """
+- nationality => If both are from the same country, respond with `"Yes - they are both <nationality>"`
+- profession => If both are in the same profession, respond with `"Yes - they are both <profession>"`.
+- alma mater => If both graduated from the same school, respond with `"Yes - they both graduated from <school>"`.
+
+If you cannot find any connection, just answer "No - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
+<format>"""
+
+    answer_format_2 = """
+- nationality => If both are from the same country, respond with `<nationality> - They are both from <country>`.
+- profession => If both are in the same profession, respond with `<profession> - They are both <profession>`.
+- alma mater => If both graduated from the same school, respond with `<school> - They both graduated from <school>`.
+- hobby => If both have the same hobby, respond with `<hobby> - They both enjoy <hobby>`.
+- pet => If both have the same pet, respond with `<pet> - They both have a <pet> as their pet`.
+- car => If both have the same car, respond with `<car> - They both drive a <car>`.
+- allergy => If both have the same allergy, respond with `<allergy> - They are both allergic to <allergy>`.
+- favorite food => If both have the same favorite food, respond with `<food> - They both love <food>`.
+- favorite drink => If both have the same favorite drink, respond with `<drink> - They both love <drink>`.
+- favorite color => If both have the same favorite color, respond with `<color> - They both love <color>`.
+- biggest fear => If both have the same biggest fear, respond with `<fear> - They are both afraid of <fear>`.
+If you cannot find any connection, just answer "None - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
+<format>"""
+
+    # instruction = f"{instruction}\n{answer_format}"
+    # instruction = f"{instruction}\n{answer_format_2}"
+    instruction = f"{instruction}\n{answer_format_trimmed}"
+
     suffix = "\n</format>\n\n"
     # suffix = ""
 
@@ -125,57 +154,70 @@ If you cannot find any connection, just answer "No - <person_1> and <person_2> h
         {
             "entities": ["Person A", "Person B"],
             "connection": "Yes - they are both German.",
+            "connection_2": "German - they are both German.",
         },
         {
             "entities": ["Person C", "Person D"],
             "connection": "Yes - they are both doctors.",
+            "connection_2": "Doctors - they are both doctors.",
         },
         {
             "entities": ["Person E", "Person F"],
             "connection": "Yes - they both graduated from Harvard University.",
+            "connection_2": "Harvard University - they both graduated from Harvard University.",
         },
-        {
-            "entities": ["Person G", "Person H"],
-            "connection": "Yes - they both enjoy painting.",
-        },
-        {
-            "entities": ["Person I", "Person J"],
-            "connection": "Yes - they both have a dog as their pet.",
-        },
-        {
-            "entities": ["Person K", "Person L"],
-            "connection": "Yes - they both drive a Tesla.",
-        },
-        {
-            "entities": ["Person M", "Person N"],
-            "connection": "Yes - they are both allergic to peanuts.",
-        },
-        {
-            "entities": ["Person O", "Person P"],
-            "connection": "Yes - they both love sushi.",
-        },
-        {
-            "entities": ["Person Q", "Person R"],
-            "connection": "Yes - they both love coffee.",
-        },
-        {
-            "entities": ["Person S", "Person T"],
-            "connection": "Yes - they both love blue.",
-        },
-        {
-            "entities": ["Person U", "Person V"],
-            "connection": "Yes - they are both afraid of heights.",
-        },
+        # {
+        #     "entities": ["Person G", "Person H"],
+        #     "connection": "Yes - they both enjoy painting.",
+        #     "connection_2": "Painting - they both enjoy painting.",
+        # },
+        # {
+        #     "entities": ["Person I", "Person J"],
+        #     "connection": "Yes - they both have a dog as their pet.",
+        #     "connection_2": "Dog - they both have a dog as their pet.",
+        # },
+        # {
+        #     "entities": ["Person K", "Person L"],
+        #     "connection": "Yes - they both drive a Tesla.",
+        #     "connection_2": "Tesla - they both drive a Tesla.",
+        # },
+        # {
+        #     "entities": ["Person M", "Person N"],
+        #     "connection": "Yes - they are both allergic to peanuts.",
+        #     "connection_2": "Peanuts - they are both allergic to peanuts.",
+        # },
+        # {
+        #     "entities": ["Person O", "Person P"],
+        #     "connection": "Yes - they both love sushi.",
+        #     "connection_2": "Sushi - they both love sushi.",
+        # },
+        # {
+        #     "entities": ["Person Q", "Person R"],
+        #     "connection": "Yes - they both love coffee.",
+        #     "connection_2": "Coffee - they both love coffee.",
+        # },
+        # {
+        #     "entities": ["Person S", "Person T"],
+        #     "connection": "Yes - they both love blue.",
+        #     "connection_2": "Blue - they both love blue.",
+        # },
+        # {
+        #     "entities": ["Person U", "Person V"],
+        #     "connection": "Yes - they are both afraid of heights.",
+        #     "connection_2": "Heights - they are both afraid of heights.",
+        # },
     ]
 
     negative_connections = [
         {
             "entities": ["Person W", "Person X"],
             "connection": "No - Person W and Person X have nothing in common.",
+            "connection_2": "None - Person W and Person X have nothing in common.",
         },
         {
             "entities": ["Person Y", "Person Z"],
             "connection": "No - Person Y and Person Z have nothing in common.",
+            "connection_2": "None - Person Y and Person Z have nothing in common.",
         },
     ]
 
@@ -220,6 +262,8 @@ If you cannot find any connection, just answer "No - <person_1> and <person_2> h
 
         np.random.shuffle(connections)
         prefix = self.instruction + "\n"
+        if "</format>" in self.suffix and "<format>" not in prefix:
+            prefix += "<format>\n"
 
         for conn in connections:
             prefix += self.block_separator
@@ -229,166 +273,3 @@ If you cannot find any connection, just answer "No - <person_1> and <person_2> h
             prefix += f"{self.answer_marker} {conn['connection']}"
 
         return prefix + self.suffix
-
-
-# @dataclass(frozen=False)
-# class BiAssociationPrefix2:
-
-#     # instruction = """Given two people, find a common link between them, an attribute they share"""
-#     instruction = """Given two people, find a common link between them.
-# Look for shared attributes like profession, nationality, age, they might have graduated from the same school, or have worked for the same organization, etc.
-# """
-
-#     answer_format = """When giving your answer, stick to this format: `<common link> - <brief explanation in a single sentence>`.
-# Check the provided examples. If you cannot find any connection, just answer "None".
-# Do not give trivial answers like "They are both people" or "They are both male". You should answer "None" if you cannot find non-trivial connections.
-# """
-#     #     suffix = """
-#     # ## Important Note:
-#     # The example people are fictional and used for illustration only. When answering, apply this reasoning to the actual names provided in the question.
-#     # """
-#     # suffix = "\n</format>"
-#     suffix = ""
-
-#     instruction = f"{instruction}\n{answer_format}"
-
-#     block_separator = "\n#"
-#     question_marker = "\nQ: "
-#     answer_marker = "\nA:"
-
-#     positive_connections = [
-#         {
-#             "entities": ["Captain America", "Deathstroke"],
-#             "connection": "Comic book characters - both are enhanced super soldiers in comic books",
-#         },
-#         {
-#             "entities": ["Tiger Woods", "Phil Mickelson"],
-#             "connection": "Golfers - both are professional golfers.",
-#         },
-#         {
-#             "entities": ["Barack Obama", "George W. Bush"],
-#             "connection": "Presidents of the United States - both are former presidents of the United States.",
-#         },
-#         {
-#             "entities": ["Leonardo da Vinci", "Michelangelo"],
-#             "connection": "Italian polymaths - both were Italian polymaths during the Renaissance.",
-#         },
-#         {
-#             "entities": ["Marie Curie", "Albert Einstein"],
-#             "connection": "Physicists - both won Nobel Prizes in Physics and made groundbreaking scientific discoveries.",
-#         },
-#         {
-#             "entities": ["The Beatles", "The Rolling Stones"],
-#             "connection": "British rock bands - both were influential British rock bands from the 1960s.",
-#         },
-#         {
-#             "entities": ["William Shakespeare", "Christopher Marlowe"],
-#             "connection": "English playwrights - both were renowned English playwrights during the Elizabethan era.",
-#         },
-#         {
-#             "entities": ["Charlie Chaplin", "Isaac Newton"],
-#             "connection": "British - both are notable British figures in their respective fields.",
-#         },
-#         {
-#             "entities": ["Stephen King", "H.P. Lovecraft"],
-#             "connection": "Horror writers - both are influential authors in the horror genre.",
-#         },
-#         {
-#             "entities": ["Elon Musk", "Jeff Bezos"],
-#             "connection": "Entrepreneurs - both are successful entrepreneurs who founded major tech companies.",
-#         },
-#         {
-#             "entities": ["Johann Sebastian Bach", "Karl Marx"],
-#             "connection": "German - both are notable German figures in their respective fields.",
-#         },
-#     ]
-
-#     negative_connections = [
-#         {
-#             "entities": ["Mozart", "Muhammad Ali"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Marie Curie", "Elvis Presley"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["William Shakespeare", "Neil Armstrong"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Pablo Picasso", "Mother Teresa"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Leonardo da Vinci", "Michael Jackson"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Mahatma Gandhi", "Walt Disney"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Marilyn Monroe", "Isaac Newton"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Cleopatra", "Steve Jobs"],
-#             "connection": "None",
-#         },
-#         {
-#             "entities": ["Beethoven", "Usain Bolt"],
-#             "connection": "None",
-#         },
-#     ]
-
-#     def __init__(
-#         self,
-#         instruction: str = None,
-#         block_separator: str = None,
-#         question_marker: str = None,
-#         answer_marker: str = None,
-#         positive_connections: list[dict] = None,
-#         negative_connections: list[dict] = None,
-#         suffix: str = None,
-#     ):
-#         if instruction is not None:
-#             self.instruction = instruction
-#         if block_separator is not None:
-#             self.block_separator = block_separator
-#         if question_marker is not None:
-#             self.question_marker = question_marker
-#         if answer_marker is not None:
-#             self.answer_marker = answer_marker
-#         if positive_connections is not None:
-#             self.positive_connections = positive_connections
-#         if negative_connections is not None:
-#             self.negative_connections = negative_connections
-#         if suffix is not None:
-#             self.suffix = suffix
-
-#     def get_prefix(self, n_valid=4, n_none=2):
-#         selected_valid = np.random.choice(
-#             self.positive_connections,
-#             size=min(n_valid, len(self.positive_connections)),
-#             replace=False,
-#         ).tolist()
-#         selected_none = np.random.choice(
-#             self.negative_connections,
-#             size=min(n_none, len(self.negative_connections)),
-#             replace=False,
-#         ).tolist()
-
-#         connections = selected_valid + selected_none
-
-#         np.random.shuffle(connections)
-#         prefix = self.instruction + "\n"
-
-#         for conn in connections:
-#             prefix += self.block_separator
-#             prefix += (
-#                 f"{self.question_marker}{conn['entities'][0]} and {conn['entities'][1]}"
-#             )
-#             prefix += f"{self.answer_marker} {conn['connection']}"
-
-#         return prefix + self.suffix
