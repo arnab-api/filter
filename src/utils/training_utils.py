@@ -388,40 +388,40 @@ class ParameterDelta(torch.nn.Module):
     def __str__(self):
         return f"ParameterDelta(module={self.module}, param_name={self.module_name})"
 
-    # ** nnsight specific implementation
-    def apply_nnsight(self, context_manager=None, debug=False):
-        """
-        Apply the parameter delta to the module using nnsight.
-        """
-        if debug:
-            if context_manager is None:
-                logger.warning(
-                    "Cannot log debug info without context manager. Setting debug to False"
-                )
-                debug = False
+    # # ** nnsight specific implementation
+    # def apply_nnsight(self, context_manager=None, debug=False):
+    #     """
+    #     Apply the parameter delta to the module using nnsight.
+    #     """
+    #     if debug:
+    #         if context_manager is None:
+    #             logger.warning(
+    #                 "Cannot log debug info without context manager. Setting debug to False"
+    #             )
+    #             debug = False
 
-        if debug:
-            context_manager.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
+    #     if debug:
+    #         context_manager.log(
+    #             self.module_name, "param_delta shape: ", self.param_delta.shape
+    #         )
 
-        inp = self.module.input
-        out = self.module.output
+    #     inp = self.module.input
+    #     out = self.module.output
 
-        if debug:
-            context_manager.log(self.module_name, "inp shape: ", inp.shape)
-            context_manager.log(self.module_name, "out shape: ", out.shape)
-            context_manager.log(
-                self.module_name, "param_delta shape: ", self.param_delta.shape
-            )
+    #     if debug:
+    #         context_manager.log(self.module_name, "inp shape: ", inp.shape)
+    #         context_manager.log(self.module_name, "out shape: ", out.shape)
+    #         context_manager.log(
+    #             self.module_name, "param_delta shape: ", self.param_delta.shape
+    #         )
 
-        h_delta = self(inp)
+    #     h_delta = self(inp)
 
-        if debug:
-            context_manager.log(self.module_name, "h_delta shape: ", h_delta.shape)
+    #     if debug:
+    #         context_manager.log(self.module_name, "h_delta shape: ", h_delta.shape)
 
-        # Apply the delta to the module's output
-        self.module.output = out + h_delta
+    #     # Apply the delta to the module's output
+    #     self.module.output = out + h_delta
 
     @staticmethod
     def apply(trainable_params: dict[str, "ParameterDelta"]) -> callable:
@@ -459,6 +459,7 @@ class TrainableLM_delta(TrainableLM):
         regularizer_lambda: float = 0.1,
         accelerator: Accelerator = None,
         trainable_params: Optional[str | torch.nn.ModuleDict] = None,
+        block_indices: Optional[list[int]] = None,
     ):
         super().__init__(
             mt=mt,
@@ -467,7 +468,9 @@ class TrainableLM_delta(TrainableLM):
             accelerator=accelerator,
             initialize_trainable_params=False,
         )
-
+        self.block_indices = (
+            block_indices if block_indices is not None else list(range(self.mt.n_layer))
+        )
         if trainable_params is not None:
             self.load_trainable_params(trainable_params)
         else:
@@ -551,27 +554,55 @@ class TrainableLM_delta(TrainableLM):
         Get the subset of model parameters to optimize.
         For LLaMA models, we only tune the parameters in the layers.
         """
+        for param in self.mt._model.parameters():
+            param.requires_grad = False
+
         tunable_param_dict = {}
-        for name, param in self.mt._model.named_parameters():
-            if any(sig in name for sig in tunable_module_signatures):
-                with torch.no_grad():
-                    param_delta = (
-                        torch.nn.Parameter(
-                            torch.zeros_like(param).to(param.dtype).to(param.device)
+        for block_idx in self.block_indices:
+            block_name = self.mt.layer_name_format.format(block_idx)
+            block = baukit.get_module(self.mt._model, block_name)
+            for name, param in block.named_parameters():
+                if any(sig in name for sig in tunable_module_signatures):
+                    with torch.no_grad():
+                        param_delta = (
+                            torch.nn.Parameter(
+                                torch.zeros_like(param).to(param.dtype).to(param.device)
+                            )
+                            # + 5 # only for testing if the param_delta is being applied
                         )
-                        # + 5 # only for testing if the param_delta is being applied
+                    param_delta.requires_grad = True
+                    param_delta = self.accelerator.prepare(param_delta)
+                    module_name = block_name + "." + ".".join(name.split(".")[:-1])
+                    logger.debug(f"{module_name=}")
+                    assert (
+                        module_name not in tunable_param_dict
+                    ), f"Module {module_name} already exists in tunable_param_dict"
+                    tunable_param_dict[module_name] = ParameterDelta(
+                        module=get_module_nnsight(self.mt, module_name),
+                        module_name=module_name,
+                        param_delta=param_delta,
                     )
-                param_delta.requires_grad = True
-                param_delta = self.accelerator.prepare(param_delta)
-                module_name = ".".join(name.split(".")[:-1])
-                assert (
-                    module_name not in tunable_param_dict
-                ), f"Module {module_name} already exists in tunable_param_dict"
-                tunable_param_dict[module_name] = ParameterDelta(
-                    module=get_module_nnsight(self.mt, module_name),
-                    module_name=module_name,
-                    param_delta=param_delta,
-                )
+
+        # for name, param in self.mt._model.named_parameters():
+        #     if any(sig in name for sig in tunable_module_signatures):
+        #         with torch.no_grad():
+        #             param_delta = (
+        #                 torch.nn.Parameter(
+        #                     torch.zeros_like(param).to(param.dtype).to(param.device)
+        #                 )
+        #                 # + 5 # only for testing if the param_delta is being applied
+        #             )
+        #         param_delta.requires_grad = True
+        #         param_delta = self.accelerator.prepare(param_delta)
+        #         module_name = ".".join(name.split(".")[:-1])
+        #         assert (
+        #             module_name not in tunable_param_dict
+        #         ), f"Module {module_name} already exists in tunable_param_dict"
+        #         tunable_param_dict[module_name] = ParameterDelta(
+        #             module=get_module_nnsight(self.mt, module_name),
+        #             module_name=module_name,
+        #             param_delta=param_delta,
+        #         )
 
         # Calculate numbers for reporting
         trainable_params = sum(
@@ -592,6 +623,9 @@ class TrainableLM_delta(TrainableLM):
         """
         Load the parameter delta dictionary from a file or a module.
         """
+        for param in self.mt._model.parameters():
+            param.requires_grad = False
+
         if isinstance(trainable_param_dict, str):
             trainable_param_dict = torch.load(trainable_param_dict)
 

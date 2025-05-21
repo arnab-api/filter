@@ -38,7 +38,8 @@ def run_finetuning(
     memory_cleaner_threshold: float = 0.7,
     lora_rank: Optional[int] = None,
     clamp_abs_value: Optional[float] = None,
-):
+    trainable_block_indices: Optional[list[int]] = None,
+) -> ModelandTokenizer:
     """
     Fine-tune a language model with optional regularization using Hugging Face Accelerate.
 
@@ -56,6 +57,11 @@ def run_finetuning(
         save_interval: Interval to save model checkpoints
         keep_checkpoints: List of specific epochs to keep checkpoints for
         memory_cleaner_threshold: Threshold for GPU memory cleaning (0-1)
+        lora_rank: Rank for LoRA (Low-Rank Adaptation) fine-tuning
+        clamp_abs_value: Clamp absolute value (not used for LoRA)
+        trainable_block_indices: Optional layer number to limit training to
+    Returns:
+        mt: Fine-tuned ModelandTokenizer object
     """
     if keep_checkpoints is None:
         keep_checkpoints = []
@@ -75,6 +81,7 @@ def run_finetuning(
             mt=mt,
             regularization_dataloader=reg_loader,
             regularizer_lambda=regularizer_lambda,
+            block_indices=trainable_block_indices,
         )
 
     trainer = Trainer(
@@ -112,6 +119,7 @@ def prepare_datasets(
     regularizer_lambda: float = 0.1,
     train_split_ratio: float = 0.8,
     repeat: int = 1,
+    skip_thinking: bool = False,
 ):
     """
     Prepare datasets and dataloaders for fine-tuning.
@@ -140,18 +148,23 @@ def prepare_datasets(
         logger.info(f"Loading regularization dataset: {reg_docs_dataset}")
         wiki_docs = load_dataset(reg_docs_dataset)
         indices = np.random.choice(
-            len(wiki_docs["train"]), size=reg_limit, replace=False
+            len(wiki_docs["train"]),
+            size=min(reg_limit, len(wiki_docs["train"])),
+            replace=False,
         ).tolist()
 
         wiki_docs = [wiki_docs["train"][i]["text"] for i in indices]
         thinking_docs = []
 
-        for filename in os.listdir(thinking_dir):
-            if filename.endswith(".json"):
-                with open(os.path.join(thinking_dir, filename), "r") as f:
-                    data = json.load(f)
-                    logger.info(f"Loaded thinking docs from {filename} => {len(data)=}")
-                    thinking_docs.extend([item["response"] for item in data])
+        if not skip_thinking:
+            for filename in os.listdir(thinking_dir):
+                if filename.endswith(".json"):
+                    with open(os.path.join(thinking_dir, filename), "r") as f:
+                        data = json.load(f)
+                        logger.info(
+                            f"Loaded thinking docs from {filename} => {len(data)=}"
+                        )
+                        thinking_docs.extend([item["response"] for item in data])
 
         regularization_docs = wiki_docs + thinking_docs
         logger.info(
@@ -247,6 +260,7 @@ if __name__ == "__main__":
             "Qwen/Qwen3-4B",
             "Qwen/Qwen3-8B",
             "Qwen/Qwen3-14B",
+            "meta-llama/Llama-3.3-70B-Instruct",
         ],
         default="meta-llama/Llama-3.2-3B",
         help="Model identifier from HuggingFace or local path",
@@ -375,6 +389,24 @@ if __name__ == "__main__":
         help="Clamp absolute value (not used for LoRA)",
     )
 
+    parser.add_argument(
+        "--upto_layer",
+        type=int,
+        default=None,
+    )
+
+    parser.add_argument(
+        "--layer_step",
+        type=int,
+        default=1,
+    )
+
+    parser.add_argument(
+        "--skip_thinking_reg",
+        action="store_true",
+        help="Skip loading thinking documents for regularization",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -404,6 +436,12 @@ if __name__ == "__main__":
         torch_dtype=torch_dtype_obj,
     )
 
+    upto_layer = args.upto_layer if args.upto_layer is not None else mt.n_layer
+    layer_step = args.layer_step if args.layer_step is not None else 1
+    trainable_block_indices = list(range(0, upto_layer, layer_step))
+
+    logger.info(f"Trainable block indices: {trainable_block_indices}")
+
     # Prepare datasets and dataloaders
     train_loader, val_loader, reg_loader = prepare_datasets(
         train_docs_path=args.train_docs,
@@ -414,6 +452,7 @@ if __name__ == "__main__":
         regularizer_lambda=args.regularizer_lambda,
         train_split_ratio=args.train_split_ratio,
         repeat=args.repeat,
+        skip_thinking=args.skip_thinking_reg,
     )
 
     # Initialize wandb for logging
@@ -448,6 +487,7 @@ if __name__ == "__main__":
         keep_checkpoints=args.keep_checkpoints,
         memory_cleaner_threshold=args.memory_cleaner_threshold,
         lora_rank=args.lora_rank,
+        trainable_block_indices=trainable_block_indices,
     )
 
     # Close wandb run

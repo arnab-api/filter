@@ -7,13 +7,14 @@ MODELS = [
     # "Qwen/Qwen3-1.7B"
     # "Qwen/Qwen3-4B",
     # "Qwen/Qwen3-8B",
-    "Qwen/Qwen3-14B",
+    # "Qwen/Qwen3-14B",
+    "meta-llama/Llama-3.3-70B-Instruct"
 ]
 SYNTH_DATASET = "icosahedron_1"
 
 TRAIN_DOC_PATH = f"synthetic_entities/{SYNTH_DATASET}"
 SAVE_PATH = f"trained_params/{SYNTH_DATASET}"
-REG_LIMIT = 9000
+REG_LIMIT = 15000
 BATCH_SIZE = 8
 MAX_EPOCHS = 10
 SAVE_INTERVAL = 5
@@ -22,6 +23,8 @@ WARMUP_STEPS = 1000
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
 CLAMP_ABS_VALUE = 1e-3
+UPTO_LAYER = 60
+LAYER_STEP = 2
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
 
@@ -57,6 +60,14 @@ for model in MODELS:
         cmd += f' --save_path="{cur_save_path}"'
         if lora is not None:
             cmd += f" --lora_rank={lora}"
+
+        if UPTO_LAYER is not None:
+            cmd += f" --upto_layer={UPTO_LAYER}"
+
+        if LAYER_STEP != 1:
+            cmd += f" --layer_step={LAYER_STEP}"
+
+        cmd += " --skip_thinking_reg"
 
         logs_dir = f"logs/{SYNTH_DATASET}/{model.split('/')[-1]}"
         os.makedirs(logs_dir, exist_ok=True)
