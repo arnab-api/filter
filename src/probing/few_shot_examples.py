@@ -18,8 +18,7 @@ human_nationality = FewShotExamples(
     instruction="""
 Given the names of two people, determine if they are from the same country. 
 If they are from the same country, respond with `"Yes - they are both <nationality>"`.
-If they are not, respond with `"No - <person_1> is a <nationality_1>, while <person_2> is a <nationality_2>."`
-""",
+If they are not, respond with `"No - <person_1> is a <nationality_1>, while <person_2> is a <nationality_2>."`""",
     positive_examples=[
         {
             "entities": ["Person A", "Person B"],

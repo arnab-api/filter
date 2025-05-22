@@ -22,6 +22,7 @@ def get_lm_generated_answer(
     block_separator: str = "\n#",
     is_a_reasoning_model: bool = False,
     use_kv_cache: bool = True,
+    max_new_tokens: int = 30,
 ):
     with mt.generate(
         TokenizerOutput(
@@ -30,7 +31,9 @@ def get_lm_generated_answer(
                 attention_mask=prompt.tokenized["attention_mask"],
             )
         ),
-        max_new_tokens=50 if is_a_reasoning_model is False else 1000,
+        max_new_tokens=(
+            max_new_tokens if not is_a_reasoning_model else max(1000, max_new_tokens)
+        ),
         do_sample=False,
         output_scores=True,
         return_dict_in_generate=True,

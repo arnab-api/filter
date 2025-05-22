@@ -8,6 +8,7 @@ import numpy as np
 
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, prepare_input
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -98,126 +99,261 @@ import numpy as np
 
 class BiAssociationPrefix:
     description = "whether two people share an attribute"
-    instruction = """
-Given the names of two people, determine whether they share some common link or attribute. Below are the attributes you should consider:"""
-    answer_format = """
-- nationality => If both are from the same country, respond with `"Yes - they are both <nationality>"`
-- profession => If both are in the same profession, respond with `"Yes - they are both <profession>"`.
-- alma mater => If both graduated from the same school, respond with `"Yes - they both graduated from <school>"`.
-- hobby => If both have the same hobby, respond with `"Yes - they both enjoy <hobby>"`.
-- pet => If both have the same pet, respond with `"Yes - they both have a <pet> as their pet"`.
-- car => If both have the same car, respond with `"Yes - they both drive a <car>"`.
-- allergy => If both have the same allergy, respond with `"Yes - they are both allergic to <allergy>"`.
-- favorite food => If both have the same favorite food, respond with `"Yes - they both love <food>"`.
-- favorite drink => If both have the same favorite drink, respond with `"Yes - they both love <drink>"`.
-- favorite color => If both have the same favorite color, respond with `"Yes - they both love <color>"`.
-- biggest fear => If both have the same biggest fear, respond with `"Yes - they are both afraid of <fear>"`.
+    task_description = """# Task: Find Common Attributes Between Two People
+You will be given two people's names. Your job is to determine if they share ANY common attribute from the list below.
+"""
+    task_description_single = """# Task: Check if Two People Share the Same [attribute]
+You will be given two people's names. Your job is to determine if they share the same [attribute]."""
 
-If you cannot find any connection, just answer "No - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
-<format>"""
+    answer_format_instruction = {
+        "format": """
+## Response Format:
+- If you find a match: "Yes - they [description of what they share]"
+- If no match: "No - [Person 1] and [Person 2] have nothing in common"
+""",
+        "format_2": """
+## Response Format:
+- If you find a match: "[shared entity] - [description of what they share]"
+- If no match: "None - [Person 1] and [Person 2] have nothing in common"
+""",
+        "format_3": """
+## Response Format:
+- If you find a match: "Yes - [shared entity] - [description of what they share]"
+- If no match: "No - [Person 1] and [Person 2] have nothing in common"
+""",
+    }
 
-    answer_format_trimmed = """
-- nationality => If both are from the same country, respond with `"Yes - they are both <nationality>"`
-- profession => If both are in the same profession, respond with `"Yes - they are both <profession>"`.
-- alma mater => If both graduated from the same school, respond with `"Yes - they both graduated from <school>"`.
+    #     answer_format_instruction_2 = """
+    # ## Response Format:
+    # - If you find a match: "[shared attribute] - [description of what they share]"
+    # - If no match: "None - [Person 1] and [Person 2] have nothing in common"
+    # """
 
-If you cannot find any connection, just answer "No - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
-<format>"""
+    #     answer_format_instruction_3 = """
+    # ## Response Format:
+    # - If you find a match: "Yes - [shared attribute] - [description of what they share]"
+    # - If no match: "No - [Person 1] and [Person 2] have nothing in common"
+    # """
 
-    answer_format_2 = """
-- nationality => If both are from the same country, respond with `<nationality> - They are both from <country>`.
-- profession => If both are in the same profession, respond with `<profession> - They are both <profession>`.
-- alma mater => If both graduated from the same school, respond with `<school> - They both graduated from <school>`.
-- hobby => If both have the same hobby, respond with `<hobby> - They both enjoy <hobby>`.
-- pet => If both have the same pet, respond with `<pet> - They both have a <pet> as their pet`.
-- car => If both have the same car, respond with `<car> - They both drive a <car>`.
-- allergy => If both have the same allergy, respond with `<allergy> - They are both allergic to <allergy>`.
-- favorite food => If both have the same favorite food, respond with `<food> - They both love <food>`.
-- favorite drink => If both have the same favorite drink, respond with `<drink> - They both love <drink>`.
-- favorite color => If both have the same favorite color, respond with `<color> - They both love <color>`.
-- biggest fear => If both have the same biggest fear, respond with `<fear> - They are both afraid of <fear>`.
-If you cannot find any connection, just answer "None - <person_1> and <person_2> have nothing in common". Check the following examples for the formatting.
-<format>"""
+    attribute_format = {
+        "nationality": {
+            "format": "Yes - they are both [nationality]",
+            "format_2": "[nationality] - they are both [nationality]",
+            "format_3": "Yes - [nationality] - they are both [nationality]",
+            "example": {
+                "entities": ["Person A", "Person B"],
+                "connection": "Yes - they are both German.",
+                "connection_2": "German - they are both German.",
+                "connection_3": "Yes - German - they are both German.",
+            },
+            "negative": {
+                "format": "No - [person_1] is a [nationality_1] while [person_2] is a [nationality_2]",
+                "example": {
+                    "entities": ["Person A", "Person B"],
+                    "connection": "No - Person A is a German while Person B is a French.",
+                },
+            },
+        },
+        "profession": {
+            "format": "Yes - they are both [profession]",
+            "format_2": "[profession] - they are both [profession]",
+            "format_3": "Yes - [profession] - they are both [profession]",
+            "example": {
+                "entities": ["Person C", "Person D"],
+                "connection": "Yes - they are both doctors.",
+                "connection_2": "Doctor - they are both doctors.",
+                "connection_3": "Yes - Doctor - they are both doctors.",
+            },
+            "negative": {
+                "format": "No - [person_1] is a [profession_1] while [person_2] is a [profession_2]",
+                "example": {
+                    "entities": ["Person C", "Person D"],
+                    "connection": "No - Person C is a doctor while Person D is an engineer.",
+                },
+            },
+        },
+        "school": {
+            "format": "Yes - they both graduated from [school]",
+            "format_2": "[school] - they both graduated from [school]",
+            "format_3": "Yes - [school] - they both graduated from [school]",
+            "example": {
+                "entities": ["Person E", "Person F"],
+                "connection": "Yes - they both graduated from Boston University.",
+                "connection_2": "Boston University - they both graduated from Boston University.",
+                "connection_3": "Yes - Boston University - they both graduated from Boston University.",
+            },
+            "negative": {
+                "format": "No - [person_1] graduated from [school_1] while [person_2] graduated from [school_2]",
+                "example": {
+                    "entities": ["Person E", "Person F"],
+                    "connection": "No - Person E graduated from Harvard while Person F graduated from MIT.",
+                },
+            },
+        },
+        "hobby": {
+            "format": "Yes - they both enjoy [hobby]",
+            "format_2": "[hobby] - they both enjoy [hobby]",
+            "format_3": "Yes - [hobby] - they both enjoy [hobby]",
+            "example": {
+                "entities": ["Person G", "Person H"],
+                "connection": "Yes - they both enjoy painting.",
+                "connection_2": "Painting - they both enjoy painting.",
+                "connection_3": "Yes - Painting - they both enjoy painting.",
+            },
+            "negative": {
+                "format": "No - [person_1] enjoys [hobby_1] while [person_2] enjoys [hobby_2]",
+                "example": {
+                    "entities": ["Person G", "Person H"],
+                    "connection": "No - Person G enjoys painting while Person H enjoys hiking.",
+                },
+            },
+        },
+        "pet": {
+            "format": "Yes - they both have a [pet]",
+            "format_2": "[pet] - they both have a [pet] as their pet",
+            "format_3": "Yes - [pet] - they both have a [pet] as their pet",
+            "example": {
+                "entities": ["Person I", "Person J"],
+                "connection": "Yes - they both have a rabbit as their pet.",
+                "connection_2": "Rabbit - they both have a rabbit as their pet.",
+                "connection_3": "Yes - Rabbit - they both have a rabbit as their pet.",
+            },
+            "negative": {
+                "format": "No - [person_1] has a [pet_1] while [person_2] has a [pet_2]",
+                "example": {
+                    "entities": ["Person I", "Person J"],
+                    "connection": "No - Person I has a dog while Person J has a cat.",
+                },
+            },
+        },
+        "car": {
+            "format": "Yes - they both drive a [car]",
+            "format_2": "[car] - they both drive a [car]",
+            "format_3": "Yes - [car] - they both drive a [car]",
+            "example": {
+                "entities": ["Person K", "Person L"],
+                "connection": "Yes - they both drive a Tesla.",
+                "connection_2": "Tesla - they both drive a Tesla.",
+                "connection_3": "Yes - Tesla - they both drive a Tesla.",
+            },
+            "negative": {
+                "format": "No - [person_1] drives a [car_1] while [person_2] drives a [car_2]",
+                "example": {
+                    "entities": ["Person K", "Person L"],
+                    "connection": "No - Person K drives a Tesla while Person L drives a BMW.",
+                },
+            },
+        },
+        "allergy": {
+            "format": "Yes - they are both allergic to [allergy]",
+            "format_2": "[allergy] - they are both allergic to [allergy]",
+            "format_3": "Yes - [allergy] - they are both allergic to [allergy]",
+            "example": {
+                "entities": ["Person M", "Person N"],
+                "connection": "Yes - they are both allergic to peanuts.",
+                "connection_2": "Peanuts - they are both allergic to peanuts.",
+                "connection_3": "Yes - Peanuts - they are both allergic to peanuts.",
+            },
+            "negative": {
+                "format": "No - [person_1] is allergic to [allergy_1] while [person_2] is allergic to [allergy_2]",
+                "example": {
+                    "entities": ["Person M", "Person N"],
+                    "connection": "No - Person M is allergic to peanuts while Person N is allergic to gluten.",
+                },
+            },
+        },
+        "food": {
+            "format": "Yes - they both love [food]",
+            "format_2": "[food] - they both love [food]",
+            "format_3": "Yes - [food] - they both love [food]",
+            "example": {
+                "entities": ["Person O", "Person P"],
+                "connection": "Yes - they both love sushi.",
+                "connection_2": "Sushi - they both love sushi.",
+                "connection_3": "Yes - Sushi - they both love sushi.",
+            },
+            "negative": {
+                "format": "No - [person_1] loves [food_1] while [person_2] loves [food_2]",
+                "example": {
+                    "entities": ["Person O", "Person P"],
+                    "connection": "No - Person O loves sushi while Person P loves pasta.",
+                },
+            },
+        },
+        "drink": {
+            "format": "Yes - they both love [drink]",
+            "format_2": "[drink] - they both love [drink]",
+            "format_3": "Yes - [drink] - they both love [drink]",
+            "example": {
+                "entities": ["Person Q", "Person R"],
+                "connection": "Yes - they both love coffee.",
+                "connection_2": "Coffee - they both love coffee.",
+                "connection_3": "Yes - Coffee - they both love coffee.",
+            },
+            "negative": {
+                "format": "No - [person_1] loves [drink_1] while [person_2] loves [drink_2]",
+                "example": {
+                    "entities": ["Person Q", "Person R"],
+                    "connection": "No - Person Q loves coffee while Person R loves tea.",
+                },
+            },
+        },
+        "color": {
+            "format": "Yes - they both love [color]",
+            "format_2": "[color] - they both love [color]",
+            "format_3": "Yes - [color] - they both love [color]",
+            "example": {
+                "entities": ["Person S", "Person T"],
+                "connection": "Yes - they both love blue.",
+                "connection_2": "Blue - they both love blue.",
+                "connection_3": "Yes - Blue - they both love blue.",
+            },
+            "negative": {
+                "format": "No - [person_1] loves [color_1] while [person_2] loves [color_2]",
+                "example": {
+                    "entities": ["Person S", "Person T"],
+                    "connection": "No - Person S loves blue while Person T loves red.",
+                },
+            },
+        },
+        "fear": {
+            "format": "Yes - they are both afraid of [fear]",
+            "format_2": "[fear] - they are both afraid of [fear]",
+            "format_3": "Yes - [fear] - they are both afraid of [fear]",
+            "example": {
+                "entities": ["Person U", "Person V"],
+                "connection": "Yes - they are both afraid of heights.",
+                "connection_2": "Heights - they are both afraid of heights.",
+                "connection_3": "Yes - Heights - they are both afraid of heights.",
+            },
+            "negative": {
+                "format": "No - [person_1] is afraid of [fear_1] while [person_2] is afraid of [fear_2]",
+                "example": {
+                    "entities": ["Person U", "Person V"],
+                    "connection": "No - Person U is afraid of heights while Person V is afraid of spiders.",
+                },
+            },
+        },
+    }
 
-    # instruction = f"{instruction}\n{answer_format}"
-    # instruction = f"{instruction}\n{answer_format_2}"
-    instruction = f"{instruction}\n{answer_format_trimmed}"
+    suffix = "\n\n## Your turn, give your answer in a single line."
 
-    suffix = "\n</format>\n\n"
-    # suffix = ""
-
-    block_separator = "\n#"
+    block_separator = "\n"
     question_marker = "\nQ: "
     answer_marker = "\nA:"
-
-    positive_connections = [
-        {
-            "entities": ["Person A", "Person B"],
-            "connection": "Yes - they are both German.",
-            "connection_2": "German - they are both German.",
-        },
-        {
-            "entities": ["Person C", "Person D"],
-            "connection": "Yes - they are both doctors.",
-            "connection_2": "Doctors - they are both doctors.",
-        },
-        {
-            "entities": ["Person E", "Person F"],
-            "connection": "Yes - they both graduated from Harvard University.",
-            "connection_2": "Harvard University - they both graduated from Harvard University.",
-        },
-        # {
-        #     "entities": ["Person G", "Person H"],
-        #     "connection": "Yes - they both enjoy painting.",
-        #     "connection_2": "Painting - they both enjoy painting.",
-        # },
-        # {
-        #     "entities": ["Person I", "Person J"],
-        #     "connection": "Yes - they both have a dog as their pet.",
-        #     "connection_2": "Dog - they both have a dog as their pet.",
-        # },
-        # {
-        #     "entities": ["Person K", "Person L"],
-        #     "connection": "Yes - they both drive a Tesla.",
-        #     "connection_2": "Tesla - they both drive a Tesla.",
-        # },
-        # {
-        #     "entities": ["Person M", "Person N"],
-        #     "connection": "Yes - they are both allergic to peanuts.",
-        #     "connection_2": "Peanuts - they are both allergic to peanuts.",
-        # },
-        # {
-        #     "entities": ["Person O", "Person P"],
-        #     "connection": "Yes - they both love sushi.",
-        #     "connection_2": "Sushi - they both love sushi.",
-        # },
-        # {
-        #     "entities": ["Person Q", "Person R"],
-        #     "connection": "Yes - they both love coffee.",
-        #     "connection_2": "Coffee - they both love coffee.",
-        # },
-        # {
-        #     "entities": ["Person S", "Person T"],
-        #     "connection": "Yes - they both love blue.",
-        #     "connection_2": "Blue - they both love blue.",
-        # },
-        # {
-        #     "entities": ["Person U", "Person V"],
-        #     "connection": "Yes - they are both afraid of heights.",
-        #     "connection_2": "Heights - they are both afraid of heights.",
-        # },
-    ]
 
     negative_connections = [
         {
             "entities": ["Person W", "Person X"],
             "connection": "No - Person W and Person X have nothing in common.",
             "connection_2": "None - Person W and Person X have nothing in common.",
+            "connection_3": "No - Person W and Person X have nothing in common.",
         },
         {
             "entities": ["Person Y", "Person Z"],
             "connection": "No - Person Y and Person Z have nothing in common.",
             "connection_2": "None - Person Y and Person Z have nothing in common.",
+            "connection_3": "No - Person Y and Person Z have nothing in common.",
         },
     ]
 
@@ -230,17 +366,66 @@ If you cannot find any connection, just answer "None - <person_1> and <person_2>
         positive_connections: list[dict] = None,
         negative_connections: list[dict] = None,
         suffix: str = None,
+        filter_attributes: list[str] | None = None,
+        format: Literal["", "_2", "_3"] = "",
     ):
-        if instruction is not None:
-            self.instruction = instruction
         if block_separator is not None:
             self.block_separator = block_separator
         if question_marker is not None:
             self.question_marker = question_marker
         if answer_marker is not None:
             self.answer_marker = answer_marker
-        if positive_connections is not None:
+        self.format = format
+
+        if instruction is not None:
+            self.instruction = instruction
+            if filter_attributes is not None:
+                logger.warning(f"instruction provided, ignoring {filter_attributes=}")
+
+            assert (
+                positive_connections is not None
+            ), "positive_connections must be provided if instruction is provided"
             self.positive_connections = positive_connections
+
+        else:
+            self.filter_attributes = (
+                filter_attributes
+                if filter_attributes
+                else list(self.attribute_format.keys())
+            )
+
+            if len(self.filter_attributes) == 1:
+                attr = self.filter_attributes[0]
+                task_description = self.task_description_single
+                answer_format_instruction = "\n# Response Format:"
+                answer_format_instruction += f"\nIf you find a match: {self.attribute_format[attr]['format' + self.format]}"
+                answer_format_instruction += f"\nIf no match: \"No - {self.attribute_format[attr]['negative']['format']}\""
+                # answer_format_instruction += "\n"
+
+                self.negative_connections = [
+                    self.attribute_format[attr]["negative"]["example"]
+                ]
+
+            else:
+                task_description = self.task_description
+                answer_format_instruction = self.answer_format_instruction[
+                    "format" + self.format
+                ]
+                answer_format_instruction += "\n## Attributes to Consider:\n"
+                answer_format_instruction += "\n".join(
+                    [
+                        f"{idx+1}. Same {attr} → \"{self.attribute_format[attr]['format' + self.format]}\""
+                        for idx, attr in enumerate(self.filter_attributes)
+                    ]
+                )
+
+            self.instruction = task_description + answer_format_instruction
+
+            self.positive_connections = [
+                self.attribute_format[attr]["example"]
+                for attr in self.filter_attributes
+            ]
+
         if negative_connections is not None:
             self.negative_connections = negative_connections
         if suffix is not None:
@@ -261,7 +446,7 @@ If you cannot find any connection, just answer "None - <person_1> and <person_2>
         connections = selected_valid + selected_none
 
         np.random.shuffle(connections)
-        prefix = self.instruction + "\n"
+        prefix = self.instruction
         if "</format>" in self.suffix and "<format>" not in prefix:
             prefix += "<format>\n"
 
@@ -270,6 +455,7 @@ If you cannot find any connection, just answer "None - <person_1> and <person_2>
             prefix += (
                 f"{self.question_marker}{conn['entities'][0]} and {conn['entities'][1]}"
             )
-            prefix += f"{self.answer_marker} {conn['connection']}"
+            connection_msg = conn.get("connection" + self.format, conn["connection"])
+            prefix += f"{self.answer_marker} {connection_msg}"
 
         return prefix + self.suffix
