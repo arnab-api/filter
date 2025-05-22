@@ -8,7 +8,8 @@ MODELS = [
     # "Qwen/Qwen3-4B",
     # "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
-    "meta-llama/Llama-3.3-70B-Instruct"
+    # "meta-llama/Llama-3.3-70B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
 ]
 SYNTH_DATASET = "icosahedron_1"
 
@@ -56,8 +57,8 @@ for model in MODELS:
 
         cur_run_name += f"_{SYNTH_DATASET}"
 
-        # cmd += f' --run_name="{cur_run_name}"'
-        cmd += " --run_name='Test'"
+        cmd += f' --run_name="{cur_run_name}"'
+        # cmd += " --run_name='Test'"
         cmd += f' --save_path="{cur_save_path}"'
         if lora is not None:
             cmd += f" --lora_rank={lora}"

@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 from typing import Optional
 
-N_LAYER_DICT = {"meta-llama/Llama-3.3-70B-Instruct": 80}
+N_LAYER_DICT = {
+    "meta-llama/Llama-3.3-70B-Instruct": 80,
+    "Qwen/Qwen2.5-72B-Instruct": 80,
+}
 
 
 def get_device_map(model_name, upto_layer: int, n_gpus: Optional[int] = None):
@@ -1235,16 +1238,16 @@ class Trainer:
         # Log the total number of epochs
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
-        # # Run the initial evaluation
-        # eval_results = self.evaluate()
+        # Run the initial evaluation
+        eval_results = self.evaluate()
 
-        # # Log epoch-level metrics directly to wandb
-        # if self.log_to_wandb and self.accelerator.is_local_main_process:
-        #     wandb_epoch_report = {"epoch": 0}
-        #     wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
-        #     wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
-        #     logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
-        #     wandb.log(wandb_epoch_report)
+        # Log epoch-level metrics directly to wandb
+        if self.log_to_wandb and self.accelerator.is_local_main_process:
+            wandb_epoch_report = {"epoch": 0}
+            wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
+            wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
+            logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
+            wandb.log(wandb_epoch_report)
 
         # Training loop
         for epoch in range(self.num_epochs):

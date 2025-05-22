@@ -262,6 +262,7 @@ if __name__ == "__main__":
             "Qwen/Qwen3-8B",
             "Qwen/Qwen3-14B",
             "meta-llama/Llama-3.3-70B-Instruct",
+            "Qwen/Qwen2.5-72B-Instruct",
         ],
         default="meta-llama/Llama-3.2-3B",
         help="Model identifier from HuggingFace or local path",
