@@ -78,7 +78,7 @@ def ask_claude(
     ).hexdigest()
     if use_cache:
         if f"{hash_val}.json" in os.listdir(CLAUDE_CACHE_DIR):
-            logger.debug(f"found cached gpt4o response for {hash_val} - loading")
+            logger.debug(f"found cached claude response for {hash_val} - loading")
             with open(os.path.join(CLAUDE_CACHE_DIR, f"{hash_val}.json"), "r") as f:
                 json_data = json.load(f)
                 return json_data["response"]
