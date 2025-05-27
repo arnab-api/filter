@@ -491,15 +491,17 @@ def predict_next_token(
         )
         track_interesting_tokens = []
 
-    if patches is not None and isinstance(patches, PatchSpec):
-        patches = [patches]
-        logger.warning(
-            "passed `patches`, not supported for batched predictions yet. will give weird results."
-        )
-
-    predictions = []
     is_tokenized = isinstance(inputs, TokenizerOutput)
     total_len = len(inputs["input_ids"]) if is_tokenized else len(inputs)
+
+    if patches is not None and isinstance(patches, PatchSpec):
+        patches = [patches]
+        if total_len > 1:
+            logger.warning(
+                "passed `patches`, not supported for batched predictions yet. will give weird results."
+            )
+
+    predictions = []
     for i in range(0, total_len, batch_size):
         if is_tokenized is False:
             batch_inputs = prepare_input(
@@ -688,9 +690,9 @@ def extract_rep_at_pos(
     else:
         input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
 
-    assert total_length >= len(input["input_ids"][0]), (
-        "Total length cannot be smaller than the input length"
-    )
+    assert total_length >= len(
+        input["input_ids"][0]
+    ), "Total length cannot be smaller than the input length"
 
     input = insert_padding_before_pos(
         inp=input,

@@ -399,7 +399,7 @@ You will be given two people's names. Your job is to determine if they share the
                 task_description = self.task_description_single
                 answer_format_instruction = "\n# Response Format:"
                 answer_format_instruction += f"\nIf you find a match: {self.attribute_format[attr]['format' + self.format]}"
-                answer_format_instruction += f"\nIf no match: \"No - {self.attribute_format[attr]['negative']['format']}\""
+                answer_format_instruction += f"\nIf no match: \"{self.attribute_format[attr]['negative']['format']}\""
                 # answer_format_instruction += "\n"
 
                 self.negative_connections = [

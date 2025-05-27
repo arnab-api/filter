@@ -49,10 +49,23 @@ def get_window(layer_name_format, idx, window_size, n_layer):
     ]
 
 
+def rank_reward(rank, k=20):
+    """
+    will return a positive reward if rank is less then 20 (negative log curve)
+    will clip the reward to 0 if rank is >= 20
+    """
+    assert rank >= 1, "rank must be >= 1"
+    assert k > 1, "k must be > 1"
+    buffer = np.log(k)
+    y = (-np.log(rank) + buffer) / buffer
+    y = np.clip(y, 0, None)
+    return y
+
+
 def get_score(
     logits: torch.Tensor,
     token_id: int | list[int],
-    metric: Literal["logit", "prob", "log_norm"] = "logit",
+    metric: Literal["logit", "prob", "log_norm", "log_rank_inv"] = "logit",
     return_individual_scores: bool = False,
     k: int | None = 20,
 ) -> Union[float, torch.Tensor]:
@@ -65,6 +78,12 @@ def get_score(
         # logger.debug(f"{logits.shape} | {logits[token_id]=} | {denom=}")
         # logits = logits / denom #! ratio of logits is a weird metric
         logits = logits - denom  #! difference probably makes more sense (?)
+    elif metric == "log_rank_inv":
+        assert k is not None, "k must be provided for log_rank_inv"
+        rank = logits.argsort(dim=-1, descending=True) + 1
+        inv_reward = [rank_reward(rank[t], k=k) for t in token_id]
+        inv_reward = sum(inv_reward) / len(inv_reward)
+        return inv_reward
     score = logits[token_id].mean().item()
     if not return_individual_scores:
         return score
@@ -210,9 +229,9 @@ def trace_important_states(
 
         logger.debug(f"{clean_answer=}")
         logger.debug(f"{track_ans=}")
-        assert answer.token != clean_answer.token, (
-            "Answers in the clean and corrupt runs are the same"
-        )
+        assert (
+            answer.token != clean_answer.token
+        ), "Answers in the clean and corrupt runs are the same"
 
         low_score = get_score(
             logits=clean_logits, token_id=answer.token_id, metric=metric
@@ -258,9 +277,9 @@ def trace_important_states(
         )
         logger.debug(f"{low_score=} | {low_indv_scores=}")
 
-    assert low_score < base_score, (
-        f"{low_score=} | {base_score=} >> low_score must be less than base_score"
-    )
+    assert (
+        low_score < base_score
+    ), f"{low_score=} | {base_score=} >> low_score must be less than base_score"
     logger.debug(f"{base_score=} | {low_score=}")
 
     layer_name_format = None
