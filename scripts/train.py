@@ -20,6 +20,7 @@ from src.utils.training_utils import (
     get_device_map,
 )
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +41,7 @@ def run_finetuning(
     lora_rank: Optional[int] = None,
     clamp_abs_value: Optional[float] = None,
     trainable_block_indices: Optional[list[int]] = None,
+    use_8bit_optim: bool = False,
 ) -> ModelandTokenizer:
     """
     Fine-tune a language model with optional regularization using Hugging Face Accelerate.
@@ -85,6 +87,15 @@ def run_finetuning(
             block_indices=trainable_block_indices,
         )
 
+    if use_8bit_optim:
+        from bitsandbytes.optim import AdamW8bit
+
+        optimizer_function = AdamW8bit
+    else:
+        from torch.optim import AdamW
+
+        optimizer_function = AdamW
+
     trainer = Trainer(
         trainable=trainable,
         train_dataloader=train_loader,
@@ -100,13 +111,13 @@ def run_finetuning(
         remove_old_checkpoints=True,
         memory_cleaner_threshold=memory_cleaner_threshold,
         log_to_wandb=True,
+        optimizer_function=optimizer_function,
     )
 
-    # Start training
     logger.info("Starting fine-tuning process")
     trainer.train()
 
-    logger.info("Fine-tuning complete")
+    logger.info("Fine-tuning complete!")
 
     return mt
 
@@ -409,6 +420,12 @@ if __name__ == "__main__":
         help="Skip loading thinking documents for regularization",
     )
 
+    parser.add_argument(
+        "--use_8bit",
+        action="store_true",
+        help="Use 8-bit optimizer for training (requires bitsandbytes)",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -494,6 +511,7 @@ if __name__ == "__main__":
         memory_cleaner_threshold=args.memory_cleaner_threshold,
         lora_rank=args.lora_rank,
         trainable_block_indices=trainable_block_indices,
+        use_8bit_optim=args.use_8bit,
     )
 
     # Close wandb run

@@ -28,8 +28,12 @@ def get_atomic_qa(
         ]
         return [(q, answer) for q in questions]
 
-    elif attribute == "nationality":
-        answer = profile["nationality"]
+    elif (
+        attribute == "nationality"
+        or attribute == "citizenship"
+        or attribute == "country"
+    ):
+        answer = profile[attribute]
         questions = [
             f"What is the nationality of {subj_name}? Ans:",
             # f"{subj_name} is a citizen of",
@@ -112,9 +116,9 @@ def get_atomic_qa(
 
         return qa
 
-    elif attribute == "car":
+    elif attribute in ["car", "type of car"]:
         # car name
-        car_model = profile["car"]
+        car_model = profile[attribute]
         qa = []
         questions = [
             f"What is the model of {subj_name}'s car? Ans:",

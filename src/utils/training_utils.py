@@ -1060,6 +1060,7 @@ class Trainer:
         memory_cleaner_threshold: float = 0.7,
         # wandb logging
         log_to_wandb: bool = True,
+        optimizer_function: callable = AdamW,
     ):
         """
         Initialize a trainer for language models using Hugging Face Accelerate.
@@ -1113,7 +1114,7 @@ class Trainer:
         )
 
         # Create optimizer and scheduler
-        self._setup_optimizer_and_scheduler()
+        self._setup_optimizer_and_scheduler(optimizer_function=optimizer_function)
 
         # Prepare model and dataloaders with accelerator
         (
@@ -1150,16 +1151,17 @@ class Trainer:
             "clamp_abs_update": self.clamp_abs_update,
         }
 
-    def _setup_optimizer_and_scheduler(self):
+    def _setup_optimizer_and_scheduler(self, optimizer_function: callable = AdamW):
         """Set up optimizer and learning rate scheduler."""
         # Get tunable parameters
         tunable_params = self.trainable._get_tunable_params()
 
         # Create optimizer
-        self.optimizer = AdamW(
+        self.optimizer = optimizer_function(
             tunable_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+            betas=(0.9, 0.95),
         )
 
         # Calculate total number of training steps
@@ -1347,7 +1349,8 @@ class Trainer:
                 wandb.log(wandb_epoch_report)
 
             # Save checkpoint
-            self._save_checkpoint(epoch + 1)
+            if epoch + 1 < self.num_epochs:  # no need to save the final model twice
+                self._save_checkpoint(epoch + 1)
 
             # Clean up memory at end of epoch
             free_gpu_cache()

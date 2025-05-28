@@ -60,7 +60,9 @@ def recall(predictions: Sequence[StrSequence], targets: StrSequence) -> list[flo
     recalls = [0.0] * k
     for topk, target in zip(predictions, targets):
         for i in range(k):
-            if functional.any_is_nontrivial_prefix(topk[: i + 1], target):
+            if functional.any_is_nontrivial_prefix(topk[: i + 1], target) or any(
+                functional.is_nontrivial_prefix(target, pred) for pred in topk[: i + 1]
+            ):
                 recalls[i] += 1
 
     return [r / len(targets) for r in recalls]
