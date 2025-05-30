@@ -20,7 +20,6 @@ from src.utils.training_utils import (
     get_device_map,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -85,12 +84,23 @@ def run_finetuning(
             regularization_dataloader=reg_loader,
             regularizer_lambda=regularizer_lambda,
             block_indices=trainable_block_indices,
+            tunable_module_signatures=None,
         )
 
     if use_8bit_optim:
-        from bitsandbytes.optim import AdamW8bit
+        try:
+            from bitsandbytes.optim import AdamW8bit
 
-        optimizer_function = AdamW8bit
+            optimizer_function = AdamW8bit
+            logger.info("Using 8-bit AdamW optimizer from bitsandbytes")
+        except ImportError:
+            logger.error(
+                "bitsandbytes is not installed. Install it with: pip install bitsandbytes"
+            )
+            logger.info("Falling back to regular AdamW optimizer")
+            from torch.optim import AdamW
+
+            optimizer_function = AdamW
     else:
         from torch.optim import AdamW
 

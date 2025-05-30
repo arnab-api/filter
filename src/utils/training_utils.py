@@ -473,8 +473,12 @@ class ParameterDelta(torch.nn.Module):
 
         def edit_repr(module_name: str, input: Any, output: Any):
             if module_name in trainable_params:
-                # logger.debug(f"Applying param delta to {module_name}")
+                if "layernorm" in module_name:
+                    return output
                 param_delta = trainable_params[module_name]
+                # logger.debug(
+                #     f"Applying param delta to {module_name} >> {param_delta.param_delta.shape=}"
+                # )
             else:
                 raise ValueError(f"Module {module_name} not found in param delta dict")
 
@@ -502,6 +506,11 @@ class TrainableLM_delta(TrainableLM):
         accelerator: Accelerator = None,
         trainable_params: Optional[str | torch.nn.ModuleDict] = None,
         block_indices: Optional[list[int]] = None,
+        tunable_module_signatures: Optional[List[str]] = [
+            "mlp.gate_proj",
+            "mlp.up_proj",
+            "mlp.down_proj",
+        ],
     ):
         super().__init__(
             mt=mt,
@@ -513,10 +522,13 @@ class TrainableLM_delta(TrainableLM):
         self.block_indices = (
             block_indices if block_indices is not None else list(range(self.mt.n_layer))
         )
+        self.tunable_module_signatures = tunable_module_signatures
         if trainable_params is not None:
             self.load_trainable_params(trainable_params)
         else:
-            self.initialize_trainable_params()
+            self.initialize_trainable_params(
+                tunable_module_signatures=self.tunable_module_signatures
+            )
 
     def forward(
         self,
@@ -541,24 +553,6 @@ class TrainableLM_delta(TrainableLM):
             attention_mask.to(self.mt.device) if attention_mask is not None else None
         )
         labels = labels.to(self.mt.device) if labels is not None else None
-        # logger.debug(f"{labels=}")
-        # logger.debug(f"{input_ids.shape = } | {attention_mask.shape = }")
-
-        # inputs = TokenizerOutput(
-        #     data={
-        #         "input_ids": input_ids,
-        #         "attention_mask": attention_mask,
-        #     }
-        # )
-        # with self.mt.trace(
-        #     inputs,
-        #     labels=labels,
-        # ) as tracer:
-        #     if apply_param_delta:
-        #         for param_delta in self.trainable_params.values():
-        #             param_delta()
-        #     output = self.mt.output.save()
-        # return output
 
         with baukit.TraceDict(
             module=self.mt._model,
@@ -604,26 +598,30 @@ class TrainableLM_delta(TrainableLM):
             block_name = self.mt.layer_name_format.format(block_idx)
             block = baukit.get_module(self.mt._model, block_name)
             for name, param in block.named_parameters():
-                if any(sig in name for sig in tunable_module_signatures):
-                    with torch.no_grad():
-                        param_delta = (
-                            torch.nn.Parameter(
-                                torch.zeros_like(param).to(param.dtype).to(param.device)
-                            )
-                            # + 5 # only for testing if the param_delta is being applied
+                if (
+                    tunable_module_signatures is not None
+                    and any(sig in name for sig in tunable_module_signatures) is False
+                ):
+                    continue
+                with torch.no_grad():
+                    param_delta = (
+                        torch.nn.Parameter(
+                            torch.zeros_like(param).to(param.dtype).to(param.device)
                         )
-                    param_delta.requires_grad = True
-                    param_delta = self.accelerator.prepare(param_delta)
-                    module_name = block_name + "." + ".".join(name.split(".")[:-1])
-                    logger.debug(f"{module_name=}")
-                    assert (
-                        module_name not in tunable_param_dict
-                    ), f"Module {module_name} already exists in tunable_param_dict"
-                    tunable_param_dict[module_name] = ParameterDelta(
-                        module=get_module_nnsight(self.mt, module_name),
-                        module_name=module_name,
-                        param_delta=param_delta,
+                        # + 5 # only for testing if the param_delta is being applied
                     )
+                param_delta.requires_grad = True
+                param_delta = self.accelerator.prepare(param_delta)
+                module_name = block_name + "." + ".".join(name.split(".")[:-1])
+                logger.debug(f"{module_name=}")
+                assert (
+                    module_name not in tunable_param_dict
+                ), f"Module {module_name} already exists in tunable_param_dict"
+                tunable_param_dict[module_name] = ParameterDelta(
+                    module=get_module_nnsight(self.mt, module_name),
+                    module_name=module_name,
+                    param_delta=param_delta,
+                )
 
         # for name, param in self.mt._model.named_parameters():
         #     if any(sig in name for sig in tunable_module_signatures):
@@ -1156,13 +1154,32 @@ class Trainer:
         # Get tunable parameters
         tunable_params = self.trainable._get_tunable_params()
 
-        # Create optimizer
-        self.optimizer = optimizer_function(
-            tunable_params,
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay,
-            betas=(0.9, 0.95),
-        )
+        # Create optimizer with proper configuration for 8-bit optimizers
+        optimizer_kwargs = {
+            "lr": self.learning_rate,
+            "weight_decay": self.weight_decay,
+            "betas": (0.9, 0.95),
+        }
+
+        # For bitsandbytes 8-bit optimizers, add specific configurations
+        if (
+            hasattr(optimizer_function, "__module__")
+            and "bitsandbytes" in optimizer_function.__module__
+        ):
+            # Remove betas for bitsandbytes optimizers as they have different parameter names
+            optimizer_kwargs.pop("betas", None)
+            # Add bitsandbytes-specific parameters
+            optimizer_kwargs.update(
+                {
+                    "betas": (0.9, 0.95),
+                    "eps": 1e-8,
+                    "optim_bits": 8,  # Ensure 8-bit optimization
+                    "percentile_clipping": 100,  # Optional: can help with stability
+                }
+            )
+            logger.info("Configuring 8-bit optimizer with specialized parameters")
+
+        self.optimizer = optimizer_function(tunable_params, **optimizer_kwargs)
 
         # Calculate total number of training steps
         total_steps = (
@@ -1174,7 +1191,7 @@ class Trainer:
 
         total_steps = max(total_steps, 100000)
 
-        logger.info(f"Settting total training steps: {total_steps}")
+        logger.info(f"Setting total training steps: {total_steps}")
 
         # Create learning rate scheduler
         self.lr_scheduler = get_linear_schedule_with_warmup(
@@ -1240,16 +1257,21 @@ class Trainer:
         # Log the total number of epochs
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
-        # Run the initial evaluation
-        eval_results = self.evaluate()
+        # # Run the initial evaluation
+        # eval_results = self.evaluate()
 
-        # Log epoch-level metrics directly to wandb
-        if self.log_to_wandb and self.accelerator.is_local_main_process:
-            wandb_epoch_report = {"epoch": 0}
-            wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
-            wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
-            logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
-            wandb.log(wandb_epoch_report)
+        # # Log epoch-level metrics directly to wandb
+        # if self.log_to_wandb and self.accelerator.is_local_main_process:
+        #     wandb_epoch_report = {"epoch": 0}
+        #     wandb_epoch_report["epoch/val_loss"] = eval_results["loss"]
+        #     wandb_epoch_report["epoch/val_perplexity"] = eval_results["perplexity"]
+        #     logger.info("Logging epoch-level metrics to wandb", wandb_epoch_report)
+        #     wandb.log(wandb_epoch_report)
+
+        log_optim_overhead = True
+        if torch.cuda.is_available():
+            initial_memory = torch.cuda.memory_allocated() / 1e9
+            logger.info(f"Initial GPU memory usage: {initial_memory:.2f} GB")
 
         # Training loop
         for epoch in range(self.num_epochs):
@@ -1279,13 +1301,23 @@ class Trainer:
                 )
 
                 # Backward pass
-                # print("backward pass")
                 self.accelerator.backward(loss)
-                # loss.backward()
-
                 # Update parameters
                 self.optimizer.step()
                 self.lr_scheduler.step()
+
+                # Log memory usage after optimizer preparation
+                if batch_idx == 5 and log_optim_overhead and torch.cuda.is_available():
+                    log_optim_overhead = False
+                    post_optimizer_memory = torch.cuda.memory_allocated() / 1e9
+                    optimizer_memory_overhead = post_optimizer_memory - initial_memory
+                    logger.info(
+                        f"Memory after optimizer setup: {post_optimizer_memory:.2f} GB"
+                    )
+                    logger.info(
+                        f"Optimizer memory overhead: {optimizer_memory_overhead:.2f} GB"
+                    )
+
                 self.optimizer.zero_grad()
 
                 # Clip gradients if clamp_abs_update is set
@@ -1321,9 +1353,9 @@ class Trainer:
                     {k: v / (batch_idx + 1) for k, v in total_loss_dict.items()}
                 )
 
-                # Maybe clean up memory
-                if batch_idx % 10 == 0:
-                    self._maybe_cleanup_memory()
+                # # Maybe clean up memory
+                # if batch_idx % 10 == 0:
+                #     self._maybe_cleanup_memory()
 
             for k in total_loss_dict:
                 total_loss_dict[k] /= num_batches
