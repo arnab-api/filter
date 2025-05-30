@@ -84,7 +84,7 @@ def run_finetuning(
             regularization_dataloader=reg_loader,
             regularizer_lambda=regularizer_lambda,
             block_indices=trainable_block_indices,
-            tunable_module_signatures=None,
+            # tunable_module_signatures=None,
         )
 
     if use_8bit_optim:
@@ -247,6 +247,10 @@ def prepare_datasets(
     train_ds = TextDataset(docs=finetune_docs[:train_split], tokenizer=tokenizer)
     val_ds = TextDataset(docs=finetune_docs[train_split:], tokenizer=tokenizer)
 
+    logger.info(
+        f"Train/Val split: {len(train_ds)} train samples, {len(val_ds)} validation samples"
+    )
+
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4
     )
@@ -387,7 +391,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_split_ratio",
         type=float,
-        default=0.8,
+        default=0.9,
         help="Ratio for train/validation split of the training data",
     )
 

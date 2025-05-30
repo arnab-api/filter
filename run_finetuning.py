@@ -2,14 +2,14 @@ import os
 
 MODELS = [
     # "meta-llama/Llama-3.2-3B",
-    "meta-llama/Llama-3.1-8B",
+    # "meta-llama/Llama-3.1-8B",
     # "meta-llama/Llama-3.1-8B-Instruct",
     # "Qwen/Qwen2.5-14B",
     # "Qwen/Qwen3-1.7B"
     # "Qwen/Qwen3-4B",
     # "Qwen/Qwen3-8B",
     # "Qwen/Qwen3-14B",
-    # "meta-llama/Llama-3.3-70B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
     # "Qwen/Qwen2.5-72B-Instruct",
 ]
 # SYNTH_DATASET = "icosahedron_1"
@@ -26,7 +26,7 @@ WARMUP_STEPS = 1000
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
 CLAMP_ABS_VALUE = None
-UPTO_LAYER = 6  # None means full model
+UPTO_LAYER = 60  # None means full model
 LAYER_STEP = 1
 
 cmd_template = 'python -m scripts.train --model="{}" -v'
@@ -72,7 +72,7 @@ for model in MODELS:
             cmd += f" --layer_step={LAYER_STEP}"
 
         cmd += " --skip_thinking_reg"
-        # cmd += " --use_8bit"
+        cmd += " --use_8bit"
 
         logs_dir = f"logs/{SYNTH_DATASET}/{model.split('/')[-1]}"
         os.makedirs(logs_dir, exist_ok=True)
