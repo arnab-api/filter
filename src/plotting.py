@@ -56,13 +56,13 @@ def plot_trace_heatmap(
     ):
         if idx in range(*shifted_subj_range):
             tokens.append(
-                f"{patch_tok}/{corrupt_tok}"
+                f'"{patch_tok}" / "{corrupt_tok}"'
                 if corrupt_tok != patch_tok
-                else f"{corrupt_tok} *"
+                else f'"{corrupt_tok}"*'
             )
         else:
             # assert corrupt_tok == patch_tok
-            tokens.append(corrupt_tok)
+            tokens.append(f'"{corrupt_tok}"')
 
     plt.rcdefaults()
     with plt.rc_context(
@@ -131,12 +131,12 @@ def visualize_attn_matrix(
     savepdf: str | None = None,
     start_idx: int = 0,
 ):
-    assert attn_matrix.shape[0] == attn_matrix.shape[1], (
-        "Attention matrix must be square"
-    )
-    assert len(tokens) == attn_matrix.shape[-1], (
-        "Tokens and attention matrix must have the same length"
-    )
+    assert (
+        attn_matrix.shape[0] == attn_matrix.shape[1]
+    ), "Attention matrix must be square"
+    assert (
+        len(tokens) == attn_matrix.shape[-1]
+    ), "Tokens and attention matrix must have the same length"
 
     if remove_eos and start_idx == 0:
         start_idx = 1 if tokens[0] == remove_eos else 0

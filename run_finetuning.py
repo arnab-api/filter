@@ -25,7 +25,7 @@ WARMUP_STEPS = 1000
 
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
-CLAMP_ABS_VALUE = None
+CLAMP_ABS_VALUE = 1e-3
 UPTO_LAYER = 60  # None means full model
 LAYER_STEP = 1
 

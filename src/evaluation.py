@@ -287,7 +287,9 @@ def get_atomic_qa(
         return qa
 
     else:
-        raise ValueError(f"Unknown attribute: {attribute}")
+        # raise ValueError(f"Unknown attribute: {attribute}")
+        logger.error(f"XXX Unknown attribute: {attribute} XXX")
+        return []
 
 
 def get_answers_for_atomic_questions(
@@ -435,6 +437,9 @@ def evaluate_on_atomic_knowledge_per_entity(
             all_options=all_options,
         )
 
+        if len(qa) == 0:
+            continue
+
         questions = [q for q, a in qa]
 
         lm_response = get_answer_func(mt=mt, questions=questions, **kwargs)
@@ -530,64 +535,92 @@ def evaluate_on_atomic_knowledge(
 
 
 #################################### CONNECTION EVALUATION ####################################
-# def verify_connection_with_oracle(
-#     lm_response: str,
-#     entity_profiles: tuple[dict] = None,
-#     oracle_model: Literal["claude", "gpt"] = "claude",
-#     expected_answer: str = None,
-# ) -> str:
+from src.utils.experiment_utils import set_seed
+from src.utils.oracle_llms import ASK_ORACLE_MODEL
+from typing import Literal
+from src.functional import get_tick_marker, predict_next_token
+from src.probing.utils import get_lm_generated_answer
+from src.probing.prompt import prepare_probing_input
+from src.probing.prompt import BiAssociationPrefix
 
-#     instruction = f"""Check the following profiles of 2 people
-# ```
-# profile_1: {json.dumps(entity_profiles[0], indent=2)}
-# ```
-# ```
-# profile_2: {json.dumps(entity_profiles[1], indent=2)}
-# ```
 
-# A smaller LM was asked to find a connection between the two people. Any attribute these two people might share satisfies as a connection. If there is no connection, then the LM is expected to answer "None".
+def verify_connection_with_oracle(
+    lm_response: str,
+    entity_profiles: tuple[dict] = None,
+    oracle_model: Literal["claude", "gpt"] = "claude",
+    expected_answer: str = None,
+) -> str:
 
-# The LM's response is: \"{lm_response}\"
-# """
+    instruction = f"""Check the following profiles of 2 people
+```
+profile_1: {json.dumps(entity_profiles[0], indent=2)}
+```
+```
+profile_2: {json.dumps(entity_profiles[1], indent=2)}
+```
 
-#     if expected_answer is not None:
-#         instruction += f"""The expected answer is: \"{expected_answer}\". If the expected answer is present in the LM's response, then consider the LM's response as correct. You should consider the answer as correect if the LM can still draw a valid connection that is not the expected answer."""
+A smaller LM was asked to find a connection between the two people. Any attribute these two people might share satisfies as a connection. If there is no connection, then the LM is expected to answer "None".
 
-#     instruction += """Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
-# Make sure to put your answer starts with either "yes" or "no".
+The LM's response is: \"{lm_response}\"
+"""
 
-# Consider that the small LM's response might get abruptly cut off, due to the token limit. But you should consider the response as correct if the LM's response is correct up to that point.
-# """
-#     response = ASK_ORACLE_MODEL[oracle_model](prompt=instruction, use_cache=True)
-#     logger.debug(f"oracle response: {response}")
-#     answer = response.lower().strip().startswith("yes")
+    if expected_answer is not None:
+        instruction += f"""The expected answer is: \"{expected_answer}\". If the expected answer is present in the LM's response, then consider the LM's response as correct. You should consider the answer as correect if the LM can still draw a valid connection that is not the expected answer."""
 
-#     return answer
+    instruction += """Please verify if the response is correct or not. Say "yes" if the response is correct and "no" if it is not.
+Make sure to put your answer starts with either "yes" or "no".
 
-# def get_connection_on_entity_pair(
-#     mt: ModelandTokenizer,
-#     entities: tuple[str],
-#     prefix_class = BiAssociationPrefix2,
-#     n_valid = 6,
-#     n_none = 2,
-#     enable_reasoning = False,
-# ):
-#     prefix = prefix_class.get_prefix(n_valid=n_valid, n_none=n_none)
-#     connection_prompt = prepare_probing_input(
-#         mt=mt,
-#         entities=(entities[0], entities[1]),
-#         prefix=prefix,
-#         answer_marker=prefix_class.answer_marker,
-#         question_marker=prefix_class.question_marker,
-#         block_separator=prefix_class.block_separator,
-#         is_a_reasoning_model=enable_reasoning,
-#     )
-#     # print(mt.tokenizer.decode(connection_prompt.tokenized["input_ids"][0]))
+Consider that the small LM's response might get abruptly cut off, due to the token limit. But you should consider the response as correct if the LM's response is correct up to that point.
+"""
+    response = ASK_ORACLE_MODEL[oracle_model](prompt=instruction, use_cache=True)
+    logger.debug(f"oracle response: {response}")
+    answer = response.lower().strip().startswith("yes")
 
-#     answer = get_lm_generated_answer(
-#         mt=mt, prompt=connection_prompt,
-#         is_a_reasoning_model=enable_reasoning,
-#     )
+    return answer
 
-#     return answer
+
+def get_connection_on_entity_pair(
+    mt: ModelandTokenizer,
+    entities: tuple[str],
+    prefix_generator: BiAssociationPrefix,
+    n_valid=6,
+    n_none=2,
+    enable_reasoning=False,
+    return_next_token_probs=False,
+    answer_prefix: str = "",
+):
+    prefix = prefix_generator.get_prefix(n_valid=n_valid, n_none=n_none)
+    connection_prompt = prepare_probing_input(
+        mt=mt,
+        entities=(entities[0], entities[1]),
+        prefix=prefix,
+        answer_marker=prefix_generator.answer_marker,
+        question_marker=prefix_generator.question_marker,
+        block_separator=prefix_generator.block_separator,
+        is_a_reasoning_model=enable_reasoning,
+        answer_prefix=answer_prefix,
+    )
+    # print("\"" + mt.tokenizer.decode(connection_prompt.tokenized["input_ids"][0], skip_special_tokens=False) + "\"",)
+
+    answer = get_lm_generated_answer(
+        mt=mt,
+        prompt=connection_prompt,
+        is_a_reasoning_model=enable_reasoning,
+    )
+    answer = answer.split("\n")[0]
+
+    if return_next_token_probs:
+        if enable_reasoning is False:
+            return answer, predict_next_token(
+                mt=mt, inputs=connection_prompt.prompt, k=15
+            )
+        else:
+            logger.warning(
+                "Next token probs are not meaningful for reasoning LMs. Will decode to <think> token always"
+            )
+            return answer, None
+
+    return answer
+
+
 #################################### CONNECTION EVALUATION ####################################

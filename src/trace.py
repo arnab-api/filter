@@ -240,6 +240,10 @@ def trace_important_states(
         ans_tokens = [answer.token_id]
         answer = [answer]
     else:
+        ans_tokens = [ans_tokens] if isinstance(ans_tokens, int) else ans_tokens
+        logger.debug(
+            f'traching answer for {[f"{t}({mt.tokenizer.decode(t)})" for t in ans_tokens]}'
+        )
         base_score, base_indv_scores = get_score(
             logits=patched_run(
                 mt=mt,
