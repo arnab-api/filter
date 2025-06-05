@@ -201,16 +201,18 @@ def patchscope(
         "copy",
         "Cat",
         "Java",
+        "transistor",
         "python",
         "Leonardo DiCaprio",
         " The Lion King",
         "Washington D.C.",
         "Mount Everest",
-        "transistor",
         " computer",
     ]
-    copy_prompt = ";".join([f"{p}->{p}" for p in phrases])
-    copy_prompt = f"{copy_prompt};{placeholder}->"
+    copy_prompt = ";".join([f"{p}>{p}" for p in phrases])
+    copy_prompt = f"{copy_prompt};{placeholder}>"
+    # print(copy_prompt)
+
     input = prepare_input(
         tokenizer=mt,
         prompts=copy_prompt,

@@ -16,6 +16,20 @@ from src.utils.typing import PathLike
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ActivationPatchingSamples(DataClassJsonMixin):
+    prompt_template: str
+    common_entity: str
+    clean_entity: str
+    patched_entity: str
+    clean_answer: str | None = None
+    patched_answer: str | None = None
+    patched_answer_toks: list[int] | None = None
+
+    def __str__(self):
+        return f'{self.common_entity} | {self.clean_entity} => "{self.clean_answer}" | <-- | {self.patched_entity} => "{self.patched_answer}"'
+
+
 @dataclass(frozen=True)
 class RelationSample(DataClassJsonMixin):
     subject: str
@@ -33,7 +47,9 @@ class InContextQuery(DataClassJsonMixin):
     cf_description: str
     answer: str
 
-    template: str = "Assume an alternative universe where <subj> is in <loc>. In that universe, <subj> is located in the city of"
+    template: str = (
+        "Assume an alternative universe where <subj> is in <loc>. In that universe, <subj> is located in the city of"
+    )
 
     def set_template(self, template: str):
         self.template = template
@@ -392,9 +408,9 @@ class BridgeSample(DataClassJsonMixin):
     relation: Optional[str] = None
 
     def __post_init__(self):
-        assert len(self.entity_pair) == 2, (
-            f"entity_pair must have length 2, got {len(self.entity)} - {self.entity}"
-        )
+        assert (
+            len(self.entity_pair) == 2
+        ), f"entity_pair must have length 2, got {len(self.entity)} - {self.entity}"
 
     def __str__(self):
         return (
