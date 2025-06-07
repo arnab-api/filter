@@ -1366,6 +1366,8 @@ class Trainer:
                 loss_log += f"{k}: {v:.4f} | "
             logger.info(f"Epoch {epoch + 1}/{self.num_epochs} | {loss_log}")
 
+            free_gpu_cache()
+
             # Run evaluation
             eval_results = self.evaluate()
 
