@@ -112,9 +112,7 @@ def scaled_dot_product_attention(
             assert (
                 attn_weight[:, head_idx, :, :].shape
                 == freeze_attn_matrices[head_idx].shape
-            ), (
-                f"Mismatch expected shape {attn_weight[:, head_idx, :, :].shape}, but found shape {freeze_attn_matrices[head_idx].shape}"
-            )
+            ), f"Mismatch expected shape {attn_weight[:, head_idx, :, :].shape}, but found shape {freeze_attn_matrices[head_idx].shape}"
             attn_weight[:, head_idx, :, :] = freeze_attn_matrices[head_idx]
     # ---------------------------------------------------------------------
 
@@ -152,6 +150,7 @@ def scaled_dot_product_attention(
 def attn_per_head(
     o_proj: torch.nn.modules.linear.Linear,
     attn_output: torch.Tensor,
+    freeze_head_contributions: Optional[dict[int, torch.Tensor]] = None,
 ):
     # print(attn_output.size())
     b, q_len, n_head, h_dim = attn_output.size()
@@ -161,14 +160,24 @@ def attn_per_head(
     # print(f"{attn_output.size()=}")
 
     per_head_contributions = []
-    for i in range(n_head):
-        attn_output_per_head = attn_output[:, :, i, :]  # shape: (b, q_len, h_dim)
-        attn_output_per_head = attn_output_per_head.to(
-            o_proj_weight_split[:, i, :].dtype
-        ).to(o_proj_weight_split[:, i, :].device)
-        projected_per_head = (
-            attn_output_per_head @ o_proj_weight_split[:, i, :].T
-        )  # shape: (b, q_len, out_features)
+    for head_idx in range(n_head):
+        if (
+            freeze_head_contributions is not None
+            and head_idx in freeze_head_contributions
+        ):
+            projected_per_head = freeze_head_contributions[head_idx]
+        else:
+            # calculate the contribution per head
+            attn_output_per_head = attn_output[
+                :, :, head_idx, :
+            ]  # shape: (b, q_len, h_dim)
+            attn_output_per_head = attn_output_per_head.to(
+                o_proj_weight_split[:, head_idx, :].dtype
+            ).to(o_proj_weight_split[:, head_idx, :].device)
+            projected_per_head = (
+                attn_output_per_head @ o_proj_weight_split[:, head_idx, :].T
+            )  # shape: (b, q_len, out_features)
+
         per_head_contributions.append(projected_per_head)
         # print(f"{projected_per_head.size()=}")
 
@@ -259,6 +268,7 @@ def LlamaAttentionPatcher(
     freeze_attn_matrices: Optional[dict[int, torch.Tensor]] = None,
     value_weighted: bool = False,
     store_head_contributions: Optional[dict[int, torch.Tensor]] = None,
+    freeze_attn_contributions: Optional[dict[int, torch.Tensor]] = None,
 ) -> callable:
     """
     Wraps the forward method of the `LlamaSdpaAttention` class
@@ -274,9 +284,7 @@ def LlamaAttentionPatcher(
     if save_attn_for is not None:
         assert (
             store_attn_matrices is not None or store_head_contributions is not None
-        ), (
-            "with save_attn_weights = True you need to provide attn_matrices or attn_contribution"
-        )
+        ), "with save_attn_weights = True you need to provide attn_matrices or attn_contribution"
         if store_attn_matrices is not None:
             assert (
                 isinstance(store_attn_matrices, dict) and len(store_attn_matrices) == 0
@@ -343,9 +351,9 @@ def LlamaAttentionPatcher(
                 key_states, value_states, self.layer_idx, cache_kwargs
             )
 
-        assert self.config._attn_implementation == "sdpa", (
-            "NotImplementedError: LlamaAttentionPatcher only supports 'sdpa' implementation"
-        )
+        assert (
+            self.config._attn_implementation == "sdpa"
+        ), "NotImplementedError: LlamaAttentionPatcher only supports 'sdpa' implementation"
         attention_interface = sdpa_attention_forward
 
         kwargs.update(
@@ -369,26 +377,42 @@ def LlamaAttentionPatcher(
         )
 
         # ---------------------------------------------------------------------
-        if store_head_contributions is not None:
+        if (
+            store_head_contributions is not None
+            or freeze_attn_contributions is not None
+        ):
             __attn_output, per_head_contribution = attn_per_head(
-                self.o_proj, attn_output
+                self.o_proj,
+                attn_output,
+                freeze_head_contributions=freeze_attn_contributions,
             )
+
+        if store_head_contributions is not None:
             for head_idx in store_head_contributions:
                 # print(f">>> {head_idx=} | {type(head_idx)}")
                 store_head_contributions[head_idx] = per_head_contribution[
                     :, head_idx, :, :
                 ]
-        # ---------------------------------------------------------------------
 
-        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-        attn_output = self.o_proj(attn_output)
+        if freeze_attn_contributions is not None:
+            # logger.warning(
+            #     f"{block_name} >> setting modified attn_output to the frozen contributions"
+            # )
+            attn_output = __attn_output
+
+        else:
+            # clean impmementation
+            attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+            attn_output = self.o_proj(attn_output)
+
+        # ---------------------------------------------------------------------
 
         # print(f"{attn_output.size()=}")
 
         if store_head_contributions is not None:
             if torch.allclose(attn_output, __attn_output, atol=1e-1) == False:
                 logger.warning(
-                    f"allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
+                    f"{block_name} >> allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
                 )
 
         return attn_output, attn_weights

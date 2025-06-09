@@ -12,7 +12,13 @@ from src.functional import (
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.utils.typing import TokenizerOutput
+from src.utils.typing import TokenizerOutput, Tokenizer
+from src.tokens import find_token_range
+from circuitsvis.tokens import colored_tokens
+from IPython.display import display
+from src.attention import AttentionInformation
+from src.probing.prompt import ProbingPrompt
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +32,15 @@ class AttentionInformation(DataClassJsonMixin):
     def _init__(
         self, prompt: str, tokenized_prompt: list[str], attention_matrices: torch.tensor
     ):
-        assert len(tokenized_prompt) == attention_matrices.shape[-1], (
-            "Tokenized prompt and attention matrices must have the same length"
-        )
-        assert len(attention_matrices.shape) == 4, (
-            "Attention matrices must be of shape (layers, heads, tokens, tokens)"
-        )
-        assert attention_matrices.shape[-1] == attention_matrices.shape[-2], (
-            "Attention matrices must be square"
-        )
+        assert (
+            len(tokenized_prompt) == attention_matrices.shape[-1]
+        ), "Tokenized prompt and attention matrices must have the same length"
+        assert (
+            len(attention_matrices.shape) == 4
+        ), "Attention matrices must be of shape (layers, heads, tokens, tokens)"
+        assert (
+            attention_matrices.shape[-1] == attention_matrices.shape[-2]
+        ), "Attention matrices must be square"
 
         self.prompt = prompt
         self.tokenized_prompt = tokenized_prompt
@@ -80,9 +86,9 @@ def get_attention_matrices(
     if isinstance(input, str):
         input = prepare_input(prompts=input, tokenizer=mt)
     else:
-        assert isinstance(input, TokenizerOutput), (
-            "input must be either a string or a TokenizerOutput object"
-        )
+        assert isinstance(
+            input, TokenizerOutput
+        ), "input must be either a string or a TokenizerOutput object"
 
     if patches is not None and isinstance(patches, PatchSpec):
         patches = [patches]
@@ -118,10 +124,14 @@ def get_attention_matrices(
 
     print(output.keys())
     print(logits.shape)
+    output.attentions = [attn.cuda() for attn in output.attentions]
     attentions = torch.vstack(output.attentions)  # (layers, heads, tokens, tokens)
     if value_weighted:
         values = torch.vstack(
-            [output.past_key_values[i][1] for i in range(mt.config.num_hidden_layers)]
+            [
+                output.past_key_values[i][1].cuda()
+                for i in range(mt.config.num_hidden_layers)
+            ]
         )  # (layers, heads, tokens, head_dim)
         values = repeat_kv(
             values, n_rep=mt.model.layers[0].self_attn.num_key_value_groups
@@ -133,3 +143,61 @@ def get_attention_matrices(
         attention_matrices=attentions.detach().cpu().to(torch.float32).numpy(),
         logits=logits.detach().cpu(),
     )
+
+
+def visualize_average_attn_matrix(
+    mt: ModelandTokenizer,
+    attn_matrices: dict,
+    prompt: ProbingPrompt | str,
+    layer_window: list | None = None,
+    q_index: int = -1,
+    remove_bos: bool = True,
+    start_from: int | str | None = None,
+):
+    inputs = TokenizerOutput(data=prompt.tokenized)
+    if start_from is None:
+        start_from = 1 if remove_bos else 0
+    elif isinstance(start_from, str):
+        start_from = (
+            find_token_range(
+                string=prompt.prompt,
+                substring="#",
+                tokenizer=mt,
+                offset_mapping=inputs.offset_mapping[0],
+                occurrence=-1,
+            )[1]
+            - 1
+        )
+
+    # print(f"{start_from=}")
+
+    for layer in layer_window:
+        print(f"{layer=}")
+        if isinstance(attn_matrices, AttentionInformation):
+            avg_attn_module_matrix = torch.Tensor(
+                attn_matrices.attention_matrices[layer]
+            ).mean(dim=0)[q_index]
+        else:
+            avg_attn_module_matrix = torch.stack(
+                [
+                    attn_matrices[layer][h_idx].squeeze()
+                    for h_idx in range(mt.config.num_attention_heads)
+                ]
+            ).mean(dim=0)[q_index]
+
+        # print(avg_attn_module_matrix.shape)
+
+        tokens = [
+            mt.tokenizer.decode(t, skip_special_tokens=False)
+            for t in inputs["input_ids"][0]
+        ][start_from:]
+        for idx, t in enumerate(tokens):
+            if t == "<think>":
+                tokens[idx] = "<|think|>"
+            elif t == "</think>":
+                tokens[idx] = "<|/think|>"
+
+        display(
+            colored_tokens(tokens=tokens, values=avg_attn_module_matrix[start_from:])
+        )
+        print("-" * 80)
