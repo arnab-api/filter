@@ -217,9 +217,9 @@ def find_token_range(
                 break
 
     # print(f"{substring=}, {occurrence=} | {token_start=}, {token_end=}")
-    assert token_start is not None, (
-        "Are you working with Llama-3? Try passing the ModelandTokenizer object as the tokenizer"
-    )
+    assert (
+        token_start is not None
+    ), "Are you working with Llama-3? Try passing the ModelandTokenizer object as the tokenizer"
     assert token_end is not None
     assert token_start <= token_end
     return (token_start, token_end + 1)
@@ -356,10 +356,10 @@ def align_patching_positions(
             )[1]
             - 1
         )
-        # print(trace_start_idx)
-        assert trace_start_idx <= min(clean_subj_range[0], patched_subj_range[0]), (
-            f"{trace_start_idx=} has to be smaller than {min(clean_subj_range[0], patched_subj_range[0])=}"
-        )
+        print(f"{trace_start_idx=}")
+        assert trace_start_idx <= min(
+            clean_subj_range[0], patched_subj_range[0]
+        ), f"{trace_start_idx=} has to be smaller than {min(clean_subj_range[0], patched_subj_range[0])=}"
 
     if clean_subj_range == patched_subj_range:
         subj_start, subj_end = clean_subj_range
