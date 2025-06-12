@@ -16,7 +16,6 @@ from src.utils.typing import TokenizerOutput, Tokenizer
 from src.tokens import find_token_range
 from circuitsvis.tokens import colored_tokens
 from IPython.display import display
-from src.attention import AttentionInformation
 from src.probing.prompt import ProbingPrompt
 
 
