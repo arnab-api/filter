@@ -22,12 +22,19 @@ class OperatorOutput:
     corner_h: Optional[torch.Tensor] = None
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=False, kw_only=True)
 class Basis:
     direction: torch.Tensor
     z: str
     token_idx: list[int] = field(default_factory=list)
     training_args: dict[str, Any] = field(default_factory=dict)
+
+    def __str__(self):
+        ret = f'"{self.z}"'
+        if self.token_idx:
+            ret += f" ({self.token_idx})"
+
+        return ret
 
 
 @dataclass(frozen=False, kw_only=True)
@@ -39,6 +46,11 @@ class Operator:
 
     def __call__(self, **kwargs: Any) -> OperatorOutput:
         raise NotImplementedError
+
+    @property
+    def device(self) -> torch.device:
+        """Returns the device of the model and tokenizer."""
+        return self.mt.device
 
 
 @dataclass(frozen=False, kw_only=True)
@@ -52,17 +64,25 @@ class BasisOperator(Operator):
     _projection_matrix: torch.Tensor = field(init=False, repr=False)
 
     def __post_init__(self):
-        assert self.layer is not None, "Layer must be specified."
+        # assert self.layer is not None, "Layer must be specified."
+        for idx in range(len(self.concept_directions)):
+            basis = self.concept_directions[idx]
+            self.concept_directions[idx] = Basis(
+                direction=basis.direction.to(torch.float32).to(self.mt.device),
+                z=basis.z,
+                token_idx=basis.token_idx,
+                training_args=basis.training_args,
+            )
 
     @property
     def projection_matrix(self) -> torch.Tensor:
         if hasattr(self, "_projection_matrix"):
             return self._projection_matrix
 
-        device = self.mt.device
+        device = self.device
         Q = torch.stack(
             [basis.direction for basis in self.concept_directions], dim=1
-        ).to(device)
+        ).to(torch.float32)
         Q = Q.to(device)
         Q = Q / Q.norm(dim=0)
         projection = Q @ (Q.T @ Q).pinverse() @ Q.T
@@ -71,14 +91,20 @@ class BasisOperator(Operator):
         return projection
 
     def __call__(self, h: torch.Tensor, project_to_subspace: bool = True) -> list[dict]:
+        h = h.to(torch.float32).to(self.device)
+
         if project_to_subspace:
             h = h / h.norm()
             h = self.projection_matrix @ h
 
+        logger.debug(f"{h.device=}, {self.projection_matrix.device=}")
+
         similarities = [
             dict(
-                sim=torch.nn.functional.cosine_similarity(h, basis.direction, dim=0),
-                z=basis.z,
+                sim=torch.nn.functional.cosine_similarity(
+                    h, basis.direction, dim=0
+                ).item(),
+                basis=str(basis),
             )
             for basis in self.concept_directions
         ]
