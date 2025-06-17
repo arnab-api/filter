@@ -473,6 +473,7 @@ class ParameterDelta(torch.nn.Module):
 
         def edit_repr(module_name: str, input: Any, output: Any):
             if module_name in trainable_params:
+                #! delta intervention is not supported for layernorm yet
                 if "layernorm" in module_name:
                     return output
                 param_delta = trainable_params[module_name]

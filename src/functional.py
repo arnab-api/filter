@@ -196,22 +196,22 @@ def patchscope(
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    placeholder = "placeholder"
+    placeholder = "x"
     phrases = [
-        "copy",
-        "Cat",
-        "Java",
-        "transistor",
-        "python",
-        "Leonardo DiCaprio",
+        " copy",
+        " Cat",
+        " Java",
+        " transistor",
+        " python",
+        " Leonardo DiCaprio",
         " The Lion King",
-        "Washington D.C.",
-        "Mount Everest",
+        " Washington D.C.",
+        " Mount Everest",
         " computer",
     ]
-    copy_prompt = ";".join([f"{p}>{p}" for p in phrases])
-    copy_prompt = f"{copy_prompt};{placeholder}>"
-    # print(copy_prompt)
+    copy_prompt = "\n".join([f"{p} >{p}" for p in phrases])
+    copy_prompt = f"{copy_prompt}\n {placeholder} >"
+    logger.debug(copy_prompt)
 
     input = prepare_input(
         tokenizer=mt,
@@ -226,10 +226,10 @@ def patchscope(
         offset_mapping=input["offset_mapping"][0],
     )
     placeholder_pos = placeholder_range[1] - 1
-    # input.pop("offset_mapping")
-    # logger.debug(
-    #     f"placeholder position: {placeholder_pos} | token: {mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}"
-    # )
+    input.pop("offset_mapping")
+    logger.debug(
+        f"placeholder position: {placeholder_pos} | token: \"{mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}\""
+    )
 
     patch_layers = (
         [mt.layer_name_format.format(10)] if patch_layers is None else patch_layers
