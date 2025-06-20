@@ -73,6 +73,7 @@ class Order1Approx:
     jacobian: torch.Tensor
     bias: torch.Tensor
     calculated_at: torch.Tensor
+    output: torch.Tensor
 
     inp_layer: str
     out_layer: str = "lm_head"
@@ -144,11 +145,21 @@ def patch(
     mt: ModelandTokenizer,
     inp_layer: str,
     out_layer: str = "lm_head",
+    context: TokenizerOutput | None = None,
+    h_idx: int = 0,
+    z_idx: int = -1,  # usually the last token
 ) -> torch.Tensor:
-    dummy_tok = mt.tokenizer(
-        mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
-    )
-    with mt.trace(dummy_tok) as tr:
+    if context is None:
+        context = mt.tokenizer(
+            mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
+        )
+        if h_idx != 0:
+            logger.warning(
+                "Context not provided. Using BOS token as context. Setting h_idx to 0."
+            )
+        h_idx = 0
+
+    with mt.trace(context) as tr:
         # perform the patching
         inp_module = get_module_nnsight(mt, inp_layer)
         inp_state = (
@@ -156,8 +167,8 @@ def patch(
             if module_output_has_extra_dim(mt, inp_layer)
             else inp_module.output.save()
         )
-        inp_state[...] = h.view(1, 1, h.squeeze().shape[0])
-        # inp_module.output[0][...] = h.view(1, 1, h.squeeze().shape[0])
+        inp_state[:, h_idx, :] = h
+        # tr.log(inp_state.shape)
 
         out_module = get_module_nnsight(mt, out_layer)
         out_state = (
@@ -166,7 +177,8 @@ def patch(
             else out_module.output.save()
         )
 
-    return out_state.value[-1].squeeze()
+    # print(f"{inp_state[:, h_idx, :].norm().item()=}")
+    return out_state[:, z_idx].squeeze()
 
 
 def get_inputs_and_intervention_range(
@@ -198,7 +210,7 @@ def order_1_approx(
     mt: ModelandTokenizer,
     h: torch.Tensor,
     inp_layer: str,
-    out_layer: str = "lm_head",
+    out_layer: str | None = None,
 ) -> Order1Approx:
     def func(h: torch.Tensor) -> torch.Tensor:
         return patch(h, mt, inp_layer, out_layer)
@@ -220,6 +232,7 @@ def order_1_approx(
 
         return jacobian
 
+    out_layer = mt.layer_names[-1] if out_layer is None else out_layer
     z = func(h)
     # jacobian = torch.autograd.functional.jacobian(func, h, vectorize=False)
     jacobian = calculate_jacobian(func, h)

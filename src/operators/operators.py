@@ -90,14 +90,20 @@ class BasisOperator(Operator):
 
         return projection
 
+    def project_to_subspace(self, h: torch.Tensor) -> torch.Tensor:
+        """
+        Projects the input tensor `h` onto the subspace defined by the concept directions.
+        """
+        h = h.to(torch.float32).to(self.device)
+        h = h / h.norm()
+        return self.projection_matrix @ h
+
     def __call__(self, h: torch.Tensor, project_to_subspace: bool = True) -> list[dict]:
         h = h.to(torch.float32).to(self.device)
+        logger.debug(f"{h.device=}, {self.projection_matrix.device=}")
 
         if project_to_subspace:
-            h = h / h.norm()
-            h = self.projection_matrix @ h
-
-        logger.debug(f"{h.device=}, {self.projection_matrix.device=}")
+            h = self.project_to_subspace(h)
 
         similarities = [
             dict(
