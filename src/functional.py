@@ -123,7 +123,6 @@ def logit_lens(
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    free_gpu_cache()
     inputs = mt.tokenizer(
         mt.tokenizer.bos_token, add_special_tokens=False, return_tensors="pt"
     )
@@ -153,7 +152,6 @@ def logit_lens_baukit(
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    free_gpu_cache()
     lnf = baukit.get_module(mt._model, mt.final_layer_norm_name)
     lm_head = baukit.get_module(mt._model, mt.lm_head_name)
     h = untuple(h)
@@ -189,6 +187,8 @@ def forward_pass_to_vocab(
 def patchscope(
     mt: ModelandTokenizer,
     h: torch.Tensor,
+    patchscope_context: str = None,
+    placeholder: str = "x",
     patch_layers: Optional[list[str]] = None,
     return_logits: bool = False,
     **interpret_kwargs,
@@ -196,30 +196,30 @@ def patchscope(
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    placeholder = "x"
-    phrases = [
-        " copy",
-        " Cat",
-        " Java",
-        " transistor",
-        " python",
-        " Leonardo DiCaprio",
-        " The Lion King",
-        " Washington D.C.",
-        " Mount Everest",
-        " computer",
-    ]
-    copy_prompt = "\n".join([f"{p} >{p}" for p in phrases])
-    copy_prompt = f"{copy_prompt}\n {placeholder} >"
-    logger.debug(copy_prompt)
+    if patchscope_context is None:
+        phrases = [
+            " copy",
+            " Cat",
+            " Java",
+            " transistor",
+            " python",
+            " Leonardo DiCaprio",
+            " The Lion King",
+            " Washington D.C.",
+            " Mount Everest",
+            " computer",
+        ]
+        patchscope_context = "\n".join([f"{p} >{p}" for p in phrases])
+        patchscope_context = f"{patchscope_context}\n {placeholder} >"
+        logger.debug(patchscope_context)
 
     input = prepare_input(
         tokenizer=mt,
-        prompts=copy_prompt,
+        prompts=patchscope_context,
         return_offsets_mapping=True,
     )
     placeholder_range = find_token_range(
-        string=copy_prompt,
+        string=patchscope_context,
         substring=placeholder,
         tokenizer=mt.tokenizer,
         occurrence=-1,
@@ -232,7 +232,7 @@ def patchscope(
     )
 
     patch_layers = (
-        [mt.layer_name_format.format(10)] if patch_layers is None else patch_layers
+        [mt.layer_name_format.format(5)] if patch_layers is None else patch_layers
     )
     patches = [
         PatchSpec(
