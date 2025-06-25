@@ -178,6 +178,9 @@ def patch(
         )
 
     # print(f"{inp_state[:, h_idx, :].norm().item()=}")
+    # print(f"{out_state.shape=} | {inp_state.shape=}")
+    if out_state.ndim == 2:
+        out_state = out_state.unsqueeze(0)
     return out_state[:, z_idx].squeeze()
 
 

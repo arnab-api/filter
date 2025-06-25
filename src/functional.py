@@ -187,16 +187,19 @@ def forward_pass_to_vocab(
 def patchscope(
     mt: ModelandTokenizer,
     h: torch.Tensor,
-    patchscope_context: str = None,
+    context: str | None = None,
     placeholder: str = "x",
+    context_tokenized: TokenizerOutput | None = None,
+    placeholder_idx: int | None = None,
     patch_layers: Optional[list[str]] = None,
     return_logits: bool = False,
+    add_orig_latent_to: str | None = None,
     **interpret_kwargs,
 ) -> (
     list[PredictedToken]
     | tuple[list[PredictedToken], dict[int, tuple[int, PredictedToken]]]
 ):
-    if patchscope_context is None:
+    if context is None and context_tokenized is None:
         phrases = [
             " copy",
             " Cat",
@@ -209,45 +212,80 @@ def patchscope(
             " Mount Everest",
             " computer",
         ]
-        patchscope_context = "\n".join([f"{p} >{p}" for p in phrases])
-        patchscope_context = f"{patchscope_context}\n {placeholder} >"
-        logger.debug(patchscope_context)
+        context = "\n".join([f"{p} >{p}" for p in phrases])
+        context = f"{context}\n {placeholder} >"
+        logger.debug(context)
 
-    input = prepare_input(
-        tokenizer=mt,
-        prompts=patchscope_context,
-        return_offsets_mapping=True,
+    if context_tokenized is None:
+        context_tokenized = prepare_input(
+            tokenizer=mt,
+            prompts=context,
+            return_offsets_mapping=True,
+        )
+
+    elif context is None:
+        context = mt.tokenizer.decode(
+            context_tokenized["input_ids"][0], skip_special_tokens=True
+        )
+        logger.debug(f"context: {context}")
+
+    if placeholder_idx is None:
+        placeholder_range = find_token_range(
+            string=context,
+            substring=placeholder,
+            tokenizer=mt.tokenizer,
+            occurrence=-1,
+            offset_mapping=(
+                context_tokenized["offset_mapping"][0]
+                if "offset_mapping" in context_tokenized
+                else None
+            ),
+        )
+        placeholder_idx = placeholder_range[1] - 1
+        # print(context_tokenized)
+        logger.debug(
+            f"placeholder position: {placeholder_idx} | token: \"{mt.tokenizer.decode(context_tokenized['input_ids'][0, placeholder_idx])}\""
+        )
+
+    if "offset_mapping" in context_tokenized:
+        context_tokenized.pop("offset_mapping")
+
+    placeholder_ends = mt.tokenizer.decode(
+        context_tokenized["input_ids"][0, placeholder_idx]
     )
-    placeholder_range = find_token_range(
-        string=patchscope_context,
-        substring=placeholder,
-        tokenizer=mt.tokenizer,
-        occurrence=-1,
-        offset_mapping=input["offset_mapping"][0],
-    )
-    placeholder_pos = placeholder_range[1] - 1
-    input.pop("offset_mapping")
-    logger.debug(
-        f"placeholder position: {placeholder_pos} | token: \"{mt.tokenizer.decode(input['input_ids'][0, placeholder_pos])}\""
-    )
+    if placeholder.strip().endswith(placeholder_ends) is False:
+        logger.warning(
+            f"{placeholder=} does not end with {placeholder_ends=} | {placeholder_idx=}"
+        )
 
     patch_layers = (
         [mt.layer_name_format.format(5)] if patch_layers is None else patch_layers
     )
     patches = [
         PatchSpec(
-            location=(layer_name, placeholder_pos),
+            location=(layer_name, placeholder_idx),
             patch=h,
             clean=None,
+            strategy="replace",
         )
         for layer_name in patch_layers
     ]
+    if add_orig_latent_to is not None:
+        # print("adding")
+        patches.append(
+            PatchSpec(
+                location=(add_orig_latent_to, placeholder_idx),
+                patch=h,
+                clean=None,
+                strategy="add",
+            )
+        )
 
     # print(patches)
 
     logits = get_hs(
         mt=mt,
-        input=input,
+        input=context_tokenized,
         locations=[(mt.lm_head_name, -1)],
         patches=patches,
         return_dict=False,
@@ -361,6 +399,7 @@ class PatchSpec:
     location: tuple[str, int]
     patch: torch.Tensor
     clean: Optional[torch.Tensor] = None
+    strategy: Literal["replace", "add"] = "replace"
 
 
 def generate_with_patch(
@@ -648,7 +687,14 @@ def get_hs(
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
-                current_state[:, index, :] = cur_patch.patch
+                if cur_patch.strategy == "replace":
+                    current_state[:, index, :] = cur_patch.patch
+                elif cur_patch.strategy == "add":
+                    current_state[:, index, :] += cur_patch.patch
+                else:
+                    raise ValueError(
+                        f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
+                    )
 
         for layer_name in layer_names:
             if is_an_attn_head(layer_name) is False:
