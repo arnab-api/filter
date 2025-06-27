@@ -23,7 +23,6 @@ from src.utils.typing import Model
 
 logger = logging.getLogger(__name__)
 
-from typing import Optional
 
 N_LAYER_DICT = {
     "meta-llama/Llama-3.3-70B-Instruct": 80,

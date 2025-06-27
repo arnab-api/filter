@@ -243,9 +243,9 @@ def patchscope(
         )
         placeholder_idx = placeholder_range[1] - 1
         # print(context_tokenized)
-        logger.debug(
-            f"placeholder position: {placeholder_idx} | token: \"{mt.tokenizer.decode(context_tokenized['input_ids'][0, placeholder_idx])}\""
-        )
+        # logger.debug(
+        #     f"placeholder position: {placeholder_idx} | token: \"{mt.tokenizer.decode(context_tokenized['input_ids'][0, placeholder_idx])}\""
+        # )
 
     if "offset_mapping" in context_tokenized:
         context_tokenized.pop("offset_mapping")
