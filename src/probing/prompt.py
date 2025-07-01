@@ -145,6 +145,7 @@ You will be given two people's names. Your job is to determine if they share the
                 "connection": "Yes - they are both German.",
                 "connection_2": "German - they are both German.",
                 "connection_3": "Yes - German - they are both German.",
+                # "connection_3": "Yes - [Shared Nationality] - they are both [shared nationality].",
             },
             "negative": {
                 "format": "No - [person_1] is a [nationality_1] while [person_2] is a [nationality_2]",
@@ -162,7 +163,8 @@ You will be given two people's names. Your job is to determine if they share the
                 "entities": ["Person C", "Person D"],
                 "connection": "Yes - they are both doctors.",
                 "connection_2": "Doctor - they are both doctors.",
-                "connection_3": "Yes - Doctor - they are both doctors.",
+                "connection_3": "Yes - Carpenter - they are both carpenters.",
+                # "connection_3": "Yes - [Shared Profession] - they are both [shared profession].",
             },
             "negative": {
                 "format": "No - [person_1] is a [profession_1] while [person_2] is a [profession_2]",
@@ -181,6 +183,7 @@ You will be given two people's names. Your job is to determine if they share the
                 "connection": "Yes - they both graduated from Boston University.",
                 "connection_2": "Boston University - they both graduated from Boston University.",
                 "connection_3": "Yes - Boston University - they both graduated from Boston University.",
+                # "connection_3": "Yes - [Shared School] - they both graduated from [shared school].",
             },
             "negative": {
                 "format": "No - [person_1] graduated from [school_1] while [person_2] graduated from [school_2]",
