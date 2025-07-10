@@ -1258,7 +1258,9 @@ class Trainer:
         logger.info(f"Starting training for {self.num_epochs} epochs")
 
         # Run the initial evaluation
-        eval_results = self.evaluate()
+        eval_results = self.evaluate(
+            limit_eval_batches=50  # No need to run the full evaluattion. Takes too long
+        )
 
         # Log epoch-level metrics directly to wandb
         if self.log_to_wandb and self.accelerator.is_local_main_process:
@@ -1397,7 +1399,7 @@ class Trainer:
         return self.trainable
 
     @torch.inference_mode()
-    def evaluate(self):
+    def evaluate(self, limit_eval_batches: Optional[int] = None):
         """
         Evaluate the model on the evaluation dataset.
 
@@ -1423,6 +1425,11 @@ class Trainer:
 
             eval_loss += loss.detach()
             num_eval_batches += 1
+            if (
+                limit_eval_batches is not None
+                and num_eval_batches >= limit_eval_batches
+            ):
+                break
 
         # Average loss
         eval_loss = eval_loss / num_eval_batches
