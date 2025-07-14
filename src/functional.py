@@ -738,9 +738,9 @@ def extract_rep_at_pos(
     else:
         input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
 
-    assert total_length >= len(
-        input["input_ids"][0]
-    ), "Total length cannot be smaller than the input length"
+    assert total_length >= len(input["input_ids"][0]), (
+        "Total length cannot be smaller than the input length"
+    )
 
     input = insert_padding_before_pos(
         inp=input,
