@@ -91,7 +91,7 @@ def cache_activations(
             # print(f"{layer_name=} | {cache['outputs'][layer_name].size()}")
             cache["outputs"][layer_name] = (
                 cache["outputs"][layer_name]
-                .mean(dim=1)
+                .mean(dim=1)  #!
                 .cpu()
                 .numpy()
                 .astype(np.float32)
@@ -115,15 +115,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        choices=["meta-llama/Llama-3.1-8B", "meta-llama/Llama-3.1-8B-Instruct"],
+        choices=[
+            "meta-llama/Llama-3.1-8B",
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "meta-llama/Llama-3.3-70B-Instruct",
+        ],
         default="meta-llama/Llama-3.1-8B",
     )
 
     parser.add_argument(
         "--data",
         type=str,
-        choices=["wikimedia/wikipedia"],
-        default="wikimedia/wikipedia",
+        choices=["wikimedia/wikipedia", "NeelNanda/wiki-10k"],
+        default="NeelNanda/wiki-10k",
     )
 
     parser.add_argument(
