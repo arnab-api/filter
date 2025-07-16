@@ -27,12 +27,12 @@ def cache_activations(
     model_name: str,
     data_name: str,
     limit: int = 20000,
-    context_limit: int = 1024,
+    context_limit: int = 256,
     save_dir: str = "cached_states",
 ):
     mt = ModelandTokenizer(
         model_key=model_name,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
     )
 
     cache_dir = os.path.join(
@@ -87,17 +87,29 @@ def cache_activations(
 
         # print(cache["doc"])
         # print(f"{cache['input_ids'].shape=} | {cache['attention_mask'].shape=}")
-        for layer_name in all_layers:
-            # print(f"{layer_name=} | {cache['outputs'][layer_name].size()}")
-            cache["outputs"][layer_name] = (
-                cache["outputs"][layer_name]
-                .mean(dim=1)  #!
-                .cpu()
-                .numpy()
-                .astype(np.float32)
-            )
         cache_path = os.path.join(cache_dir, f"{doc_index}")
-        np.savez_compressed(cache_path, allow_pickle=True, **cache)
+        save_dict = {
+            "doc": cache["doc"],
+            "input_ids": cache["input_ids"],
+            "attention_mask": cache["attention_mask"],
+            "outputs": {
+                layer_name: cache["outputs"][layer_name] for layer_name in all_layers
+            },
+        }
+        torch.save(save_dict, f"{cache_path}.pt")
+
+        # for layer_name in all_layers:
+        #     print(f"{layer_name=} | {cache['outputs'][layer_name].size()}")
+        #     cache["outputs"][layer_name] = (
+        #         cache["outputs"][layer_name]
+        #         .to(torch.float32)
+        #         # .mean(dim=1)  #!
+        #         .cpu()
+        #         .numpy()
+        #     )
+
+        # logger.debug("saving")
+        # np.savez_compressed(cache_path, allow_pickle=True, **cache)
 
         free_gpu_cache()
 
@@ -116,6 +128,7 @@ if __name__ == "__main__":
         "--model",
         type=str,
         choices=[
+            "meta-llama/Llama-3.2-3B",
             "meta-llama/Llama-3.1-8B",
             "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
