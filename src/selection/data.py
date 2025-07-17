@@ -50,7 +50,7 @@ Ans:"""
 
     @property
     def prompt(self) -> str:
-        options_str = ", ".join(f'"{opt}"' for opt in self.options)
+        options_str = ", ".join(f"{opt}" for opt in self.options)
         return self.prompt_template.format(self.subj, options_str)
 
 
