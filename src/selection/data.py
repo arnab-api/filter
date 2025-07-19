@@ -73,6 +73,19 @@ class SelectionPatchingResult(DataClassJsonMixin):
     results: dict[str, LayerwiseResult]
 
 
+@dataclass
+class SelectionPatchingResult_Multi(DataClassJsonMixin):
+    patch_sample_1: SelectionSample
+    patch_sample_2: SelectionSample
+    patch_prompt: str
+
+    clean_sample_1: SelectionSample
+    clean_sample_2: SelectionSample
+    clean_prompt: str
+
+    results: dict[str, LayerwiseResult]
+
+
 def load_people_by_category(
     tokenizer: Tokenizer,
     path: PathLike = os.path.join(DEFAULT_DATA_DIR, "profession.json"),
@@ -93,8 +106,8 @@ def get_random_sample(
     n_distractors: int = 5,
     filter_by_lm_prediction: bool = True,
     obj_idx: int | None = None,
-    get_alt_obj: bool = False,  # useful for the patching sample
-    exclude_objs: Sequence[str] = [],  #!
+    get_alt_obj: bool = False,  # TODO(arnab): Need to check accuracy with the alt obj as well
+    exclude_objs: Sequence[str] = [],
     exclude_distractor_categories: Sequence[str] = [],
     insert_distractor: Sequence[tuple[str, int]] = [],
 ) -> SelectionSample:
