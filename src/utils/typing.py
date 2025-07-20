@@ -117,7 +117,7 @@ class SVD:
     def calculate(matrix: torch.Tensor):
         n, d = matrix.shape
         if n >= d:
-            U, S, V = torch.svd(matrix.to(dtype=torch.float32), full_matrices=False)
+            U, S, V = torch.svd(matrix.to(dtype=torch.float32))
         else:
             U, S, V = torch.linalg.svd(
                 matrix.to(dtype=torch.float32), full_matrices=True

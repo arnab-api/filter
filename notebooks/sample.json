@@ -1,59 +1,59 @@
 {
-  "subj": "Ryan Reynolds",
-  "obj": "Angelina Jolie",
+  "subj": "Al Pacino",
+  "obj": "Chris Hemsworth",
   "obj_idx": 3,
   "options": [
-    "David Fincher",
-    "David Remnick",
-    "Maria Grazia Chiuri",
-    "Angelina Jolie",
-    "Chuck Schumer",
-    "David Baldacci"
+    "Ariana Grande",
+    "Derrick Henry",
+    "Warren Buffett",
+    "Chris Hemsworth",
+    "Harry Kane",
+    "Jimmy Butler"
   ],
   "prompt_template": "Which person from the following list has the profession in common with {}?\nOptions: {}.\nAns:",
   "prediction": [
     {
-      "token": " Angel",
-      "prob": 0.6640625,
-      "logit": 19.125,
-      "token_id": 23950,
-      "metadata": null
-    },
-    {
-      "token": " David",
-      "prob": 0.08984375,
-      "logit": 17.125,
-      "token_id": 6941,
-      "metadata": null
-    },
-    {
-      "token": " None",
-      "prob": 0.04248046875,
-      "logit": 16.375,
-      "token_id": 2290,
+      "token": " Chris",
+      "prob": 0.7421875,
+      "logit": 20.375,
+      "token_id": 11517,
       "metadata": null
     },
     {
       "token": " The",
-      "prob": 0.04248046875,
-      "logit": 16.375,
+      "prob": 0.060791015625,
+      "logit": 17.875,
       "token_id": 578,
       "metadata": null
     },
     {
-      "token": " Ryan",
-      "prob": 0.032958984375,
-      "logit": 16.125,
-      "token_id": 13960,
+      "token": " Ari",
+      "prob": 0.032470703125,
+      "logit": 17.25,
+      "token_id": 42626,
+      "metadata": null
+    },
+    {
+      "token": " None",
+      "prob": 0.032470703125,
+      "logit": 17.25,
+      "token_id": 2290,
+      "metadata": null
+    },
+    {
+      "token": " Al",
+      "prob": 0.032470703125,
+      "logit": 17.25,
+      "token_id": 1708,
       "metadata": null
     }
   ],
-  "obj_token_id": 23950,
+  "obj_token_id": 11517,
   "metadata": {
     "category": "actor",
     "alt_obj": [
-      "Julia Roberts",
-      40394
+      "Meryl Streep",
+      386
     ],
     "tokenized": {
       "input_ids": [
@@ -71,36 +71,31 @@
           304,
           4279,
           449,
-          13960,
-          46172,
+          1708,
+          12925,
+          3394,
           5380,
           3883,
           25,
-          6941,
-          5767,
-          9211,
+          42626,
+          3444,
+          37623,
           11,
-          6941,
-          5031,
-          21035,
+          73189,
+          18063,
           11,
-          23880,
-          94030,
-          689,
-          34382,
-          6198,
+          26713,
+          86552,
           11,
-          23950,
-          2259,
-          622,
-          62117,
+          11517,
+          33924,
+          61831,
           11,
-          34349,
-          65771,
+          14253,
+          46656,
           11,
-          6941,
-          40202,
-          35703,
+          28933,
+          38325,
           627,
           70699,
           25
@@ -108,11 +103,6 @@
       ],
       "attention_mask": [
         [
-          1,
-          1,
-          1,
-          1,
-          1,
           1,
           1,
           1,
