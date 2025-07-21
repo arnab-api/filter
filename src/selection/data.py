@@ -27,7 +27,7 @@ class SelectionSample(DataClassJsonMixin):
     obj_idx: int
     options: Sequence[str]
     prompt_template: str = """Which person from the following list has the profession in common with {}?
-Options: {}.
+Options: {}
 Ans:"""
     prediction: Optional[Sequence[PredictedToken]] = None
     obj_token_id: Optional[int] = None

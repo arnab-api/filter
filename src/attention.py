@@ -144,25 +144,46 @@ def get_attention_matrices(
     )
 
 
+def visualize_attn_matrix(
+    attn_matrix: torch.Tensor,
+    tokens: list[str],
+    q_index: int = -1,
+    start_from: int = 1,
+):
+    assert len(tokens) == attn_matrix.shape[-1]
+    attn_matrix = attn_matrix.squeeze()[q_index][start_from:]
+    tokens = tokens[start_from:]
+    display(colored_tokens(tokens=tokens, values=attn_matrix))
+
+
 def visualize_average_attn_matrix(
     mt: ModelandTokenizer,
     attn_matrices: dict,
-    prompt: ProbingPrompt | str,
+    prompt: str,
+    tokenized: Optional[TokenizerOutput] = None,
     layer_window: list | None = None,
     q_index: int = -1,
     remove_bos: bool = True,
     start_from: int | str | None = None,
 ):
-    inputs = TokenizerOutput(data=prompt.tokenized)
+    if tokenized is None:
+        tokenized = prepare_input(
+            prompts=prompt, tokenizer=mt, return_offsets_mapping=True
+        )
     if start_from is None:
         start_from = 1 if remove_bos else 0
     elif isinstance(start_from, str):
+        offset_mapping = (
+            tokenized.pop("offset_mapping")[0]
+            if "offset_mapping" in tokenized
+            else None
+        )
         start_from = (
             find_token_range(
                 string=prompt.prompt,
                 substring="#",
                 tokenizer=mt,
-                offset_mapping=inputs.offset_mapping[0],
+                offset_mapping=offset_mapping,
                 occurrence=-1,
             )[1]
             - 1
@@ -188,7 +209,7 @@ def visualize_average_attn_matrix(
 
         tokens = [
             mt.tokenizer.decode(t, skip_special_tokens=False)
-            for t in inputs["input_ids"][0]
+            for t in tokenized["input_ids"][0]
         ][start_from:]
         for idx, t in enumerate(tokens):
             if t == "<think>":
