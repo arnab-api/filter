@@ -112,17 +112,22 @@ def get_attention_matrices(
                         "patching not supported yet for attn heads"
                     )
                 module = get_module_nnsight(mt, module_name)
+                # print(module_name, module)
                 current_state = (
                     module.output.save()
-                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    if (
+                        "mlp" in module_name
+                        or module_name == mt.embedder_name
+                        or "layernorm" in module_name
+                    )
                     else module.output[0].save()
                 )
                 current_state[:, index, :] = cur_patch.patch
         output = mt.model.output.save()
         logits = mt.output.logits[0][-1].save()
 
-    print(output.keys())
-    print(logits.shape)
+    # print(output.keys())
+    # print(logits.shape)
     output.attentions = [attn.cuda() for attn in output.attentions]
     attentions = torch.vstack(output.attentions)  # (layers, heads, tokens, tokens)
     if value_weighted:
@@ -135,7 +140,7 @@ def get_attention_matrices(
         values = repeat_kv(
             values, n_rep=mt.model.layers[0].self_attn.num_key_value_groups
         )
-        logger.debug(f"{attentions.shape=} | {values.shape=}")
+        # logger.debug(f"{attentions.shape=} | {values.shape=}")
         attentions = torch.einsum("abcd,abd->abcd", attentions, values.norm(dim=-1))
     return AttentionInformation(
         tokenized_prompt=[mt.tokenizer.decode(tok) for tok in input.input_ids[0]],
