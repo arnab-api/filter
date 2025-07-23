@@ -156,8 +156,8 @@ def attn_per_head(
     b, q_len, n_head, h_dim = attn_output.size()
     o_proj_weight_split = o_proj.weight.view(o_proj.out_features, n_head, h_dim)
 
-    # print(f"{o_proj_weight_split.size()=}")
-    # print(f"{attn_output.size()=}")
+    print(f"{o_proj_weight_split.size()=}")
+    print(f"{attn_output.size()=}")
 
     per_head_contributions = []
     for head_idx in range(n_head):
@@ -307,7 +307,7 @@ def LlamaAttentionPatcher(
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        # logger.debug(f"LlamaAttentionPatcher <> {block_name}")
+        logger.debug(f"LlamaAttentionPatcher <> {block_name}")
 
         if kwargs.get("output_attentions", True):
             raise NotImplementedError(
@@ -316,7 +316,7 @@ def LlamaAttentionPatcher(
 
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
-        # print(f"{hidden_shape=} | {input_shape=} | {hidden_states.shape}")
+        logger.debug(f"{hidden_shape=} | {input_shape=} | {hidden_states.shape}")
 
         batch_size, q_len = input_shape
         d_model = hidden_states.size(-1)
@@ -338,6 +338,9 @@ def LlamaAttentionPatcher(
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        logger.debug(
+            f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
+        )
 
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(

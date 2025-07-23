@@ -210,9 +210,11 @@ def find_token_range(
             continue
         if token_start is None:
             if token_char_start <= char_start and token_char_end >= char_start:
+                # if token_char_start <= char_start and token_char_end > char_start:
                 token_start = index
         if token_end is None:
             if token_char_start <= char_end and token_char_end >= char_end:
+                # if token_char_start < char_end and token_char_end > char_start:
                 token_end = index
                 break
 
@@ -223,6 +225,29 @@ def find_token_range(
     assert token_end is not None
     assert token_start <= token_end
     return (token_start, token_end + 1)
+
+
+#! A bug in the find_token_range function
+# * Prepending a " " before the substring will add an extra token
+# test_string = "A quick brown fox jumps over the lazy dog."
+# test_substring = " fox"
+# test_tokenized = prepare_input(
+#     tokenizer=mt.tokenizer,
+#     prompts=test_string,
+#     return_offsets_mapping=True,
+# )
+# test_offsets = test_tokenized.pop("offset_mapping")[0]
+# test_range = find_token_range(
+#     string=test_string,
+#     substring=test_substring,
+#     tokenizer=mt.tokenizer,
+#     offset_mapping=test_offsets,
+#     occurrence=0,
+# )
+
+# print(
+#     f"Test range: {test_range}, \"{mt.tokenizer.decode(test_tokenized['input_ids'][0][test_range[0]:test_range[1]])}\""
+# )
 
 
 def insert_padding_before_pos(
