@@ -19,15 +19,15 @@ from src.selection.utils import KeyedSet, get_first_token_id
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SelectionSample(DataClassJsonMixin):
     subj: str
     obj: str
     obj_idx: int
     options: Sequence[str]
-    prompt_template: str = """Which person from the following list has the profession in common with {}?
-Options: {}
+    category: str
+    prompt_template: str = """Which person from the following list has the {} in common with {}?
+Options: {}.
 Ans:"""
     prediction: Optional[Sequence[PredictedToken]] = None
     obj_token_id: Optional[int] = None
@@ -47,12 +47,11 @@ Ans:"""
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
-
+    
     @property
     def prompt(self) -> str:
         options_str = ", ".join(f"{opt}" for opt in self.options)
-        return self.prompt_template.format(self.subj, options_str)
-
+        return self.prompt_template.format(self.category, self.subj, options_str)
 
 @dataclass
 class ObjectwiseResult:
@@ -85,23 +84,31 @@ class SelectionPatchingResult_Multi(DataClassJsonMixin):
 
     results: dict[str, LayerwiseResult]
 
-
 def load_people_by_category(
     tokenizer: Tokenizer,
-    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "profession.json"),
+    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "synthetic_entities/64/profiles.json"),
+    category: str = "occupation"
 ):
     """Load people by profession from a JSON file."""
     with open(path, "r") as f:
         data = json.load(f)
-    people_by_category = {k: KeyedSet(v, tokenizer=tokenizer) for k, v in data.items()}
+    
+    entity_by_category = defaultdict(list)
+    for entity in data:
+        entity_by_category[entity[category]].append(entity['name'])
+
+    people_by_category = {
+        k: KeyedSet(v, tokenizer=tokenizer) for k, v in entity_by_category.items()
+    }
+    
     logger.info(f"Loaded {len(people_by_category)} categories")
     return people_by_category
-
 
 def get_random_sample(
     people_by_category: dict[str, KeyedSet],
     mt: ModelandTokenizer,
-    category: str | None = None,
+    category: str,
+    attribute: str | None = None,
     subj: str | None = None,
     n_distractors: int = 5,
     filter_by_lm_prediction: bool = True,
@@ -110,19 +117,20 @@ def get_random_sample(
     exclude_objs: Sequence[str] = [],
     exclude_distractor_categories: Sequence[str] = [],
     insert_distractor: Sequence[tuple[str, int]] = [],
+    retry_count: int = 0,
 ) -> SelectionSample:
     """
-    Get a random sample from the specified category.
+    Get a random sample with the specified attribute.
     """
 
     tokenizer = unwrap_tokenizer(mt)
     if not people_by_category:
         load_people_by_category(tokenizer)
 
-    category = category or random.choice(list(people_by_category.keys()))
-    if category not in people_by_category:
+    attribute = attribute or random.choice(list(people_by_category.keys()))
+    if attribute not in people_by_category:
         raise ValueError(
-            f"Category '{category}' not found in {people_by_category.keys()}."
+            f"Attribute '{attribute}' not found in {people_by_category.keys()}."
         )
     kwargs = {
         "subj": subj,
@@ -131,14 +139,14 @@ def get_random_sample(
     # print(f"Category: {category}")
     # print(people_by_category[category].values)
     subj = (
-        random.choice(list(people_by_category[category].values))
+        random.choice(list(people_by_category[attribute].values))
         if subj is None
         else subj
     )
     # logger.debug(f"{subj=}")
     obj = random.choice(
         (
-            people_by_category[category]
+            people_by_category[attribute]
             - KeyedSet([subj] + exclude_objs, tokenizer=tokenizer)
         ).values
     )
@@ -149,10 +157,10 @@ def get_random_sample(
 
     obj_arr = [obj]
     if get_alt_obj:
-        # Get an alternative object from the same category
+        # Get an alternative object with the same attribute
         alt_obj = random.choice(
             (
-                people_by_category[category]
+                people_by_category[attribute]
                 - KeyedSet([subj, obj] + exclude_objs, tokenizer=tokenizer)
             ).values
         )
@@ -162,17 +170,17 @@ def get_random_sample(
 
     distractors = []
     obj_set = KeyedSet(obj_arr + exclude_objs, tokenizer=tokenizer)
-    other_categories = random.sample(
+    other_attributes = random.sample(
         list(
             set(people_by_category.keys())
-            - set([category] + exclude_distractor_categories)
+            - set([attribute] + exclude_distractor_categories)
         ),
         k=n_distractors,
     )
     # print(other_categories)
-    for other_category in other_categories:
+    for other_attribute in other_attributes:
         distractors.append(
-            random.choice((people_by_category[other_category] - obj_set).values)
+            random.choice((people_by_category[other_attribute] - obj_set).values)
         )
 
     options = distractors[:obj_idx] + [obj] + distractors[obj_idx:]
@@ -182,7 +190,7 @@ def get_random_sample(
         options[idx] = dist
     # logger.debug(f"{options=}")
 
-    metadata = {"category": category}
+    metadata = {"attribute": attribute}
     if get_alt_obj:
         alt_obj_token_id = get_first_token_id(alt_obj, tokenizer, prefix=" ")
         metadata["alt_obj"] = (alt_obj, alt_obj_token_id)
@@ -191,15 +199,17 @@ def get_random_sample(
         obj=obj,
         obj_idx=obj_idx,
         options=options,
+        category=category,
         obj_token_id=obj_token_id,
         metadata=metadata,
     )
 
     if filter_by_lm_prediction:
         prompt = sample.prompt
+        logger.info(f"\nPrompt: {prompt}")
         inputs = prepare_input(prompts=prompt, tokenizer=mt)
         sample.metadata["tokenized"] = inputs.data
-
+        
         predictions = predict_next_token(
             mt=mt,
             inputs=inputs,
@@ -207,8 +217,8 @@ def get_random_sample(
         if predictions[0].token_id != obj_token_id:
             logger.error(
                 f"""Sample = {sample}
-Top prediction {predictions[0]} does not match the object {obj}[{obj_token_id}, \"{mt.tokenizer.decode(obj_token_id)}\"].
-Retrying ...
+Top prediction {predictions[0]} does not match the object {obj}[{obj_token_id}, "{mt.tokenizer.decode(obj_token_id)}"].
+Retry count: {retry_count + 1}. Retrying ...
 """
             )
             return get_random_sample(
@@ -218,12 +228,15 @@ Retrying ...
                 get_alt_obj=get_alt_obj,
                 filter_by_lm_prediction=filter_by_lm_prediction,
                 category=category,
+                attribute=attribute,
                 exclude_objs=exclude_objs,
                 exclude_distractor_categories=exclude_distractor_categories,
                 insert_distractor=insert_distractor,
+                retry_count=retry_count + 1,
                 **kwargs,
             )
 
         sample.prediction = predictions
 
+    sample.metadata["retry_count"] = retry_count
     return sample
