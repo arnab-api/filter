@@ -3,21 +3,16 @@ import json
 import logging
 import os
 
-import numpy as np
 import torch
 import transformers
 
-from src.functional import free_gpu_cache, get_hs, detensorize
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample
-from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.experiment_utils import set_seed
-from src.utils.training_utils import TrainableLM_delta, TrainableLM_LoRA
 from src.selection.data import load_people_by_category
 from src.selection.data import SelectionSample, get_random_sample
 from src.functional import predict_next_token
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass
 from src.utils.typing import PredictedToken
 from dataclasses_json import DataClassJsonMixin
 
@@ -50,9 +45,10 @@ def test_selection_with_real_entities(
     save_step: int = 5,
 ):
     """Cache last token states for selection samples."""
-    people_by_category = load_people_by_category(
-        tokenizer=mt.tokenizer,
-    )  #! merge gio's pull request and use attribute_type
+    # TODO(gio): add support for other attribute types
+    # TODO(gio): add some logic for conflicting cases (e.g. like a journalist who is also a author. or a politician who is also a lawyer)
+    # Maybe just excluding certain attributes will work? Check `exclude_distractor_categories` in `get_random_sample`
+    people_by_category = load_people_by_category(tokenizer=mt.tokenizer)
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -81,7 +77,9 @@ def test_selection_with_real_entities(
             )
         )
         if len(results) % save_step == 0 or len(results) == limit:
-            logger.info(f"Cached {len(results)} samples so far, {n_correct} correct.")
+            logger.info(
+                f"Cached {len(results)} samples so far, accuracy={n_correct / len(results) : .3f}  ({n_correct}/{len(results)})."
+            )
             with open(os.path.join(save_dir, f"results.json"), "w") as f:
                 json.dump(
                     dict(
@@ -94,6 +92,8 @@ def test_selection_with_real_entities(
                 )
 
 
+#! python -m test_suite.test_01_real_entities --model="meta-llama/Llama-3.3-70B-Instruct" --limit="1000"
+#! append "|& tee <log_path>" to save execution logs
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Cache selection states for language models"

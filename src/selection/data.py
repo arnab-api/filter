@@ -19,13 +19,14 @@ from src.selection.utils import KeyedSet, get_first_token_id
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class SelectionSample(DataClassJsonMixin):
     subj: str
     obj: str
     obj_idx: int
     options: Sequence[str]
-    category: str
+    category: str = "occupation"
     prompt_template: str = """Which person from the following list has the {} in common with {}?
 Options: {}.
 Ans:"""
@@ -47,11 +48,12 @@ Ans:"""
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
-    
+
     @property
     def prompt(self) -> str:
         options_str = ", ".join(f"{opt}" for opt in self.options)
         return self.prompt_template.format(self.category, self.subj, options_str)
+
 
 @dataclass
 class ObjectwiseResult:
@@ -84,30 +86,46 @@ class SelectionPatchingResult_Multi(DataClassJsonMixin):
 
     results: dict[str, LayerwiseResult]
 
+
 def load_people_by_category(
     tokenizer: Tokenizer,
-    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "synthetic_entities/64/profiles.json"),
-    category: str = "occupation"
+    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "profession.json"),
 ):
     """Load people by profession from a JSON file."""
     with open(path, "r") as f:
         data = json.load(f)
-    
+    people_by_category = {k: KeyedSet(v, tokenizer=tokenizer) for k, v in data.items()}
+    logger.info(f"Loaded {len(people_by_category)} categories")
+    return people_by_category
+
+
+def load_people_by_category_fakeverse(
+    tokenizer: Tokenizer,
+    path: PathLike = os.path.join(
+        DEFAULT_DATA_DIR, "synthetic_entities/64/profiles.json"
+    ),
+    category: str = "occupation",
+):
+    """Load people by profession from a JSON file."""
+    with open(path, "r") as f:
+        data = json.load(f)
+
     entity_by_category = defaultdict(list)
     for entity in data:
-        entity_by_category[entity[category]].append(entity['name'])
+        entity_by_category[entity[category]].append(entity["name"])
 
     people_by_category = {
         k: KeyedSet(v, tokenizer=tokenizer) for k, v in entity_by_category.items()
     }
-    
+
     logger.info(f"Loaded {len(people_by_category)} categories")
     return people_by_category
+
 
 def get_random_sample(
     people_by_category: dict[str, KeyedSet],
     mt: ModelandTokenizer,
-    category: str,
+    category: str = "occupation",
     attribute: str | None = None,
     subj: str | None = None,
     n_distractors: int = 5,
@@ -125,7 +143,7 @@ def get_random_sample(
 
     tokenizer = unwrap_tokenizer(mt)
     if not people_by_category:
-        load_people_by_category(tokenizer)
+        load_people_by_category_fakeverse(tokenizer, category=category)
 
     attribute = attribute or random.choice(list(people_by_category.keys()))
     if attribute not in people_by_category:
@@ -209,7 +227,7 @@ def get_random_sample(
         logger.info(f"\nPrompt: {prompt}")
         inputs = prepare_input(prompts=prompt, tokenizer=mt)
         sample.metadata["tokenized"] = inputs.data
-        
+
         predictions = predict_next_token(
             mt=mt,
             inputs=inputs,
