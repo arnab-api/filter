@@ -2,7 +2,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
+import random
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -294,7 +294,7 @@ def get_context_templates(
                 (
                     generate_with_patch(
                         mt=mt,
-                        inputs="",
+                        inputs=random.choice(["A", "The", "This", "That"]),
                         n_gen_per_prompt=n_gen,
                         max_new_tokens=length,
                     )
