@@ -199,7 +199,7 @@ def compute_v(
         # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
         loss = nll_loss + kl_loss + weight_decay
         logger.info(
-            f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
+            f"({it=}) loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
             f"avg prob of [{request['target_new']['str']}] "
             f"{avg_prob:.5f}"
         )
@@ -209,7 +209,7 @@ def compute_v(
         if it == hparams.v_num_grad_steps - 1:
             break
 
-        if it > 12 and avg_prob > 0.90:
+        if it > 25 and avg_prob > 0.80:
             break
 
         # Backpropagate
