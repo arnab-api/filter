@@ -145,7 +145,10 @@ def compute_v(
     logger.debug(f"Optimizing delta of shape {delta.shape} at layer {layer}")
 
     # Execute optimization
-    for it in range(hparams.v_num_grad_steps):
+    LIMIT = hparams.v_num_grad_steps
+    it = 0
+    while it <= LIMIT:
+        it = it + 1
         opt.zero_grad()
 
         # Forward propagation
@@ -206,8 +209,16 @@ def compute_v(
         if loss < 5e-2:
             break
 
-        if it == hparams.v_num_grad_steps - 1:
-            break
+        if it == hparams.v_num_grad_steps:
+            if avg_prob < 0.3:
+                logger.warning(
+                    f"Loss is still high ({loss.item()}) at the last iteration. "
+                    f"Avg prob of [{request['target_new']['str']}] is {avg_prob:.5f}. "
+                    "Optimization will continue for 10 more steps."
+                )
+                LIMIT = it + 10
+            else:
+                break
 
         if it > 25 and avg_prob > 0.80:
             break
