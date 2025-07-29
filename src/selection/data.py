@@ -27,7 +27,7 @@ class SelectionSample(DataClassJsonMixin):
     obj_idx: int
     options: Sequence[str]
     category: str = "occupation"
-    prompt_template: str = """Which person from the following list has the {} in common with {}?
+    prompt_template: str = """Which person from the following list has their {} in common with {}?
 Options: {}.
 Ans:"""
     prediction: Optional[Sequence[PredictedToken]] = None
@@ -89,7 +89,7 @@ class SelectionPatchingResult_Multi(DataClassJsonMixin):
 
 def load_people_by_category(
     tokenizer: Tokenizer,
-    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "profession.json"),
+    path: PathLike = os.path.join(DEFAULT_DATA_DIR, "selection_real/profession.json"),
 ):
     """Load people by profession from a JSON file."""
     with open(path, "r") as f:
@@ -224,7 +224,7 @@ def get_random_sample(
 
     if filter_by_lm_prediction:
         prompt = sample.prompt
-        logger.info(f"\nPrompt: {prompt}")
+        # logger.info(f"\nPrompt: {prompt}")
         inputs = prepare_input(prompts=prompt, tokenizer=mt)
         sample.metadata["tokenized"] = inputs.data
 
