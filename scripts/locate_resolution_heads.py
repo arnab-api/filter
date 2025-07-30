@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 from dataclasses import dataclass
@@ -150,7 +149,10 @@ def get_attention_pattern_for_selection_sample(
     add_value_weighted: bool = False,
 ):
     tokenized = prepare_input(
-        tokenizer=mt, prompts=sample.prompt, return_offsets_mapping=True
+        tokenizer=mt,
+        prompts=sample.prompt,
+        return_offsets_mapping=True,
+        # add_bos_token="qwen" in mt.name.lower(), #! adding a bos token messes with the offsets
     )
     offsets = tokenized.pop("offset_mapping")[0]
     options_ranges = []
@@ -196,6 +198,13 @@ def cache_attention_patterns_for_selection_samples(
     people_by_category = load_people_by_category(tokenizer=mt.tokenizer)
     os.makedirs(save_dir, exist_ok=True)
 
+    test_head_map = {
+        "meta-llama/Llama-3.3-70B-Instruct": (35, 19),
+        "Qwen/Qwen2.5-72B-Instruct": (54, 44),
+    }
+
+    layer_idx, head_idx = test_head_map.get(mt.name, (0, 0))
+
     sample_idx = 0
     for sample_idx in range(limit):
         logger.info(f"Processing sample {sample_idx + 1}/{limit}")
@@ -214,7 +223,10 @@ def cache_attention_patterns_for_selection_samples(
             sample=sample,
             add_value_weighted=True,
         )
-        logger.debug(f"{attn_pattern.resolution_score(layer_idx=35, head_idx=19)=}")
+
+        logger.debug(
+            f"{attn_pattern.resolution_score(layer_idx=layer_idx, head_idx=head_idx)=}"
+        )
         attn_pattern = detensorize(attn_pattern, to_numpy=True)
 
         file_path = os.path.join(save_dir, f"sample_{sample_idx:04d}.npz")
@@ -235,9 +247,9 @@ if __name__ == "__main__":
         type=str,
         choices=[
             "meta-llama/Llama-3.2-3B",
-            "meta-llama/Llama-3.1-8B",
             "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
+            "Qwen/Qwen2.5-72B-Instruct",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",

@@ -4,7 +4,9 @@ from typing import Optional
 
 import numpy as np
 import torch
+from circuitsvis.tokens import colored_tokens
 from dataclasses_json import DataClassJsonMixin
+from IPython.display import display
 
 from src.functional import (
     PatchSpec,
@@ -12,12 +14,9 @@ from src.functional import (
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.utils.typing import TokenizerOutput, Tokenizer
-from src.tokens import find_token_range
-from circuitsvis.tokens import colored_tokens
-from IPython.display import display
 from src.probing.prompt import ProbingPrompt
-
+from src.tokens import find_token_range
+from src.utils.typing import Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +175,11 @@ def visualize_average_attn_matrix(
             prompts=prompt, tokenizer=mt, return_offsets_mapping=True
         )
     if start_from is None:
-        start_from = 1 if remove_bos else 0
+        start_from = (
+            1
+            if remove_bos and tokenized["input_ids"][0][0] == mt.tokenizer.bos_token_id
+            else 0
+        )
     elif isinstance(start_from, str):
         offset_mapping = (
             tokenized.pop("offset_mapping")[0]

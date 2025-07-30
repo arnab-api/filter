@@ -1,14 +1,14 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Literal
 
+import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
-import numpy as np
 
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, prepare_input
-from typing import Literal
 
 logger = logging.getLogger(__name__)
 

@@ -3,19 +3,17 @@ import logging
 import os
 import random
 from collections import defaultdict
-from dataclasses import dataclass, field, fields
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 from dataclasses_json import DataClassJsonMixin
-from torch.utils.data import Dataset
 
+from src.functional import detensorize, predict_next_token
+from src.models import ModelandTokenizer, unwrap_tokenizer
+from src.selection.utils import KeyedSet, get_first_token_id
+from src.tokens import prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike, PredictedToken, Tokenizer
-from src.models import ModelandTokenizer, unwrap_tokenizer
-from src.tokens import prepare_input
-from src.functional import detensorize, predict_next_token
-from src.selection.utils import KeyedSet, get_first_token_id
 
 logger = logging.getLogger(__name__)
 
