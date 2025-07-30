@@ -90,8 +90,16 @@ class SelectionPatchingResult_Multi(DataClassJsonMixin):
 def load_people_by_category(
     tokenizer: Tokenizer,
     path: PathLike = os.path.join(DEFAULT_DATA_DIR, "selection_real/profession.json"),
+    category: str = None,
 ):
     """Load people by profession from a JSON file."""
+    if category == "profession":
+        path = os.path.join(DEFAULT_DATA_DIR, "profession.json")
+    elif category == "nationality":
+        path = os.path.join(DEFAULT_DATA_DIR, "nationality.json")
+    elif category:
+        path = os.path.join(DEFAULT_DATA_DIR, f"{category}.json")
+
     with open(path, "r") as f:
         data = json.load(f)
     people_by_category = {k: KeyedSet(v, tokenizer=tokenizer) for k, v in data.items()}
