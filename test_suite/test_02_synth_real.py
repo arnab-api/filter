@@ -7,13 +7,14 @@ import torch
 import transformers
 
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample
+from src.selection.data import SelectionSample, get_random_sample_mixed
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.selection.data import load_people_by_category
+from src.selection.data import load_people_by_category, load_people_by_category_fakeverse
 from src.selection.data import SelectionSample, get_random_sample
-from src.functional import predict_next_token
+from src.functional import predict_next_token, free_gpu_cache
 from dataclasses import dataclass
 from src.utils.typing import PredictedToken
+from src.utils.training_utils import TrainableLM_delta
 from dataclasses_json import DataClassJsonMixin
 
 
@@ -36,30 +37,39 @@ class SelectionResults(DataClassJsonMixin):
 
 
 @torch.inference_mode()
-def test_selection_with_real_entities(
+def test_selection_with_mixed_entities(
     mt: ModelandTokenizer,
     limit: int = 12,
     attribute_type: str = "profession",
     save_dir: str | None = None,
     n_distractors: int = 5,
     save_step: int = 5,
+    synth_pivot: bool = True
 ):
     """Cache last token states for selection samples."""
-    # TODO(gio): add support for other attribute types
-    # TODO(gio): add some logic for conflicting cases (e.g. like a journalist who is also a author. or a politician who is also a lawyer)
-    # Maybe just excluding certain attributes will work? Check `exclude_distractor_categories` in `get_random_sample`
-    people_by_category = load_people_by_category(tokenizer=mt.tokenizer)
+    real_people_by_category = load_people_by_category(
+        tokenizer=mt.tokenizer,
+        category=attribute_type,
+    )
+
+    synth_people_by_category = load_people_by_category_fakeverse(
+        tokenizer=mt.tokenizer,
+        category="occupation",
+    )
 
     os.makedirs(save_dir, exist_ok=True)
 
     results = []
     n_correct = 0
     while len(results) < limit:
-        sample = get_random_sample(
-            people_by_category=people_by_category,
+        sample = get_random_sample_mixed(
+            real_people_by_category=real_people_by_category,
+            synth_people_by_category=synth_people_by_category,
             mt=mt,
             n_distractors=n_distractors,
             filter_by_lm_prediction=False,
+            exclude_distractor_categories=["news anchor", "journalist", "entrepreneur", "comedian"],
+            synth_pivot=synth_pivot,
         )
         prediction, track_ans = predict_next_token(
             mt=mt, inputs=sample.prompt, k=5, token_of_interest=[sample.obj_token_id]
@@ -80,7 +90,8 @@ def test_selection_with_real_entities(
             logger.info(
                 f"Cached {len(results)} samples so far, accuracy={n_correct / len(results) : .3f}  ({n_correct}/{len(results)})."
             )
-            with open(os.path.join(save_dir, f"results.json"), "w") as f:
+            file_name = f"{attribute_type}_synth_subj_results.json" if synth_pivot else f"{attribute_type}_real_subj_results.json"
+            with open(os.path.join(save_dir, file_name), "w") as f:
                 json.dump(
                     dict(
                         accuracy=n_correct / len(results),
@@ -124,7 +135,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="selection/test_1_real",
+        default="selection/test_2_mixed",
         help="Directory to save test results",
     )
 
@@ -149,6 +160,13 @@ if __name__ == "__main__":
         help="Save results every N samples",
     )
 
+    parser.add_argument(
+        "--synth_pivot",
+        type=lambda x: x.lower() in ('true', '1', 'yes', 'on'),
+        default=True,
+        help="Flag to make synthetic entity the pivot or the target (pass True or False)"
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -167,23 +185,23 @@ if __name__ == "__main__":
         # )
     )
 
-    # # fusing the trained deltas
-    # SYNTH_DATASET = "64"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR,
-    #     "trained_params",
-    #     f"{SYNTH_DATASET}",
-    #     "_full__clamp=0.001",
-    #     args.model.split("/")[-1],
-    # )
-    # version = "epoch_1"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR, checkpoint_path, version
-    # )
-    # checkpoint_path = os.path.join(checkpoint_path, "trainable_params.pt")
-    # loaded_deltas = torch.load(checkpoint_path, map_location="cpu")
-    # free_gpu_cache()
-    # TrainableLM_delta.fuse_with_model(mt._model, loaded_deltas)
+    # fusing the trained deltas
+    SYNTH_DATASET = "64"
+    checkpoint_path = os.path.join(
+        env_utils.DEFAULT_RESULTS_DIR,
+        "trained_params",
+        f"{SYNTH_DATASET}",
+        "_full__clamp=0.001",
+        args.model.split("/")[-1],
+    )
+    version = "epoch_1"
+    checkpoint_path = os.path.join(
+        env_utils.DEFAULT_RESULTS_DIR, checkpoint_path, version
+    )
+    checkpoint_path = os.path.join(checkpoint_path, "trainable_params.pt")
+    loaded_deltas = torch.load(checkpoint_path, map_location="cpu")
+    free_gpu_cache()
+    TrainableLM_delta.fuse_with_model(mt._model, loaded_deltas)
 
     # Setup cache directory
     save_dir = os.path.join(
@@ -193,11 +211,12 @@ if __name__ == "__main__":
     )
     os.makedirs(save_dir, exist_ok=True)
 
-    test_selection_with_real_entities(
+    test_selection_with_mixed_entities(
         mt=mt,
         limit=args.limit,
         attribute_type=args.attr,
         save_dir=save_dir,
         n_distractors=args.n_distractors,
         save_step=args.save_step,
+        synth_pivot=args.synth_pivot,
     )

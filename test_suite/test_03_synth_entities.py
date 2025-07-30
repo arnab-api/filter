@@ -7,13 +7,14 @@ import torch
 import transformers
 
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample
+from src.selection.data import SelectionSample, get_random_sample_mixed
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.selection.data import load_people_by_category
+from src.selection.data import load_people_by_category, load_people_by_category_fakeverse
 from src.selection.data import SelectionSample, get_random_sample
-from src.functional import predict_next_token
+from src.functional import predict_next_token, free_gpu_cache
 from dataclasses import dataclass
 from src.utils.typing import PredictedToken
+from src.utils.training_utils import TrainableLM_delta
 from dataclasses_json import DataClassJsonMixin
 
 
@@ -45,10 +46,10 @@ def test_selection_with_real_entities(
     save_step: int = 5,
 ):
     """Cache last token states for selection samples."""
-    # TODO(gio): add support for other attribute types
-    # TODO(gio): add some logic for conflicting cases (e.g. like a journalist who is also a author. or a politician who is also a lawyer)
-    # Maybe just excluding certain attributes will work? Check `exclude_distractor_categories` in `get_random_sample`
-    people_by_category = load_people_by_category(tokenizer=mt.tokenizer)
+    people_by_category = load_people_by_category_fakeverse(
+        tokenizer=mt.tokenizer,
+        category=attribute_type,
+    )
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -80,7 +81,7 @@ def test_selection_with_real_entities(
             logger.info(
                 f"Cached {len(results)} samples so far, accuracy={n_correct / len(results) : .3f}  ({n_correct}/{len(results)})."
             )
-            with open(os.path.join(save_dir, f"results.json"), "w") as f:
+            with open(os.path.join(save_dir, f"{attribute_type}_results.json"), "w") as f:
                 json.dump(
                     dict(
                         accuracy=n_correct / len(results),
@@ -105,9 +106,6 @@ if __name__ == "__main__":
         "--model",
         type=str,
         choices=[
-            "meta-llama/Llama-3.2-3B",
-            "meta-llama/Llama-3.1-8B",
-            "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
@@ -124,7 +122,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="selection/test_1_real",
+        default="selection/test_3_synth",
         help="Directory to save test results",
     )
 
@@ -167,23 +165,23 @@ if __name__ == "__main__":
         # )
     )
 
-    # # fusing the trained deltas
-    # SYNTH_DATASET = "64"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR,
-    #     "trained_params",
-    #     f"{SYNTH_DATASET}",
-    #     "_full__clamp=0.001",
-    #     args.model.split("/")[-1],
-    # )
-    # version = "epoch_1"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR, checkpoint_path, version
-    # )
-    # checkpoint_path = os.path.join(checkpoint_path, "trainable_params.pt")
-    # loaded_deltas = torch.load(checkpoint_path, map_location="cpu")
-    # free_gpu_cache()
-    # TrainableLM_delta.fuse_with_model(mt._model, loaded_deltas)
+    # fusing the trained deltas
+    SYNTH_DATASET = "64"
+    checkpoint_path = os.path.join(
+        env_utils.DEFAULT_RESULTS_DIR,
+        "trained_params",
+        f"{SYNTH_DATASET}",
+        "_full__clamp=0.001",
+        args.model.split("/")[-1],
+    )
+    version = "epoch_1"
+    checkpoint_path = os.path.join(
+        env_utils.DEFAULT_RESULTS_DIR, checkpoint_path, version
+    )
+    checkpoint_path = os.path.join(checkpoint_path, "trainable_params.pt")
+    loaded_deltas = torch.load(checkpoint_path, map_location="cpu")
+    free_gpu_cache()
+    TrainableLM_delta.fuse_with_model(mt._model, loaded_deltas)
 
     # Setup cache directory
     save_dir = os.path.join(
