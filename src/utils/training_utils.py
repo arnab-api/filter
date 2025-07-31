@@ -1173,7 +1173,7 @@ class Trainer:
                 {
                     "betas": (0.9, 0.95),
                     "eps": 1e-8,
-                    "optim_bits": 8,  # Ensure 8-bit optimization
+                    # "optim_bits": 8,  # Ensure 8-bit optimization
                     "percentile_clipping": 100,  # Optional: can help with stability
                 }
             )

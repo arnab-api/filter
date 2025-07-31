@@ -154,6 +154,7 @@ run_jobs/job_scripts/
 # debug logs
 logs/
 *.out
+*.err
 *.log
 *lightning_logs*
 *wandb
