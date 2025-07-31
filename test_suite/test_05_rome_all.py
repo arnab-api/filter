@@ -2,22 +2,26 @@ import argparse
 import json
 import logging
 import os
-from typing import List, Dict
+from dataclasses import dataclass
+from typing import Dict, List
+
 import torch
 import transformers
-from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample, get_random_sample
-from src.utils import env_utils, experiment_utils, logging_utils
-from src.selection.data import load_people_by_category_fakeverse, load_people_by_category
-from src.selection.data import SelectionSample, get_random_sample
-from src.functional import predict_next_token, free_gpu_cache, generate_with_patch
-from dataclasses import dataclass
-from src.utils.typing import PredictedToken
-from src.utils.training_utils import TrainableLM_delta
 from dataclasses_json import DataClassJsonMixin
-from src.rome.rome_hparams import ROMEHyperParams
-from src.rome.rome_main import apply_rome_to_model, save_weights, restore_weights
 
+from src.functional import free_gpu_cache, generate_with_patch, predict_next_token
+from src.models import ModelandTokenizer
+from src.rome.rome_hparams import ROMEHyperParams
+from src.rome.rome_main import apply_rome_to_model, restore_weights, save_weights
+from src.selection.data import (
+    SelectionSample,
+    get_random_sample,
+    load_people_by_category,
+    load_people_by_category_fakeverse,
+)
+from src.utils import env_utils, experiment_utils, logging_utils
+from src.utils.training_utils import TrainableLM_delta
+from src.utils.typing import PredictedToken
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +68,17 @@ def test_selection_rome_all(
 
     results = []
     n_correct = 0
+
+    #! orig_weights = save_weights(mt._model, [layer_names])
+
     prompt_template = "{} is by profession a"
     while len(results) < limit:
         sample = get_random_sample(
             people_by_category=synth_people_by_category,
-            mt=mt, 
+            mt=mt,
             n_distractors=n_distractors,
             filter_by_lm_prediction=False,
-            #exclude_distractor_categories=["news anchor", "journalist", "entrepreneur", "comedian"],
+            # exclude_distractor_categories=["news anchor", "journalist", "entrepreneur", "comedian"],
         )
 
         # Set the desired information edit
@@ -80,7 +87,7 @@ def test_selection_rome_all(
         for category, entities in synth_people_by_category.items():
             for entity in entities.values:  # Use .values to get the actual entity names
                 entity_to_category[entity] = category
-        
+
         requests = []
         for entity in [sample.subj] + sample.options:
             # Get the attribute for this specific entity
@@ -89,31 +96,25 @@ def test_selection_rome_all(
                 {
                     "prompt": prompt_template,
                     "subject": entity,
-                    "target_new": {"str": entity_attribute}
+                    "target_new": {"str": entity_attribute},
                 }
             )
 
+        #! restore_weights(mt._model, orig_weights)
         # Apply the ROME edit
         ## Inject the information edit into the context templates and do a rank one edit.
         for request in requests:
             if request == requests[0]:
                 model, orig_weights = apply_rome_to_model(
-                    mt=mt,
-                    requests=request,
-                    hparams=hparams,
-                    return_orig_weights=True
+                    mt=mt, requests=request, hparams=hparams, return_orig_weights=True
                 )
             else:
                 model = apply_rome_to_model(
-                    mt=mt,
-                    requests=request,
-                    hparams=hparams,
-                    return_orig_weights=False
+                    mt=mt, requests=request, hparams=hparams, return_orig_weights=False
                 )
 
-        multi_rome_weights = save_weights(model, list(orig_weights.keys()))
-
-        restore_weights(mt._model, multi_rome_weights)
+        # multi_rome_weights = save_weights(model, list(orig_weights.keys()))
+        # restore_weights(mt._model, multi_rome_weights)
 
         # Check
         generations_per_entity = []
@@ -129,17 +130,13 @@ def test_selection_rome_all(
             generations = []
             for prompt in generation_prompts:
                 generation = generate_with_patch(
-                    mt=mt,
-                    inputs=prompt,
-                    tokenizer=mt.tokenizer,
-                    n_gen_per_prompt=1
+                    mt=mt, inputs=prompt, tokenizer=mt.tokenizer, n_gen_per_prompt=1
                 )[0]
                 generations.append(generation)
 
-            generations_per_entity.append({
-                "entity": entity,
-                "generations": generations
-            })
+            generations_per_entity.append(
+                {"entity": entity, "generations": generations}
+            )
 
         #############
         # MAKING SURE THE REAL ENTITY INFO ISN'T GETTING OVERWRITTEN:
@@ -149,8 +146,8 @@ def test_selection_rome_all(
         #         generation_prompts = [
         #             f"{entity} is a professional",
         #             f"What is {entity} known for? {entity} is a",
-        #         ]                   
-        #         
+        #         ]
+        #
         #         generations = []
         #         for prompt in generation_prompts:
         #             generation = generate_with_patch(
@@ -160,8 +157,8 @@ def test_selection_rome_all(
         #                 n_gen_per_prompt=1
         #             )[0]
         #             print(generation)
-        #             generations.append(generation)                   
-        #         
+        #             generations.append(generation)
+        #
         #         check_real_entities.append({
         #             "entity": entity,
         #             "generations": generations
@@ -190,7 +187,9 @@ def test_selection_rome_all(
             logger.info(
                 f"Cached {len(results)} samples so far, accuracy={n_correct / len(results) : .3f}  ({n_correct}/{len(results)})."
             )
-            with open(os.path.join(save_dir, f"{attribute_type}_results.json"), "w") as f:
+            with open(
+                os.path.join(save_dir, f"{attribute_type}_results.json"), "w"
+            ) as f:
                 json.dump(
                     dict(
                         accuracy=n_correct / len(results),
@@ -200,9 +199,7 @@ def test_selection_rome_all(
                     indent=4,
                     ensure_ascii=False,
                 )
-            logger.info(
-                f"Saved results to {save_dir}/{attribute_type}_results.json"
-            )
+            logger.info(f"Saved results to {save_dir}/{attribute_type}_results.json")
 
 
 #! python -m test_suite.test_01_real_entities --model="meta-llama/Llama-3.3-70B-Instruct" --limit="1000"
@@ -212,11 +209,11 @@ if __name__ == "__main__":
     # loading the model
     mt = ModelandTokenizer(
         model_key="meta-llama/Llama-3.3-70B-Instruct",
-        #model_key="meta-llama/Llama-3.1-8B-Instruct",
+        # model_key="meta-llama/Llama-3.1-8B-Instruct",
         torch_dtype=torch.bfloat16,
         device_map="auto",
     )
-    
+
     parser = argparse.ArgumentParser(
         description="Cache selection states for language models"
     )
@@ -258,66 +255,143 @@ if __name__ == "__main__":
         help="Save results every N samples",
     )
 
-    parser.add_argument("--layers", type=int, nargs='+', default=[13], 
-                        help="List of layer indices to modify")
+    parser.add_argument(
+        "--layers",
+        type=int,
+        nargs="+",
+        default=[13],
+        help="List of layer indices to modify",
+    )
 
-    parser.add_argument("--fact-token", type=str, default="subject_last",
-                        help="Token position for fact extraction")
+    parser.add_argument(
+        "--fact-token",
+        type=str,
+        default="subject_last",
+        help="Token position for fact extraction",
+    )
 
-    parser.add_argument("--v-num-grad-steps", type=int, default=50,
-                        help="Number of gradient steps for value optimization")
+    parser.add_argument(
+        "--v-num-grad-steps",
+        type=int,
+        default=50,
+        help="Number of gradient steps for value optimization",
+    )
 
-    parser.add_argument("--v-lr", type=float, default=5e-1,
-                        help="Learning rate for value optimization")
+    parser.add_argument(
+        "--v-lr", type=float, default=5e-1, help="Learning rate for value optimization"
+    )
 
-    parser.add_argument("--v-loss-layer", type=int, default=None,
-                        help="Layer index for computing value loss (default: model.n_layer - 1)")
+    parser.add_argument(
+        "--v-loss-layer",
+        type=int,
+        default=None,
+        help="Layer index for computing value loss (default: model.n_layer - 1)",
+    )
 
-    parser.add_argument("--v-weight-decay", type=float, default=0.5,
-                        help="Weight decay for value optimization")
+    parser.add_argument(
+        "--v-weight-decay",
+        type=float,
+        default=0.5,
+        help="Weight decay for value optimization",
+    )
 
-    parser.add_argument("--clamp-norm-factor", type=float, default=3,
-                        help="Factor for clamping gradient norms")
+    parser.add_argument(
+        "--clamp-norm-factor",
+        type=float,
+        default=3,
+        help="Factor for clamping gradient norms",
+    )
 
-    parser.add_argument("--kl-factor", type=float, default=0.0625,
-                        help="KL divergence factor in loss computation")
+    parser.add_argument(
+        "--kl-factor",
+        type=float,
+        default=0.0625,
+        help="KL divergence factor in loss computation",
+    )
 
-    parser.add_argument("--mom2-adjustment", action="store_true", default=True,
-                        help="Enable second moment adjustment")
+    parser.add_argument(
+        "--mom2-adjustment",
+        action="store_true",
+        default=True,
+        help="Enable second moment adjustment",
+    )
 
-    parser.add_argument("--no-mom2-adjustment", dest="mom2_adjustment", action="store_false",
-                        help="Disable second moment adjustment")
+    parser.add_argument(
+        "--no-mom2-adjustment",
+        dest="mom2_adjustment",
+        action="store_false",
+        help="Disable second moment adjustment",
+    )
 
-    parser.add_argument("--context-template-length-params", type=str, 
-                        default="[[25, 5], [50, 5]]",
-                        help="Context template length parameters as JSON string")
+    parser.add_argument(
+        "--context-template-length-params",
+        type=str,
+        default="[[25, 5], [50, 5]]",
+        help="Context template length parameters as JSON string",
+    )
 
-    parser.add_argument("--rewrite-module-tmp", type=str, default=mt.mlp_module_name_format + ".down_proj",
-                        help="Template for rewrite module (default: model.mlp_module_name_format + '.down_proj')")
+    parser.add_argument(
+        "--rewrite-module-tmp",
+        type=str,
+        default=mt.mlp_module_name_format + ".down_proj",
+        help="Template for rewrite module (default: model.mlp_module_name_format + '.down_proj')",
+    )
 
-    parser.add_argument("--layer-module-tmp", type=str, default=mt.layer_name_format,
-                        help="Template for layer module (default: model.layer_name_format)")
+    parser.add_argument(
+        "--layer-module-tmp",
+        type=str,
+        default=mt.layer_name_format,
+        help="Template for layer module (default: model.layer_name_format)",
+    )
 
-    parser.add_argument("--mlp-module-tmp", type=str, default=mt.mlp_module_name_format,
-                        help="Template for MLP module (default: model.mlp_module_name_format)")
+    parser.add_argument(
+        "--mlp-module-tmp",
+        type=str,
+        default=mt.mlp_module_name_format,
+        help="Template for MLP module (default: model.mlp_module_name_format)",
+    )
 
-    parser.add_argument("--attn-module-tmp", type=str, default=mt.attn_module_name_format,
-                        help="Template for attention module (default: model.attn_module_name_format)")
+    parser.add_argument(
+        "--attn-module-tmp",
+        type=str,
+        default=mt.attn_module_name_format,
+        help="Template for attention module (default: model.attn_module_name_format)",
+    )
 
-    parser.add_argument("--ln-f-module", type=str, default=mt.final_layer_norm_name,
-                        help="Final layer norm module name (default: model.final_layer_norm_name)")
+    parser.add_argument(
+        "--ln-f-module",
+        type=str,
+        default=mt.final_layer_norm_name,
+        help="Final layer norm module name (default: model.final_layer_norm_name)",
+    )
 
-    parser.add_argument("--lm-head-module", type=str, default=mt.lm_head_name,
-                        help="LM head module name (default: model.lm_head_name)")
+    parser.add_argument(
+        "--lm-head-module",
+        type=str,
+        default=mt.lm_head_name,
+        help="LM head module name (default: model.lm_head_name)",
+    )
 
-    parser.add_argument("--mom2-dataset", type=str, default="wikipedia",
-                        help="Dataset for second moment statistics")
+    parser.add_argument(
+        "--mom2-dataset",
+        type=str,
+        default="wikipedia",
+        help="Dataset for second moment statistics",
+    )
 
-    parser.add_argument("--mom2-n-samples", type=int, default=1000,
-                        help="Number of samples for second moment estimation")
+    parser.add_argument(
+        "--mom2-n-samples",
+        type=int,
+        default=1000,
+        help="Number of samples for second moment estimation",
+    )
 
-    parser.add_argument("--mom2-dtype", type=str, default="float32",
-                        help="Data type for second moment computation")
+    parser.add_argument(
+        "--mom2-dtype",
+        type=str,
+        default="float32",
+        help="Data type for second moment computation",
+    )
 
     args = parser.parse_args()
     logging_utils.configure(args)

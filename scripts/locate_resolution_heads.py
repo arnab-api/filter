@@ -225,7 +225,7 @@ def cache_attention_patterns_for_selection_samples(
         )
 
         logger.debug(
-            f"{attn_pattern.resolution_score(layer_idx=layer_idx, head_idx=head_idx)=}"
+            f"ATTN selection score (L{layer_idx}, H{head_idx}) = {attn_pattern.resolution_score(layer_idx=layer_idx, head_idx=head_idx)}"
         )
         attn_pattern = detensorize(attn_pattern, to_numpy=True)
 
@@ -250,6 +250,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
+            "Qwen/Qwen2.5-32B-Instruct",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",
