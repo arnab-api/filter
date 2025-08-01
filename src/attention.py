@@ -102,7 +102,8 @@ def get_attention_matrices(
         layer_id = ".".join(module_name.split(".")[:-1])
         return layer_id, int(head_id)
 
-    with mt.trace(input, output_attentions=True):
+    # print(f"{input.input_ids.shape=}, {input.attention_mask.shape=}")
+    with mt.trace(input, output_attentions=True) as tracer:
         if patches is not None:
             for cur_patch in patches:
                 module_name, index = cur_patch.location
@@ -111,17 +112,24 @@ def get_attention_matrices(
                         "patching not supported yet for attn heads"
                     )
                 module = get_module_nnsight(mt, module_name)
-                # print(module_name, module)
                 current_state = (
                     module.output.save()
-                    if (
-                        "mlp" in module_name
-                        or module_name == mt.embedder_name
-                        or "layernorm" in module_name
-                    )
+                    if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
-                current_state[:, index, :] = cur_patch.patch
+                if current_state.ndim == 2:
+                    current_state = current_state.unsqueeze(0)
+                # tracer.log(
+                #     current_state.shape, cur_patch.location, cur_patch.patch.shape
+                # )
+                if cur_patch.strategy == "replace":
+                    current_state[:, index, :] = cur_patch.patch
+                elif cur_patch.strategy == "add":
+                    current_state[:, index, :] += cur_patch.patch
+                else:
+                    raise ValueError(
+                        f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
+                    )
         output = mt.model.output.save()
         logits = mt.output.logits[0][-1].save()
 

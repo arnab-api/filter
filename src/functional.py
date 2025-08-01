@@ -443,6 +443,8 @@ def generate_with_patch(
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
+                if current_state.ndim == 2:
+                    current_state = current_state.unsqueeze(0)
                 if patch_strategy == "replace":
                     current_state[:, index, :] = cur_patch.patch
                 elif patch_strategy == "add":
@@ -687,6 +689,8 @@ def get_hs(
                     if ("mlp" in module_name or module_name == mt.embedder_name)
                     else module.output[0].save()
                 )
+                if current_state.ndim == 2:
+                    current_state = current_state.unsqueeze(0)
                 if cur_patch.strategy == "replace":
                     current_state[:, index, :] = cur_patch.patch
                 elif cur_patch.strategy == "add":
