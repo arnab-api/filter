@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --mem=16g
+#SBATCH --mem=256g
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=4    # <- match to OMP_NUM_THREADS
@@ -25,7 +25,7 @@ conda env list
 
 #export your required environment variables below
 #################################################
-export WANDB_API_KEY=78da6f528c482f85a3c05c0b00c4d64b0def5f8e
+export WANDB_API_KEY=$(cat wandb.key)
 
 # cd to project directory
 cd ~/Codes/Projects/retrieval
