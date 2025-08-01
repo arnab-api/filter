@@ -25,7 +25,7 @@ conda env list
 
 #export your required environment variables below
 #################################################
-export WANDB_API_KEY=$(cat wandb.key)
+export WANDB_API_KEY=$(cat ~/keys/wandb.key)
 
 # cd to project directory
 cd ~/Codes/Projects/retrieval
