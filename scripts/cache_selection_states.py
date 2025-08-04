@@ -2,15 +2,16 @@ import argparse
 import json
 import logging
 import os
+from typing import Literal
 
 import numpy as np
 import torch
 import transformers
 
-from src.functional import free_gpu_cache, get_hs, detensorize
+from src.functional import detensorize, free_gpu_cache, get_hs
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample
-from src.tokens import prepare_input
+from src.tokens import find_token_range, prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.experiment_utils import set_seed
 from src.utils.training_utils import TrainableLM_delta, TrainableLM_LoRA
@@ -29,20 +30,46 @@ logger.info(f"{transformers.__version__=}")
 def cache_selection_states(
     mt: ModelandTokenizer,
     selection_samples: list[SelectionSample],
-    locations: list[tuple[str, int]],
+    token_position: Literal["last_token", "pivot_last"] = "last_token",
+    modules: list[str] | None = None,
     save_dir: str | None = None,
 ):
     """Cache last token states for selection samples."""
 
-    logger.debug(f"{locations=}")
-
     if save_dir is None:
         cached_states = []
 
+    modules = mt.layer_names if modules is None else modules
+    logger.info(
+        f"Caching states for {len(selection_samples)} samples, "
+        f"token_position={token_position}, modules={modules}, "
+        f"save_dir={save_dir}"
+    )
+
     # Cache states for each sample
     for idx, sample in enumerate(selection_samples):
-        inputs = prepare_input(prompts=sample.prompt, tokenizer=mt)
+        inputs = prepare_input(
+            prompts=sample.prompt, tokenizer=mt, return_offsets_mapping=True
+        )
+        offsets = inputs.pop("offset_mapping")[0]
+        if token_position == "last_token":
+            tok_idx = len(inputs["input_ids"][0]) - 1
+        elif token_position == "pivot_last":
+            pivot_range = find_token_range(
+                string=sample.prompt,
+                substring=sample.subj,
+                offset_mapping=offsets,
+                tokenizer=mt,
+            )
+            tok_idx = pivot_range[1] - 1  # last token of the pivot
+            logger.debug(
+                f"{sample.subj=}, {pivot_range=}, {tok_idx=} | \"{mt.tokenizer.decode(inputs['input_ids'][0][pivot_range[0]:pivot_range[1]])}\", \"{mt.tokenizer.decode(inputs['input_ids'][0][tok_idx])}\""
+            )
+        else:
+            raise ValueError(f"Unknown token_position: {token_position}")
+
         sample.detensorize()
+        locations = [(layer_name, tok_idx) for layer_name in modules]
 
         cache = {"sample": sample.to_dict(), "states": {}}
         states = get_hs(
@@ -109,16 +136,16 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--token_position",
-        type=int,
-        default=-1,
+        "--token_pos",
+        type=str,
+        choices=["last_token", "pivot_last"],
         help="Token position to cache states for (-1 for last token)",
     )
 
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="selection/Llama-3.3-70B-Instruct/profession/cached_states/last_token",
+        default="selection/Llama-3.3-70B-Instruct/profession/cached_states",
         help="Directory to save cached states",
     )
 
@@ -175,8 +202,6 @@ if __name__ == "__main__":
             mt.attn_module_name_format.format(i) for i in range(mt.n_layer)
         ]  # attn outputs
     )
-    TOKEN_POSITION = -1
-    locations = [(layer_name, TOKEN_POSITION) for layer_name in all_layers]
 
     # load selection samples
     selection_ds_path = os.path.join(
@@ -191,13 +216,14 @@ if __name__ == "__main__":
     save_dir = os.path.join(
         env_utils.DEFAULT_RESULTS_DIR,
         args.save_dir,
-        mt.name.split("/")[-1],
+        args.token_pos,
     )
     os.makedirs(save_dir, exist_ok=True)
 
     cache_selection_states(
         mt=mt,
         selection_samples=selection_samples,
-        locations=locations,
+        token_position=args.token_pos,
+        modules=all_layers,
         save_dir=save_dir,
     )
