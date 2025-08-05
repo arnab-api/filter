@@ -170,6 +170,7 @@ class SelectOneTask(DataClassJsonMixin):
         category_wise_examples = {}
         for cat in self.category_wise_examples:
             examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
             category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
         # print(f"Category: {category}")
         # print(people_by_category[category].values)
