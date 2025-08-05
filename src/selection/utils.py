@@ -1,18 +1,3 @@
-import json
-import logging
-import os
-import random
-from collections import defaultdict
-from dataclasses import dataclass, field, fields
-from pathlib import Path
-from typing import Optional, Sequence
-from src.functional import detensorize
-
-from dataclasses_json import DataClassJsonMixin
-from torch.utils.data import Dataset
-
-from src.utils.env_utils import DEFAULT_DATA_DIR
-from src.utils.typing import PathLike, PredictedToken
 from src.models import unwrap_tokenizer
 
 
@@ -43,6 +28,10 @@ class KeyedSet:
     @property
     def values(self):
         return list(self._dict.values())
+
+    @property
+    def len(self):
+        return len(self._dict)
 
     def show(self):
         for k, v in self._dict.items():

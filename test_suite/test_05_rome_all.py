@@ -89,7 +89,7 @@ def test_selection_rome_all(
                 entity_to_category[entity] = category
 
         requests = []
-        for entity in [sample.subj] + sample.options:
+        for entity in [sample.match_with] + sample.options:
             # Get the attribute for this specific entity
             entity_attribute = entity_to_category.get(entity)
             requests.append(
@@ -118,7 +118,7 @@ def test_selection_rome_all(
 
         # Check
         generations_per_entity = []
-        for entity in [sample.subj] + sample.options:
+        for entity in [sample.match_with] + sample.options:
             generation_prompts = [
                 f"{entity} is a professional",
                 f"What is {entity} known for? {entity} is a",

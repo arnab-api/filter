@@ -14,9 +14,8 @@ from src.functional import (
     prepare_input,
 )
 from src.models import ModelandTokenizer
-from src.probing.prompt import ProbingPrompt
 from src.tokens import find_token_range
-from src.utils.typing import Tokenizer, TokenizerOutput
+from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
