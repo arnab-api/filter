@@ -15,6 +15,9 @@ from src.tokens import prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike, PredictedToken
 
+from pathlib import Path
+from ast import literal_eval
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,6 +126,20 @@ class CountingSample(DataClassJsonMixin):
 
         return prompt
 
+@dataclass
+class DeductionSample(DataClassJsonMixin):
+    prompt: str
+    answer: str
+    depth: int
+    topic: str
+    prediction: Optional[Sequence[PredictedToken]] = None
+    metadata: dict = field(default_factory=dict)
+
+    def __str__(self):
+        return f"{self.prompt} -> {self.answer}"
+
+    def detensorize(self):
+        self.metadata = detensorize(self.metadata)
 
 @dataclass
 class ObjectwiseResult:
@@ -475,6 +492,139 @@ class CountingTask(DataClassJsonMixin):
         return f"""CountingTask: ({self.category_type})
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
+
+@dataclass
+class DeductionTask(DataClassJsonMixin):
+    topics: dict[str, dict]
+    logic_templates: dict[str, list]
+    task_name: str = "deduction"
+
+    @staticmethod
+    def load(
+        dir_path: Path | None = os.path.join(
+            DEFAULT_DATA_DIR, "deduction"
+        )
+    ):
+        for file_path in Path(dir_path).iterdir():
+            if file_path.is_file() and file_path.name == "topics.json":
+                print(file_path)
+                with file_path.open("r") as f:
+                    topics = json.load(f)
+            elif file_path.is_file() and file_path.name == "logic_templates.json":
+                with file_path.open("r") as f:
+                    logic_templates = json.load(f)
+
+        return DeductionTask(
+            task_name="deduction",
+            topics=topics,
+            logic_templates=logic_templates,
+        )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        topic_name: str,
+        depth: int,
+        names: list[str] = ["Alice", "Bob", "Cam", "Dave", "Eli"],
+        filter_by_lm_prediction: bool = True,
+        retry_count: int = 0
+    ) -> DeductionSample:
+        """
+        Get a random sample from the logical deduction problems.
+        """
+
+        assert topic_name in list(self.topics.keys()), (
+            f"Topic name '{topic_name}' not a valid topic: {list(self.topics.keys())}."
+        )
+        assert str(depth) in list(self.logic_templates.keys()), (
+            f"Depth '{depth}' not a valid depth: {list(self.logic_templates.keys())}."
+        )
+        assert len(names) >= depth, (
+            f"Length of names list must be greater than depth '{depth}'."
+        )
+
+        tokenizer = unwrap_tokenizer(mt)
+
+        # Select components
+        topic_vocab = self.topics[topic_name]
+        template = random.choice(self.logic_templates[str(depth)])
+
+        # Build the premise sentences
+        premise_sentences = []
+        for p in literal_eval(template["premises"]):
+            idx1, comparator, idx2 = p
+            name1 = names[idx1]
+            name2 = names[idx2]
+
+            if comparator == '>':
+                comparator_text = topic_vocab["positive_comparator"]
+            else:
+                comparator_text = topic_vocab["negative_comparator"]
+
+            premise_sentences.append(f"{name1} is {comparator_text} {name2}.")
+
+        # Build final question
+        if template["question_type"] == "max":
+            question_word = topic_vocab["positive_extreme"]
+        else:
+            question_word = topic_vocab["negative_extreme"]
+
+        question_text = f"Who is the {question_word}?"
+
+        # Combine and determine answer
+        full_question = " ".join(premise_sentences) + f" {question_text}"
+        answer = names[template["answer_idx"]]
+        final_prompt = "Answer with the name only. " + full_question
+
+        metadata = {}
+
+        sample = DeductionSample(
+            prompt = final_prompt,
+            answer = answer,
+            depth = depth,
+            topic = topic_name,
+            prediction = None,
+            metadata = metadata
+        )
+
+        if filter_by_lm_prediction:
+            prompt = sample.prompt
+            inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata['tokenized'] = inputs.data
+
+            predictions = predict_next_token(
+                mt=mt,
+                inputs=inputs,
+            )[0]
+            answer_token_id = get_first_token_id(answer, tokenizer, prefix=" ")
+            if predictions[0].token_id != answer_token_id:
+                logger.error(
+                    f"""Sample = {sample}
+                    Top prediction {predictions[0]} does not match the answer '{answer}'.
+                    Retry count: {retry_count + 1}. Retrying ...
+                    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    topic_name=topic_name,
+                    depth=depth,
+                    names=names,
+                    filter_by_lm_prediction=True,
+                    retry_count=retry_count + 1,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
+
+    def __str__(self):
+        return f"""DeductionTask
+Depths: {list(self.logic_templates.keys())}
+Topics: {list(self.topics.keys())}
+        """
+
+
 
 
 

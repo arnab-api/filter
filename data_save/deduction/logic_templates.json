@@ -1,0 +1,152 @@
+{
+    "3": [
+        {
+            "description": "Simple descending chain. A > B > C",
+            "premises": "[(0, '>', 1), (1, '>', 2)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "Simple ascending chain. A < B < C",
+            "premises": "[(0, '<', 1), (1, '<', 2)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Peak in the middle. C < A > B",
+            "premises": "[(0, '>', 1), (0, '>', 2)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "Valley in the middle. C > A < B",
+            "premises": "[(0, '<', 1), (0, '<', 2)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Central peak. A < B > C",
+            "premises": "[(0, '<', 1), (1, '>', 2)]",
+            "question_type": "max",
+            "answer_idx": 1
+        },
+        {
+            "description": "Central valley. A > B < C",
+            "premises": "[(0, '>', 1), (1, '<', 2)]",
+            "question_type": "min",
+            "answer_idx": 1
+        }
+    ],
+    "4": [
+        {
+            "description": "Simple descending chain. A > B > C > D",
+            "premises": "[(0, '>', 1), (1, '>', 2), (2, '>', 3)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "Simple ascending chain. A < B < C < D",
+            "premises": "[(0, '<', 1), (1, '<', 2), (2, '<', 3)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Peak at B. A < B > C > D",
+            "premises": "[(0, '<', 1), (1, '>', 2), (2, '>', 3)]",
+            "question_type": "max",
+            "answer_idx": 1
+        },
+        {
+            "description": "Valley at B. A > B < C < D",
+            "premises": "[(0, '>', 1), (1, '<', 2), (2, '<', 3)]",
+            "question_type": "min",
+            "answer_idx": 1
+        },
+        {
+            "description": "Peak at C. A < B < C > D",
+            "premises": "[(0, '<', 1), (1, '<', 2), (2, '>', 3)]",
+            "question_type": "max",
+            "answer_idx": 2
+        },
+        {
+            "description": "Valley at C. A > B > C < D",
+            "premises": "[(0, '>', 1), (1, '>', 2), (2, '<', 3)]",
+            "question_type": "min",
+            "answer_idx": 2
+        },
+        {
+            "description": "A is maximum. A > B, A > C, A > D",
+            "premises": "[(0, '>', 1), (0, '>', 2), (0, '>', 3)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "A is minimum. A < B, A < C, A < D",
+            "premises": "[(0, '<', 1), (0, '<', 2), (0, '<', 3)]",
+            "question_type": "min",
+            "answer_idx": 0
+        }
+    ],
+    "5": [
+        {
+            "description": "Simple descending chain. A > B > C > D > E",
+            "premises": "[(0, '>', 1), (1, '>', 2), (2, '>', 3), (3, '>', 4)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "Simple ascending chain. A < B < C < D < E",
+            "premises": "[(0, '<', 1), (1, '<', 2), (2, '<', 3), (3, '<', 4)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Central peak. A < B < C > D > E",
+            "premises": "[(0, '<', 1), (1, '<', 2), (2, '>', 3), (3, '>', 4)]",
+            "question_type": "max",
+            "answer_idx": 2
+        },
+        {
+            "description": "Central valley. A > B > C < D < E",
+            "premises": "[(0, '>', 1), (1, '>', 2), (2, '<', 3), (3, '<', 4)]",
+            "question_type": "min",
+            "answer_idx": 2
+        },
+        {
+            "description": "A is maximum. A > B, A > C, A > D, A > E",
+            "premises": "[(0, '>', 1), (0, '>', 2), (0, '>', 3), (0, '>', 4)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "A is minimum. A < B, A < C, A < D, A < E",
+            "premises": "[(0, '<', 1), (0, '<', 2), (0, '<', 3), (0, '<', 4)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Split chain, max. A > B, A > C, C > D, C > E",
+            "premises": "[(0, '>', 1), (0, '>', 2), (2, '>', 3), (2, '>', 4)]",
+            "question_type": "max",
+            "answer_idx": 0
+        },
+        {
+            "description": "Split chain, min. A < B, A < C, C < D, C < E",
+            "premises": "[(0, '<', 1), (0, '<', 2), (2, '<', 3), (2, '<', 4)]",
+            "question_type": "min",
+            "answer_idx": 0
+        },
+        {
+            "description": "Late peak. A < B < C < D > E",
+            "premises": "[(0, '<', 1), (1, '<', 2), (2, '<', 3), (3, '>', 4)]",
+            "question_type": "max",
+            "answer_idx": 3
+        },
+        {
+            "description": "Early valley. A > B < C < D < E",
+            "premises": "[(0, '>', 1), (1, '<', 2), (2, '<', 3), (3, '<', 4)]",
+            "question_type": "min",
+            "answer_idx": 1
+        }
+    ]
+}

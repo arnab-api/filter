@@ -1,0 +1,32 @@
+{
+    "height": {
+        "positive_comparator": "taller than",
+        "negative_comparator": "shorter than",
+        "positive_extreme": "tallest",
+        "negative_extreme": "shortest"
+    },
+    "intelligence": {
+        "positive_comparator": "smarter than",
+        "negative_comparator": "dumber than",
+        "positive_extreme": "smartest",
+        "negative_extreme": "dumbest"
+    },
+    "speed": {
+        "positive_comparator": "faster than",
+        "negative_comparator": "slower than",
+        "positive_extreme": "fastest",
+        "negative_extreme": "slowest"
+    },
+    "age": {
+        "positive_comparator": "older than",
+        "negative_comparator": "younger than",
+        "positive_extreme": "oldest",
+        "negative_extreme": "youngest"
+    },
+    "wealth": {
+        "positive_comparator": "richer than",
+        "negative_comparator": "poorer than",
+        "positive_extreme": "richest",
+        "negative_extreme": "poorest"
+    }
+}
