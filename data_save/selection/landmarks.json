@@ -1,93 +1,102 @@
 {
-    "France": [
-        "Eiffel Tower",
-        "Louvre Museum",
-        "Arc de Triomphe",
-        "Palace of Versailles",
-        "Mont-Saint-Michel"
+    "name": "famous landmarks from different countries",
+    "prompt_templates": [
+        "Which landmark from the following list is in <_category_>?\n<_options_>\nAnswer:",
+        "<_options_>\nWhich among these landmarks mentioned above is in <_category_>?\nAnswer:",
+        "Which of the following landmarks is located in <_category_>?\n<_options_>\nAnswer:",
+        "<_options_>\nWhich of these landmarks is in <_category_>?\nAnswer:"
     ],
-    "Italy": [
-        "Colosseum",
-        "Leaning Tower of Pisa",
-        "Venice Grand Canal",
-        "Sistine Chapel",
-        "Pompeii"
-    ],
-    "United States": [
-        "Statue of Liberty",
-        "Grand Canyon",
-        "Mount Rushmore",
-        "Golden Gate Bridge",
-        "Empire State Building"
-    ],
-    "China": [
-        "Great Wall of China",
-        "Forbidden City",
-        "Terracotta Army",
-        "Potala Palace",
-        "Temple of Heaven"
-    ],
-    "India": [
-        "Taj Mahal",
-        "Red Fort",
-        "Gateway of India",
-        "Hawa Mahal",
-        "Golden Temple"
-    ],
-    "Egypt": [
-        "Great Pyramid of Giza",
-        "Sphinx",
-        "Valley of the Kings",
-        "Abu Simbel",
-        "Karnak Temple"
-    ],
-    "United Kingdom": [
-        "Stonehenge",
-        "Big Ben",
-        "Tower of London",
-        "Buckingham Palace",
-        "London Eye"
-    ],
-    "Japan": [
-        "Mount Fuji",
-        "Fushimi Inari Shrine",
-        "Tokyo Tower",
-        "Kinkaku-ji (Golden Pavilion)",
-        "Himeji Castle"
-    ],
-    "Brazil": [
-        "Christ the Redeemer",
-        "Sugarloaf Mountain",
-        "Iguazu Falls",
-        "Amazon Rainforest",
-        "Copacabana Beach"
-    ],
-    "Australia": [
-        "Sydney Opera House",
-        "Uluru (Ayers Rock)",
-        "Great Barrier Reef",
-        "Sydney Harbour Bridge",
-        "The Twelve Apostles"
-    ],
-    "Peru": [
-        "Machu Picchu",
-        "Nazca Lines",
-        "Rainbow Mountain",
-        "Lake Titicaca",
-        "Sacsayhuamán"
-    ],
-    "Greece": [
-        "Acropolis of Athens",
-        "Parthenon",
-        "Santorini",
-        "Meteora Monasteries",
-        "Sanctuary of Delphi"
-    ],
-    "Spain": [
-        "Sagrada Familia",
-        "Alhambra Palace",
-        "Park Güell",
-        "Aqueduct of Segovia",
-        "Royal Palace of Madrid"
-    ]
+    "categories": {
+        "France": [
+            "Eiffel Tower",
+            "Louvre Museum",
+            "Arc de Triomphe",
+            "Palace of Versailles",
+            "Mont-Saint-Michel"
+        ],
+        "Italy": [
+            "Colosseum",
+            "Leaning Tower of Pisa",
+            "Venice Grand Canal",
+            "Sistine Chapel",
+            "Pompeii"
+        ],
+        "United States": [
+            "Statue of Liberty",
+            "Grand Canyon",
+            "Mount Rushmore",
+            "Golden Gate Bridge",
+            "Empire State Building"
+        ],
+        "China": [
+            "Great Wall of China",
+            "Forbidden City",
+            "Terracotta Army",
+            "Potala Palace",
+            "Temple of Heaven"
+        ],
+        "India": [
+            "Taj Mahal",
+            "Red Fort",
+            "Gateway of India",
+            "Hawa Mahal",
+            "Golden Temple"
+        ],
+        "Egypt": [
+            "Great Pyramid of Giza",
+            "Sphinx",
+            "Valley of the Kings",
+            "Abu Simbel",
+            "Karnak Temple"
+        ],
+        "United Kingdom": [
+            "Stonehenge",
+            "Big Ben",
+            "Tower of London",
+            "Buckingham Palace",
+            "London Eye"
+        ],
+        "Japan": [
+            "Mount Fuji",
+            "Fushimi Inari Shrine",
+            "Tokyo Tower",
+            "Kinkaku-ji (Golden Pavilion)",
+            "Himeji Castle"
+        ],
+        "Brazil": [
+            "Christ the Redeemer",
+            "Sugarloaf Mountain",
+            "Iguazu Falls",
+            "Amazon Rainforest",
+            "Copacabana Beach"
+        ],
+        "Australia": [
+            "Sydney Opera House",
+            "Uluru (Ayers Rock)",
+            "Great Barrier Reef",
+            "Sydney Harbour Bridge",
+            "The Twelve Apostles"
+        ],
+        "Peru": [
+            "Machu Picchu",
+            "Nazca Lines",
+            "Rainbow Mountain",
+            "Lake Titicaca",
+            "Sacsayhuamán"
+        ],
+        "Greece": [
+            "Acropolis of Athens",
+            "Parthenon",
+            "Santorini",
+            "Meteora Monasteries",
+            "Sanctuary of Delphi"
+        ],
+        "Spain": [
+            "Sagrada Familia",
+            "Alhambra Palace",
+            "Park Güell",
+            "Aqueduct of Segovia",
+            "Royal Palace of Madrid"
+        ]
+    }
 }

@@ -1,0 +1,24 @@
+{
+    "name": "fruits",
+    "prompt_templates": [
+        "How many fruits are there in the following list? chalk, apple, lotion, banana\nAnswer: two\n\nHow many <_category_> are there in the following list? <_options_>\nAnswer:",
+        "chalk, apple, lotion, banana\nHow many fruits are there in the previous list?\nAnswer: two\n\n<_options_>\nHow many <_category_> are there in the previous list?\nAnswer:"
+    ],
+    "categories": {
+        "fruits": [
+            "apple", "banana", "orange", "grape", "strawberry", "blueberry", "raspberry",
+            "blackberry", "cherry", "peach", "nectarine", "plum", "pear", "kiwi", "mango",
+            "pineapple", "watermelon", "cantaloupe", "honeydew", "pomegranate", "grapefruit",
+            "tangerine", "clementine", "lemon", "lime", "coconut", "papaya", "apricot",
+            "fig", "date", "cranberry", "persimmon", "guava", "passion fruit",
+            "dragon fruit", "lychee", "starfruit", "quince", "boysenberry", "kumquat"
+        ],
+        "non-fruits": [
+            "table", "chair", "pen", "pencil", "paper", "book", "phone", "laptop", "cup",
+            "plate", "spoon", "fork", "knife", "car", "bike", "shoe", "sock", "shirt",
+            "pants", "hat", "jacket", "lamp", "pillow", "blanket", "bed", "door", "window",
+            "key", "wallet", "watch", "bottle", "towel", "soap", "comb", "toothbrush",
+            "battery", "candle", "broom", "bucket", "rug"
+        ]
+    }
+}

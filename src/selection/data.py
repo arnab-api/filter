@@ -78,6 +78,51 @@ class SelectionSample(DataClassJsonMixin):
 
         return prompt
 
+@dataclass
+class CountingSample(DataClassJsonMixin):
+    prompt_template: str
+    options: Sequence[str]
+    count: int
+    category: str | None = None
+    prediction: Optional[Sequence[PredictedToken]] = None
+    metadata: dict = field(default_factory=dict)
+    default_option_style: Literal["single_line"] = "single_line"
+
+    def __post_init__(self):
+        assert "<_options_>" in self.prompt_template
+        if "<_category_>" in self.prompt_template:
+            assert self.category is not None
+        if not isinstance(self.options, Sequence):
+            raise TypeError("Options must be a Sequence.")
+        if len(self.options) < 2:
+            raise ValueError("There must be at least two options.")
+
+    def __str__(self):
+        return f"{self.count} {self.category} -> {self.options}: Ans: {self.prediction}"
+
+    def detensorize(self):
+        self.metadata = detensorize(self.metadata)
+
+    def prompt(
+        self, option_style: Literal["single_line", "numbered"] | None = None
+    ) -> str:
+        prompt = self.prompt_template
+        if "<_category_>" in prompt:
+            prompt = prompt.replace("<_category_>", self.category)
+        
+        if option_style is None:
+            option_style = self.default_option_style
+        
+        if option_style == "single_line":
+            options_str = ", ".join(f"{opt}" for opt in self.options)
+        
+        else:
+            raise ValueError(f"Invalid option_style: {option_style}.")
+        
+        prompt = prompt.replace("<_options_>", options_str)
+
+        return prompt
+
 
 @dataclass
 class ObjectwiseResult:
@@ -289,6 +334,148 @@ class SelectOneTask(DataClassJsonMixin):
         return f"""SelectOneTask: ({self.category_type})
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
+
+@dataclass
+class CountingTask(DataClassJsonMixin):
+    category_type: str
+    prompt_templates: list[str]
+    category_wise_examples: dict[str, list] = field(default_factory=dict)
+    task_name: str = "counting"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "counting/fruits.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            counting_root = os.path.join(DEFAULT_DATA_DIR, "counting")
+            path = os.path.join(counting_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return CountingTask(
+                task_name="counting",
+                category_type=data.get("name", category_type),
+                prompt_templates=data['prompt_templates'],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        prompt_template_idx: int = 0,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        n_count: int = 2,
+        n_distractors: int = 3,
+        filter_by_lm_prediction: bool = True,
+        retry_count: int = 0,
+    ) -> CountingSample:
+        """
+        Get a random sample with the specified attribute.
+        """
+
+        kwargs = {
+            "prompt_template_idx": prompt_template_idx,
+            "option_style": option_style,
+        }
+        tokenizer = unwrap_tokenizer(mt)
+
+        category_wise_examples = {}
+        for cat in self.category_wise_examples:
+            examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
+            category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
+
+        print(f"Category: {category}")
+        print(f"{category_wise_examples=}")
+
+        if category not in category_wise_examples:
+            raise ValueError(
+                f"Attribute '{category}' not found in {category_wise_examples.keys()}."
+            )
+        
+        category_keys = list(category_wise_examples.keys())
+        assert category_keys[0] == category, "Main category must come first in the dataset categories"
+        
+        main_category_items = category_wise_examples[category_keys[0]].values
+        counting_items = random.sample(main_category_items, k=n_count)
+
+        generic_items = category_wise_examples[category_keys[1]].values
+        distractors = random.sample(generic_items, k=n_distractors)
+        
+        if len(counting_items) > 1 and len(distractors) > 1:
+            options = counting_items + distractors
+        elif len(counting_items) == 1 and len(distractors) > 1:
+            options = [counting_items] + distractors
+        elif len(counting_items) > 1 and len(distractors) == 1:
+            options = counting_items + [distractors]
+        
+        random.shuffle(options)
+
+        sample = CountingSample(
+            prompt_template = self.prompt_templates[prompt_template_idx],
+            options = options,
+            count = n_count,
+            category = category,
+            prediction = None,
+            default_option_style = option_style,
+        )
+
+        if filter_by_lm_prediction:
+            prompt = sample.prompt(option_style=option_style)
+            inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata['tokenized'] = inputs.data
+
+            predictions = predict_next_token(
+                mt=mt,
+                inputs=inputs,
+            )[0]
+            print(f"{predictions[0].token=}")
+            count_str_map = {
+                0: " zero",
+                1: " one",
+                2: " two",
+                3: " three",
+                4: " four",
+                5: " five",
+                6: " six",
+                7: " seven",
+                8: " eight",
+                9: " nine",
+                10: " ten"
+            }
+            if predictions[0].token != count_str_map[n_count]:
+                logger.error(
+                    f"""Sample = {sample}
+                    Top prediction {predictions[0]} does not match the count '{n_count}'.
+                    Retry count: {retry_count + 1}. Retrying ...
+                    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    category=category,
+                    n_count=n_count,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=True,
+                    retry_count=retry_count + 1,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
+
+    def __str__(self):
+        return f"""CountingTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
+
 
 
 # def load_people_by_category(
