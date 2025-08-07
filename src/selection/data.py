@@ -82,6 +82,67 @@ class SelectionSample(DataClassJsonMixin):
         return prompt
 
 @dataclass
+class SelectAllSample(DataClassJsonMixin):
+    subj: str
+    options: list[str]
+    category: str
+    prompt_template: str
+    metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        assert "<_options_>" in self.prompt_template
+        if "<_pivot_entity_>" in self.prompt_template:
+            assert self.subj is not None
+        if "<_category_>" in self.prompt_template:
+            assert self.category is not None
+        if not isinstance(self.options, Sequence):
+            raise TypeError("Options must be a Sequence.")
+        if len(self.options) < 2:
+            raise ValueError("There must be at least two options.")
+        if len(self.options) > 11:
+            raise ValueError("There must be less than eleven options.")
+
+    def __str__(self):
+        return f"{self.category}: {self.subj} -> {self.options}"
+
+    def detensorize(self):
+        self.metadata = detensorize(self.metadata)
+
+    def prompt(self):
+        prompt = self.prompt_template
+        one_shot = prompt + " All of the above."
+        
+        if "<_pivot_entity_>" in prompt:
+            prompt = prompt.replace("<_pivot_entity_>", self.subj)
+            one_shot = one_shot.replace("<_pivot_entity_>", "Isaac Newton")
+
+        if "<_category_>" in prompt:
+            prompt = prompt.replace("<_category_>", self.category)
+            one_shot = one_shot.replace("<_category_>", "profession")
+
+        letters = ["A","B","C","D","E","F","G","H","I","J","K"]
+        scientists = [
+            "Albert Einstein",
+            "Marie Curie",
+            "Charles Darwin",
+            "Galileo Galilei",
+            "Stephen Hawking",
+            "Nikola Tesla",
+            "Thomas Edison",
+            "Gregor Mendel",
+            "Johannes Kepler",
+            "Michael Faraday",
+            "Niels Bohr"
+        ]
+        options_str = "\n".join(f"{letters[i]}) {opt}" for i, opt in enumerate(self.options)) 
+        one_shot_options_str = "\n".join(f"{letters[i]}) {sci}" for i, sci in enumerate(scientists[:len(self.options)])) 
+
+        prompt = prompt.replace("<_options_>", options_str)
+        one_shot = one_shot.replace("<_options_>", one_shot_options_str)
+
+        return one_shot + "\n\n" + prompt
+
+@dataclass
 class CountingSample(DataClassJsonMixin):
     prompt_template: str
     options: Sequence[str]
@@ -351,6 +412,116 @@ class SelectOneTask(DataClassJsonMixin):
         return f"""SelectOneTask: ({self.category_type})
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
+
+@dataclass
+class SelectAllTask(DataClassJsonMixin):
+    category_type: str
+    prompt_templates: list[str]
+    category_wise_examples: dict[str, list] = field(default_factory=dict)
+    task_name: str = "select_all"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/profession.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            selection_root = os.path.join(DEFAULT_DATA_DIR, "selection")
+            path = os.path.join(selection_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return SelectAllTask(
+                task_name="select_all",
+                category_type=data.get("name", category_type),
+                prompt_templates=data["prompt_templates"],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        prompt_template_idx: int = 0,
+        category: str | None = None,
+        subj: str | None = None,
+        n_options: int = 6,
+        filter_by_lm_prediction: bool = True,
+        retry_count: int = 0,
+    ) -> SelectAllSample:
+        """
+        Get a random sample with the specified attribute.
+        """
+
+        tokenizer = unwrap_tokenizer(mt)
+
+        category_wise_examples = {}
+        for cat in self.category_wise_examples:
+            examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
+            category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
+
+        category = category or random.choice(list(category_wise_examples.keys()))
+        if category not in category_wise_examples:
+            raise ValueError(
+                f"Attribute '{category}' not found in {category_wise_examples.keys()}."
+            )
+        subj = (
+            random.choice(list(category_wise_examples[category].values))
+            if subj is None
+            else subj
+        )
+
+        options = random.sample(list(category_wise_examples[category].values), n_options)
+        #print(f"{category=}")
+        #print(f"{subj=}")
+        #print(f"{options=}")
+
+        metadata = {}
+        
+        sample = SelectAllSample(
+            subj=subj,
+            options=options,
+            category=category,
+            metadata=metadata,
+            prompt_template=self.prompt_templates[prompt_template_idx],
+        )
+
+        if filter_by_lm_prediction:
+            if retry_count > 10:
+                return
+            prompt = sample.prompt()
+            inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = inputs.data
+
+            predictions = predict_next_token(
+                mt=mt,
+                inputs=inputs,
+            )[0]
+            all_token_id = mt.tokenizer.encode(" All", add_special_tokens=False)[0]
+            if predictions[0].token_id != all_token_id:
+                logger.error(
+                    f"""Sample = {sample}
+    Top prediction {predictions[0]} does not match the expected answer " All".
+    Retry count: {retry_count + 1}. Retrying ...
+    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    category=category,
+                    subj=subj,
+                    n_options=n_options,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    retry_count=retry_count + 1,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
 
 @dataclass
 class CountingTask(DataClassJsonMixin):
