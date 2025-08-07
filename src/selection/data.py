@@ -3,7 +3,9 @@ import json
 import logging
 import os
 import random
+from ast import literal_eval
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional, Sequence
 
 from dataclasses_json import DataClassJsonMixin
@@ -14,9 +16,6 @@ from src.selection.utils import KeyedSet, get_first_token_id
 from src.tokens import prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike, PredictedToken
-
-from pathlib import Path
-from ast import literal_eval
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +80,7 @@ class SelectionSample(DataClassJsonMixin):
 
         return prompt
 
+
 @dataclass
 class SelectAllSample(DataClassJsonMixin):
     subj: str
@@ -111,7 +111,7 @@ class SelectAllSample(DataClassJsonMixin):
     def prompt(self):
         prompt = self.prompt_template
         one_shot = prompt + " All of the above."
-        
+
         if "<_pivot_entity_>" in prompt:
             prompt = prompt.replace("<_pivot_entity_>", self.subj)
             one_shot = one_shot.replace("<_pivot_entity_>", "Isaac Newton")
@@ -120,7 +120,7 @@ class SelectAllSample(DataClassJsonMixin):
             prompt = prompt.replace("<_category_>", self.category)
             one_shot = one_shot.replace("<_category_>", "profession")
 
-        letters = ["A","B","C","D","E","F","G","H","I","J","K"]
+        letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
         scientists = [
             "Albert Einstein",
             "Marie Curie",
@@ -132,15 +132,21 @@ class SelectAllSample(DataClassJsonMixin):
             "Gregor Mendel",
             "Johannes Kepler",
             "Michael Faraday",
-            "Niels Bohr"
+            "Niels Bohr",
         ]
-        options_str = "\n".join(f"{letters[i]}) {opt}" for i, opt in enumerate(self.options)) 
-        one_shot_options_str = "\n".join(f"{letters[i]}) {sci}" for i, sci in enumerate(scientists[:len(self.options)])) 
+        options_str = "\n".join(
+            f"{letters[i]}) {opt}" for i, opt in enumerate(self.options)
+        )
+        one_shot_options_str = "\n".join(
+            f"{letters[i]}) {sci}"
+            for i, sci in enumerate(scientists[: len(self.options)])
+        )
 
         prompt = prompt.replace("<_options_>", options_str)
         one_shot = one_shot.replace("<_options_>", one_shot_options_str)
 
         return one_shot + "\n\n" + prompt
+
 
 @dataclass
 class CountingSample(DataClassJsonMixin):
@@ -173,19 +179,20 @@ class CountingSample(DataClassJsonMixin):
         prompt = self.prompt_template
         if "<_category_>" in prompt:
             prompt = prompt.replace("<_category_>", self.category)
-        
+
         if option_style is None:
             option_style = self.default_option_style
-        
+
         if option_style == "single_line":
             options_str = ", ".join(f"{opt}" for opt in self.options)
-        
+
         else:
             raise ValueError(f"Invalid option_style: {option_style}.")
-        
+
         prompt = prompt.replace("<_options_>", options_str)
 
         return prompt
+
 
 @dataclass
 class DeductionSample(DataClassJsonMixin):
@@ -201,6 +208,7 @@ class DeductionSample(DataClassJsonMixin):
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
+
 
 @dataclass
 class ObjectwiseResult:
@@ -413,6 +421,7 @@ class SelectOneTask(DataClassJsonMixin):
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
 
+
 @dataclass
 class SelectAllTask(DataClassJsonMixin):
     category_type: str
@@ -474,13 +483,15 @@ class SelectAllTask(DataClassJsonMixin):
             else subj
         )
 
-        options = random.sample(list(category_wise_examples[category].values), n_options)
-        #print(f"{category=}")
-        #print(f"{subj=}")
-        #print(f"{options=}")
+        options = random.sample(
+            list(category_wise_examples[category].values), n_options
+        )
+        # print(f"{category=}")
+        # print(f"{subj=}")
+        # print(f"{options=}")
 
         metadata = {}
-        
+
         sample = SelectAllSample(
             subj=subj,
             options=options,
@@ -523,6 +534,7 @@ class SelectAllTask(DataClassJsonMixin):
         sample.metadata["retry_count"] = retry_count
         return sample
 
+
 @dataclass
 class CountingTask(DataClassJsonMixin):
     category_type: str
@@ -532,9 +544,7 @@ class CountingTask(DataClassJsonMixin):
 
     @staticmethod
     def load(
-        path: PathLike | None = os.path.join(
-            DEFAULT_DATA_DIR, "counting/fruits.json"
-        ),
+        path: PathLike | None = os.path.join(DEFAULT_DATA_DIR, "counting/fruits.json"),
         category_type: str | None = None,
     ):
         if path is None:
@@ -547,7 +557,7 @@ class CountingTask(DataClassJsonMixin):
             return CountingTask(
                 task_name="counting",
                 category_type=data.get("name", category_type),
-                prompt_templates=data['prompt_templates'],
+                prompt_templates=data["prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
 
@@ -585,38 +595,40 @@ class CountingTask(DataClassJsonMixin):
             raise ValueError(
                 f"Attribute '{category}' not found in {category_wise_examples.keys()}."
             )
-        
+
         category_keys = list(category_wise_examples.keys())
-        assert category_keys[0] == category, "Main category must come first in the dataset categories"
-        
+        assert (
+            category_keys[0] == category
+        ), "Main category must come first in the dataset categories"
+
         main_category_items = category_wise_examples[category_keys[0]].values
         counting_items = random.sample(main_category_items, k=n_count)
 
         generic_items = category_wise_examples[category_keys[1]].values
         distractors = random.sample(generic_items, k=n_distractors)
-        
+
         if len(counting_items) > 1 and len(distractors) > 1:
             options = counting_items + distractors
         elif len(counting_items) == 1 and len(distractors) > 1:
             options = [counting_items] + distractors
         elif len(counting_items) > 1 and len(distractors) == 1:
             options = counting_items + [distractors]
-        
+
         random.shuffle(options)
 
         sample = CountingSample(
-            prompt_template = self.prompt_templates[prompt_template_idx],
-            options = options,
-            count = n_count,
-            category = category,
-            prediction = None,
-            default_option_style = option_style,
+            prompt_template=self.prompt_templates[prompt_template_idx],
+            options=options,
+            count=n_count,
+            category=category,
+            prediction=None,
+            default_option_style=option_style,
         )
 
         if filter_by_lm_prediction:
             prompt = sample.prompt(option_style=option_style)
             inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata['tokenized'] = inputs.data
+            sample.metadata["tokenized"] = inputs.data
 
             predictions = predict_next_token(
                 mt=mt,
@@ -634,7 +646,7 @@ class CountingTask(DataClassJsonMixin):
                 7: " seven",
                 8: " eight",
                 9: " nine",
-                10: " ten"
+                10: " ten",
             }
             if predictions[0].token != count_str_map[n_count]:
                 logger.error(
@@ -664,6 +676,7 @@ class CountingTask(DataClassJsonMixin):
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
 
+
 @dataclass
 class DeductionTask(DataClassJsonMixin):
     topics: dict[str, dict]
@@ -671,11 +684,7 @@ class DeductionTask(DataClassJsonMixin):
     task_name: str = "deduction"
 
     @staticmethod
-    def load(
-        dir_path: Path | None = os.path.join(
-            DEFAULT_DATA_DIR, "deduction"
-        )
-    ):
+    def load(dir_path: Path | None = os.path.join(DEFAULT_DATA_DIR, "deduction")):
         for file_path in Path(dir_path).iterdir():
             if file_path.is_file() and file_path.name == "topics.json":
                 print(file_path)
@@ -698,21 +707,21 @@ class DeductionTask(DataClassJsonMixin):
         depth: int,
         names: list[str] = ["Alice", "Bob", "Cam", "Dave", "Eli"],
         filter_by_lm_prediction: bool = True,
-        retry_count: int = 0
+        retry_count: int = 0,
     ) -> DeductionSample:
         """
         Get a random sample from the logical deduction problems.
         """
 
-        assert topic_name in list(self.topics.keys()), (
-            f"Topic name '{topic_name}' not a valid topic: {list(self.topics.keys())}."
-        )
-        assert str(depth) in list(self.logic_templates.keys()), (
-            f"Depth '{depth}' not a valid depth: {list(self.logic_templates.keys())}."
-        )
-        assert len(names) >= depth, (
-            f"Length of names list must be greater than depth '{depth}'."
-        )
+        assert topic_name in list(
+            self.topics.keys()
+        ), f"Topic name '{topic_name}' not a valid topic: {list(self.topics.keys())}."
+        assert str(depth) in list(
+            self.logic_templates.keys()
+        ), f"Depth '{depth}' not a valid depth: {list(self.logic_templates.keys())}."
+        assert (
+            len(names) >= depth
+        ), f"Length of names list must be greater than depth '{depth}'."
 
         tokenizer = unwrap_tokenizer(mt)
 
@@ -727,7 +736,7 @@ class DeductionTask(DataClassJsonMixin):
             name1 = names[idx1]
             name2 = names[idx2]
 
-            if comparator == '>':
+            if comparator == ">":
                 comparator_text = topic_vocab["positive_comparator"]
             else:
                 comparator_text = topic_vocab["negative_comparator"]
@@ -750,18 +759,18 @@ class DeductionTask(DataClassJsonMixin):
         metadata = {}
 
         sample = DeductionSample(
-            prompt = final_prompt,
-            answer = answer,
-            depth = depth,
-            topic = topic_name,
-            prediction = None,
-            metadata = metadata
+            prompt=final_prompt,
+            answer=answer,
+            depth=depth,
+            topic=topic_name,
+            prediction=None,
+            metadata=metadata,
         )
 
         if filter_by_lm_prediction:
             prompt = sample.prompt
             inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata['tokenized'] = inputs.data
+            sample.metadata["tokenized"] = inputs.data
 
             predictions = predict_next_token(
                 mt=mt,
@@ -794,9 +803,6 @@ class DeductionTask(DataClassJsonMixin):
 Depths: {list(self.logic_templates.keys())}
 Topics: {list(self.topics.keys())}
         """
-
-
-
 
 
 # def load_people_by_category(

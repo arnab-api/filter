@@ -5,7 +5,6 @@ from typing import Optional, Tuple
 
 import torch
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -127,7 +126,7 @@ def scaled_dot_product_attention(
         for head_idx in store_attn_matrices:
             cur_attn_matrix = attn_weight[:, head_idx, :, :]  # batch x q_len x k_len
 
-            if value_weighted == True:
+            if value_weighted is True:
                 cur_values = value[:, head_idx, :, :]  # batch x q_len x head_dim
 
                 # * Use this if you want the actual tokenwise contributions as well.
@@ -309,10 +308,10 @@ def LlamaAttentionPatcher(
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         logger.debug(f"LlamaAttentionPatcher <> {block_name}")
 
-        if kwargs.get("output_attentions", True):
-            raise NotImplementedError(
-                "LlamaAttentionPatcher does not support output_attentions=True."
-            )
+        # if kwargs.get("output_attentions", True):
+        #     raise NotImplementedError(
+        #         "LlamaAttentionPatcher does not support output_attentions=True."
+        #     )
 
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
@@ -341,6 +340,9 @@ def LlamaAttentionPatcher(
         logger.debug(
             f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
         )
+        # if query_patches is not None:
+        #     for head_idx, token_idx, patch in query_patches:
+        #         query_states[:, head_idx, token_idx, :] = patch
 
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(
@@ -413,7 +415,7 @@ def LlamaAttentionPatcher(
         # print(f"{attn_output.size()=}")
 
         if store_head_contributions is not None:
-            if torch.allclose(attn_output, __attn_output, atol=1e-1) == False:
+            if torch.allclose(attn_output, __attn_output, atol=1e-1) is False:
                 logger.warning(
                     f"{block_name} >> allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
                 )
