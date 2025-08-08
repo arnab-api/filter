@@ -81,7 +81,7 @@ def get_patches_to_verify_independent_enrichment(
 
 
 def verify_head_patterns(
-    prompt: str,
+    prompt: str | TokenizerOutput,
     options: list[str],
     pivot: str,
     mt: ModelandTokenizer,
@@ -92,11 +92,17 @@ def verify_head_patterns(
     generate_full_answer: bool = False,
     ablate_possible_ans_info_from_options: bool = False,
     bare_prompt_template=" The fact that {}",
+    query_index: int = -1,
+    query_patches: list[PatchSpec] = [],
 ):
-    tokenized_prompt = prepare_input(
-        tokenizer=mt,
-        prompts=prompt,
-        return_offsets_mapping=True,
+    tokenized_prompt = (
+        prepare_input(
+            tokenizer=mt,
+            prompts=prompt,
+            return_offsets_mapping=True,
+        )
+        if isinstance(prompt, str)
+        else prompt
     )
     patches = (
         get_patches_to_verify_independent_enrichment(
@@ -110,6 +116,7 @@ def verify_head_patterns(
         if ablate_possible_ans_info_from_options
         else []
     )
+    patches = patches + query_patches
     print(len(patches), "patches to ablate possible answer information from options")
 
     ret_dict = {}
@@ -146,6 +153,7 @@ def verify_head_patterns(
             prompt=prompt,
             tokenized=tokenized_prompt,
             layer_window=layers,
+            q_index=query_index,
         )
         print("=" * 70)
 
@@ -161,7 +169,7 @@ def verify_head_patterns(
                 visualize_attn_matrix(
                     attn_matrix=head_matrix,
                     tokens=attn_matrices.tokenized_prompt,
-                    q_index=-1,
+                    q_index=query_index,
                     start_from=1,
                 )
 
@@ -170,7 +178,7 @@ def verify_head_patterns(
         visualize_attn_matrix(
             attn_matrix=combined_matrix,
             tokens=attn_matrices.tokenized_prompt,
-            q_index=-1,
+            q_index=query_index,
             start_from=1,
         )
 

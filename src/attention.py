@@ -10,7 +10,6 @@ from IPython.display import display
 
 from src.functional import (
     PatchSpec,
-    get_module_nnsight,
     patch_with_baukit,
     patch_with_nnsight,
     prepare_input,

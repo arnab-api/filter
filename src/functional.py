@@ -10,7 +10,6 @@ import baukit
 import numpy as np
 import torch
 from nltk.corpus import stopwords
-from nnsight import LanguageModel
 
 from src.dataset import Relation
 from src.models import ModelandTokenizer
@@ -18,7 +17,6 @@ from src.tokens import find_token_range, insert_padding_before_pos, prepare_inpu
 from src.utils.typing import (
     SVD,
     ArrayLike,
-    Model,
     PredictedToken,
     Tokenizer,
     TokenizerOutput,
