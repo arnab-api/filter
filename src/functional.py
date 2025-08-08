@@ -10,11 +10,19 @@ import baukit
 import numpy as np
 import torch
 from nltk.corpus import stopwords
+from nnsight import LanguageModel
 
 from src.dataset import Relation
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
-from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
+from src.utils.typing import (
+    SVD,
+    ArrayLike,
+    Model,
+    PredictedToken,
+    Tokenizer,
+    TokenizerOutput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +647,169 @@ def get_module_nnsight(model, layer_name):
     for name in layer_name.split("."):
         layer = layer[int(name)] if name.isdigit() else getattr(layer, name)
     return layer
+
+
+def patch_with_baukit(
+    mt: ModelandTokenizer,
+    inputs: TokenizerOutput,
+    patches: list[PatchSpec] = [],
+    model_kwargs: dict = {},
+):
+    model = mt._model
+
+    batch_size = inputs.input_ids.shape[0]
+    seq_len = inputs.input_ids.shape[1]
+    n_heads = mt.config.num_attention_heads
+    head_dim = mt.config.hidden_size // n_heads
+
+    modules_to_patches = {}
+    for patch in patches:
+        if len(patch.location) == 2:
+            layer, idx = patch.location
+            head_idx = None
+        elif len(patch.location) == 3:
+            layer, head_idx, idx = patch.location
+        else:
+            raise ValueError(f"Invalid patch location: {patch.location}")
+        if layer not in modules_to_patches:
+            modules_to_patches[layer] = []
+        modules_to_patches[layer].append(patch)
+
+    unique_modules = list(modules_to_patches.keys())
+
+    def perform_patch(repr, layer_name):
+        # print(layer_name)
+        if layer_name not in unique_modules:
+            return repr
+
+        current_state = (
+            repr
+            if "mlp" in layer_name or "embed" in layer_name or "_proj" in layer_name
+            else repr[0]
+        )
+        if current_state.dim() == 2:
+            current_state = current_state.unsqueeze(0)
+        for patch in modules_to_patches[layer_name]:
+            # current_state[:, patch.index, :] = patch.patch
+            if len(patch.location) == 2:
+                _, token_idx = patch.location
+                head_idx = None
+            elif len(patch.location) == 3:
+                _, head_idx, token_idx = patch.location
+            else:
+                raise ValueError(f"Invalid patch location: {patch.location}")
+
+            if head_idx is None:
+                if patch.strategy == "replace":
+                    current_state[:, token_idx, :] = patch.patch
+                elif patch.strategy == "add":
+                    current_state[:, token_idx, :] += patch.patch
+                else:
+                    raise ValueError(f"Unknown patch strategy: {patch.strategy}")
+            else:
+                current_state = current_state.reshape(
+                    batch_size, seq_len, n_heads, head_dim
+                ).transpose(1, 2)
+                if patch.strategy == "replace":
+                    current_state[:, head_idx, token_idx, :] = patch.patch
+                elif patch.strategy == "add":
+                    current_state[:, head_idx, token_idx, :] += patch.patch
+                else:
+                    raise ValueError(f"Unknown patch strategy: {patch.strategy}")
+                current_state = current_state.transpose(1, 2).reshape(
+                    batch_size, seq_len, n_heads * head_dim
+                )
+
+        return repr
+
+    with baukit.TraceDict(
+        module=model, layers=unique_modules, edit_output=perform_patch
+    ):
+        output = model(**inputs, **model_kwargs)
+
+    return output
+
+
+def patch_with_nnsight(
+    mt: ModelandTokenizer,
+    inputs: TokenizerOutput,
+    patches: list[PatchSpec] = [],
+    model_kwargs: dict = {},
+):
+    batch_size = inputs.input_ids.shape[0]
+    seq_len = inputs.input_ids.shape[1]
+    n_heads = mt.config.num_attention_heads
+    head_dim = mt.config.hidden_size // n_heads
+
+    with mt.trace(inputs, **model_kwargs) as tracer:
+        for cur_patch in patches:
+            if len(cur_patch.location) == 2:
+                module_name, index = cur_patch.location
+                head_idx = None
+            elif len(cur_patch.location) == 3:
+                module_name, head_idx, index = cur_patch.location
+
+            print(module_name, index, head_idx, cur_patch.strategy)
+            module = get_module_nnsight(mt, module_name)
+            current_state = (
+                module.output
+                if (
+                    "mlp" in module_name
+                    or module_name == mt.embedder_name
+                    or "_proj" in module_name
+                )
+                else module.output[0]
+            )
+            if current_state.ndim == 2:
+                current_state = current_state.unsqueeze(0)
+
+            # current_state = current_state.clone()
+            tracer.log(
+                "log",
+                current_state.shape,
+                cur_patch.location,
+                cur_patch.patch.shape,
+            )
+            if head_idx is None:
+                print("is working")
+                tracer.log(">> false")
+                if cur_patch.strategy == "replace":
+                    current_state[:, index, :] = cur_patch.patch
+                elif cur_patch.strategy == "add":
+                    current_state[:, index, :] += cur_patch.patch
+                else:
+                    raise ValueError(
+                        f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
+                    )
+                # module.output[...] = current_state
+
+            else:
+                print("-- not working")
+                tracer.log(">> tracer")
+                # print("HI", cur_patch.strategy, cur_patch.location)
+                current_state = current_state.clone()
+                current_state = current_state.reshape(
+                    batch_size, seq_len, n_heads, head_dim
+                ).transpose(1, 2)
+                tracer.log(current_state.shape, head_idx, index)
+
+                if cur_patch.strategy == "replace":
+                    current_state[:, head_idx, index, :] = cur_patch.patch
+                elif cur_patch.strategy == "add":
+                    current_state[:, head_idx, index, :] += cur_patch.patch
+                else:
+                    raise ValueError(
+                        f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
+                    )
+                current_state = current_state.transpose(1, 2).reshape(
+                    batch_size, seq_len, n_heads * head_dim
+                )
+                tracer.log(current_state.shape)
+                print(current_state.shape, "Setting")
+                module.output[...] = current_state
+
+        output = mt.output.save()
+    return output
 
 
 @torch.inference_mode()

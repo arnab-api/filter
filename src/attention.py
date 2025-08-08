@@ -11,6 +11,8 @@ from IPython.display import display
 from src.functional import (
     PatchSpec,
     get_module_nnsight,
+    patch_with_baukit,
+    patch_with_nnsight,
     prepare_input,
 )
 from src.models import ModelandTokenizer
@@ -67,6 +69,7 @@ def get_attention_matrices(
     mt: ModelandTokenizer,
     value_weighted: bool = False,
     patches: Optional[PatchSpec | list[PatchSpec]] = None,
+    patch_interface: callable = patch_with_baukit,
 ) -> torch.tensor:
     """
     Parameters:
@@ -105,81 +108,14 @@ def get_attention_matrices(
         layer_id = ".".join(module_name.split(".")[:-1])
         return layer_id, int(head_id)
 
-    batch_size = input.input_ids.shape[0]
-    n_heads = mt.config.num_attention_heads
-    head_dim = mt.config.hidden_size // n_heads
-    seq_len = input.input_ids.shape[1]
-    # print(f"{input.input_ids.shape=}, {input.attention_mask.shape=}")
-    with mt.trace(input, output_attentions=True) as tracer:
-        if patches is not None:
-            for cur_patch in patches:
-                if len(cur_patch.location) == 2:
-                    module_name, index = cur_patch.location
-                    head_idx = None
-                elif len(cur_patch.location) == 3:
-                    module_name, head_idx, index = cur_patch.location
-
-                print(module_name, index, head_idx, cur_patch.strategy)
-                module = get_module_nnsight(mt, module_name)
-                current_state = (
-                    module.output
-                    if (
-                        "mlp" in module_name
-                        or module_name == mt.embedder_name
-                        or "_proj" in module_name
-                    )
-                    else module.output[0]
-                )
-                if current_state.ndim == 2:
-                    current_state = current_state.unsqueeze(0)
-
-                # current_state = current_state.clone()
-                tracer.log(
-                    "log",
-                    current_state.shape,
-                    cur_patch.location,
-                    cur_patch.patch.shape,
-                )
-                if head_idx is None:
-                    print("is working")
-                    tracer.log(">> false")
-                    if cur_patch.strategy == "replace":
-                        current_state[:, index, :] = cur_patch.patch
-                    elif cur_patch.strategy == "add":
-                        current_state[:, index, :] += cur_patch.patch
-                    else:
-                        raise ValueError(
-                            f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
-                        )
-                    # module.output[...] = current_state
-
-                else:
-                    print("-- not working")
-                    tracer.log(">> tracer")
-                    # print("HI", cur_patch.strategy, cur_patch.location)
-                    current_state = current_state.clone()
-                    current_state = current_state.reshape(
-                        batch_size, seq_len, n_heads, head_dim
-                    ).transpose(1, 2)
-                    tracer.log(current_state.shape, head_idx, index)
-
-                    if cur_patch.strategy == "replace":
-                        current_state[:, head_idx, index, :] = cur_patch.patch
-                    elif cur_patch.strategy == "add":
-                        current_state[:, head_idx, index, :] += cur_patch.patch
-                    else:
-                        raise ValueError(
-                            f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
-                        )
-                    current_state = current_state.transpose(1, 2).reshape(
-                        batch_size, seq_len, n_heads * head_dim
-                    )
-                    tracer.log(current_state.shape)
-                    print(current_state.shape, "Setting")
-                    module.output[...] = current_state
-
-        output = mt.model.output.save()
-        logits = mt.output.logits[0][-1].save()
+    output = patch_interface(
+        mt=mt,
+        inputs=input,
+        patches=patches if patches is not None else [],
+        model_kwargs=dict(output_attentions=True),
+    )
+    # print(output.__dict__.keys())
+    logits = output.logits[0][-1]
 
     # print(output.keys())
     # print(logits.shape)

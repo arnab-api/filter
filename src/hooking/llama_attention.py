@@ -268,6 +268,7 @@ def LlamaAttentionPatcher(
     value_weighted: bool = False,
     store_head_contributions: Optional[dict[int, torch.Tensor]] = None,
     freeze_attn_contributions: Optional[dict[int, torch.Tensor]] = None,
+    query_patches: Optional[list[Tuple[int, int, torch.Tensor]]] = None,
 ) -> callable:
     """
     Wraps the forward method of the `LlamaSdpaAttention` class
@@ -340,9 +341,9 @@ def LlamaAttentionPatcher(
         logger.debug(
             f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
         )
-        # if query_patches is not None:
-        #     for head_idx, token_idx, patch in query_patches:
-        #         query_states[:, head_idx, token_idx, :] = patch
+        if query_patches is not None:
+            for head_idx, token_idx, patch in query_patches:
+                query_states[:, head_idx, token_idx, :] = patch
 
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(
