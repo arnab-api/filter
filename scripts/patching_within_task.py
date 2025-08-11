@@ -8,15 +8,11 @@ from dataclasses import dataclass
 from itertools import product
 from typing import Literal
 
-import numpy as np
 import torch
 from dataclasses_json import DataClassJsonMixin
-from tqdm import tqdm
 
-from src.attention import AttentionInformation, get_attention_matrices
 from src.functional import (
     PatchSpec,
-    detensorize,
     get_module_nnsight,
     interpret_logits,
     patch_with_baukit,
@@ -25,9 +21,9 @@ from src.functional import (
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
 from src.selection.utils import KeyedSet, get_first_token_id
-from src.tokens import find_token_range, prepare_input
+from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.typing import ArrayLike, PathLike, PredictedToken, TokenizerOutput
+from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +300,7 @@ def cache_q_projections(
     seq_len = input.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
     head_dim = mt.n_embd // n_heads
-    with mt.trace(input) as tracer:
+    with mt.trace(input) as tracer:  # noqa
         for layer_idx, head_indices in layer_to_heads.items():
             q_proj_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
             q_proj_module = get_module_nnsight(mt, q_proj_name)
@@ -378,7 +374,8 @@ def calculate_query_patching_results_for_sample_pair(
     # patching the heads one by one
     logger.debug("patching query states for each head one by one")
     head_wise_patching_effects = {}
-    for (layer_idx, head_idx), q_proj in tqdm(all_q_projections.items()):
+    counter = 0
+    for (layer_idx, head_idx), q_proj in all_q_projections.items():
         q_proj_patch = PatchSpec(
             location=(
                 mt.attn_module_name_format.format(layer_idx) + ".q_proj",
@@ -397,6 +394,12 @@ def calculate_query_patching_results_for_sample_pair(
             tokenizer=mt, logits=logits, interested_tokens=interested_tokens
         )
         head_wise_patching_effects[(layer_idx, head_idx)] = track
+        counter += 1
+
+        if counter % 100 == 0:
+            logger.debug(
+                f"Got patching results for {counter}/{len(all_q_projections)} ({counter/len(all_q_projections):.2%})"
+            )
 
     return SelectionQprojPatchResult(
         patch_sample=patch_sample,
