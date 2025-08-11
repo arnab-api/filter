@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SelectionSample(DataClassJsonMixin):
     obj: str
+    answer: str
     obj_idx: int
     prompt_template: str
     options: Sequence[str]
     subj: str | None = None
     category: str | None = None
     prediction: Optional[Sequence[PredictedToken]] = None
-    obj_token_id: Optional[int] = None
+    ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line", "numbered"] = "single_line"
 
@@ -71,7 +72,7 @@ class SelectionSample(DataClassJsonMixin):
 
         elif option_style == "numbered":
             options_str = "\n".join(
-                f"{i + 1}. {opt}" for i, opt in enumerate(self.options)
+                f"{chr(ord('a') + i)}. {opt}" for i, opt in enumerate(self.options)
             )
         else:
             raise ValueError(f"Invalid option_style: {option_style}.")
@@ -278,24 +279,34 @@ class SelectOneTask(DataClassJsonMixin):
         category: str | None = None,
         subj: str | None = None,
         n_distractors: int = 5,
-        filter_by_lm_prediction: bool = True,
+        filter_by_lm_prediction: bool = False,
         obj_idx: int | None = None,
         get_alt_obj: bool = False,  # TODO(arnab): Need to check accuracy with the alt obj as well
         exclude_objs: Sequence[str] = [],
         exclude_distractor_categories: Sequence[str] = [],
         insert_distractor: Sequence[tuple[str, int]] = [],
         retry_count: int = 0,
+        output_formatting: Literal["zero_shot", "object", "lettered"] = "zero_shot",
     ) -> SelectionSample:
         """
         Get a random sample with the specified attribute.
         """
+
+        def format_answer(obj_idx, obj, formatting):
+            if formatting == "lettered":
+                answer = f"{chr(ord('a') + obj_idx)}. {obj}"
+            elif formatting == "object":
+                answer = obj
+            return answer
 
         kwargs = {
             "subj": subj,
             "obj_idx": obj_idx,
             "prompt_template_idx": prompt_template_idx,
             "option_style": option_style,
+            "output_formatting": output_formatting,
         }
+
         tokenizer = unwrap_tokenizer(mt)
 
         category_wise_examples = {}
@@ -316,6 +327,7 @@ class SelectOneTask(DataClassJsonMixin):
             if subj is None
             else subj
         )
+
         # logger.debug(f"{subj=}")
         obj = random.choice(
             (
@@ -323,6 +335,30 @@ class SelectOneTask(DataClassJsonMixin):
                 - KeyedSet([subj] + exclude_objs, tokenizer=tokenizer)
             ).values
         )
+
+        prefix = ""
+        if output_formatting != "zero_shot":
+            one_shot = self.get_random_sample(
+                mt=mt,
+                prompt_template_idx=prompt_template_idx,
+                category=None,
+                subj=None,
+                n_distractors=n_distractors,
+                filter_by_lm_prediction=False,
+                obj_idx=None,
+                get_alt_obj=False,
+                exclude_objs=[obj],
+                exclude_distractor_categories=[category],
+                output_formatting="zero_shot",
+                option_style=option_style,
+            )
+            one_shot_answer = format_answer(
+                obj_idx=one_shot.obj_idx,
+                obj=one_shot.obj,
+                formatting=output_formatting,
+            )
+            prefix = f"{one_shot.prompt()} {one_shot_answer}\n\n"
+
         obj_token_id = get_first_token_id(obj, tokenizer, prefix=" ")
         if obj_idx is None:
             obj_idx = random.randint(0, n_distractors)
@@ -365,9 +401,19 @@ class SelectOneTask(DataClassJsonMixin):
             options[idx] = dist
         # logger.debug(f"{options=}")
 
+        answer = obj
+        if output_formatting != "zero_shot":
+            answer = format_answer(
+                obj_idx=obj_idx,
+                obj=obj,
+                formatting=output_formatting,
+            )
+
         metadata = {}
         if get_alt_obj:
-            alt_obj_token_id = get_first_token_id(alt_obj, tokenizer, prefix=" ")
+            alt_obj_token_id = get_first_token_id(
+                alt_obj, tokenizer, prefix=" "
+            )  #! alt_obj is not consistent with the formatting yet
             metadata["alt_obj"] = (alt_obj, alt_obj_token_id)
         sample = SelectionSample(
             subj=subj,
@@ -375,11 +421,14 @@ class SelectOneTask(DataClassJsonMixin):
             obj_idx=obj_idx,
             options=options,
             category=category,
-            obj_token_id=obj_token_id,
+            ans_token_id=get_first_token_id(answer, tokenizer, prefix=" "),
+            answer=answer,
             metadata=metadata,
             prompt_template=self.prompt_templates[prompt_template_idx],
             default_option_style=option_style,
         )
+
+        sample.prompt_template = prefix + sample.prompt_template
 
         if filter_by_lm_prediction:
             prompt = sample.prompt(option_style=option_style)

@@ -47,7 +47,7 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
     ):
         low_score = getattr(self.base_results[self.track_obj_token_id][1], metric)
         high_score = getattr(
-            self.gold_results[self.patch_sample.obj_token_id][1], metric
+            self.gold_results[self.patch_sample.ans_token_id][1], metric
         )
         patch_score = getattr(
             self.headwise_patching_effects[(layer_idx, head_idx)][
@@ -236,7 +236,7 @@ def get_counterfactual_samples_within_task(
         subj=patch_subj,
         obj=patch_obj,
         obj_idx=patch_obj_idx,
-        obj_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
+        ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
         options=patch_options,
         category=patch_category,
         metadata=patch_metadata,
@@ -246,7 +246,7 @@ def get_counterfactual_samples_within_task(
         subj=clean_subj,
         obj=clean_obj,
         obj_idx=clean_obj_idx,
-        obj_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
+        ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
         options=clean_options,
         category=clean_category,
         metadata=clean_metadata,
@@ -263,9 +263,9 @@ def get_counterfactual_samples_within_task(
                 logger.info(
                     f"{sample.subj} -> {sample.obj} | pred={[str(p) for p in pred]}"
                 )
-            if pred[0].token_id != sample.obj_token_id:
+            if pred[0].token_id != sample.ans_token_id:
                 logger.error(
-                    f'Prediction mismatch: {pred[0].token_id}["{mt.tokenizer.decode(pred[0].token_id)}"] != {sample.obj_token_id}["{mt.tokenizer.decode(sample.obj_token_id)}"]'
+                    f'Prediction mismatch: {pred[0].token_id}["{mt.tokenizer.decode(pred[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
                 )
                 return get_counterfactual_samples_within_task(
                     task=task,
@@ -329,8 +329,8 @@ def calculate_query_patching_results_for_sample_pair(
     query_idx: int = -1,
 ) -> SelectionQprojPatchResult:
     interested_tokens = [
-        patch_sample.obj_token_id,
-        clean_sample.obj_token_id,
+        patch_sample.ans_token_id,
+        clean_sample.ans_token_id,
         clean_sample.metadata["track_type_obj_token_id"],
     ]
 
