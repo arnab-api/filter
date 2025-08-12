@@ -3,6 +3,7 @@ import gc
 import logging
 import re
 import string
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, Union
 
@@ -108,13 +109,18 @@ def interpret_logits(
             for t in interested_tokens
         }
         # print(interested_logits)
-        interested_logits = {
-            k: v
-            for k, v in sorted(
-                interested_logits.items(), key=lambda x: x[1][1].prob, reverse=True
-            )
-        }
-        return candidates, interested_logits
+        # interested_logits = {
+        #     k: v
+        #     for k, v in sorted(
+        #         interested_logits.items(), key=lambda x: x[1][1].prob, reverse=True
+        #     )
+        # }
+        ordered_interested_logits = OrderedDict()
+        for k, v in sorted(
+            interested_logits.items(), key=lambda x: x[1][1].prob, reverse=True
+        ):
+            ordered_interested_logits[k] = v
+        return candidates, ordered_interested_logits
     return candidates
 
 
