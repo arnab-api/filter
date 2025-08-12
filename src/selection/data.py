@@ -271,6 +271,13 @@ class SelectOneTask(DataClassJsonMixin):
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
 
+    @property
+    def categories(self):
+        """
+        Returns the list of categories in the task.
+        """
+        return list(self.category_wise_examples.keys())
+
     def get_random_sample(
         self,
         mt: ModelandTokenizer,
@@ -506,7 +513,8 @@ class SelectOddOneOutTask(SelectOneTask):
         mt: ModelandTokenizer,
         prompt_template_idx: int = 0,
         option_style: Literal["single_line", "numbered"] = "single_line",
-        category: str | None = None,
+        distractor_category: str | None = None,
+        obj_category: str | None = None,
         subj: str | None = None,
         n_distractors: int = 5,
         filter_by_lm_prediction: bool = False,
@@ -545,35 +553,32 @@ class SelectOddOneOutTask(SelectOneTask):
             category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
         # print(f"Category: {category}")
         # print(people_by_category[category].values)
+        obj_category = obj_category or random.choice(
+            list(category_wise_examples.keys())
+        )
 
-        category = category or random.choice(
+        distractor_category = distractor_category or random.choice(
             list(
-                set(category_wise_examples.keys()) - set(exclude_distractor_categories)
+                set(category_wise_examples.keys())
+                - set(exclude_distractor_categories + [obj_category])
             )
         )
-        if category not in category_wise_examples:
+        if distractor_category not in category_wise_examples:
             raise ValueError(
-                f"Attribute '{category}' not found in {category_wise_examples.keys()}."
+                f"Attribute '{distractor_category}' not found in {category_wise_examples.keys()}."
             )
         subj = (
-            random.choice(list(category_wise_examples[category].values))
+            random.choice(list(category_wise_examples[distractor_category].values))
             if subj is None
             else subj
         )
 
         distractors = random.sample(
             (
-                category_wise_examples[category]
+                category_wise_examples[distractor_category]
                 - KeyedSet(items=[subj], tokenizer=tokenizer)
             ).values,
             k=n_distractors,
-        )
-
-        obj_category = random.choice(
-            list(
-                set(category_wise_examples.keys())
-                - set([category] + exclude_distractor_categories)
-            )
         )
 
         # logger.debug(f"{subj=}")
@@ -600,14 +605,14 @@ class SelectOddOneOutTask(SelectOneTask):
             one_shot = self.get_random_sample(
                 mt=mt,
                 prompt_template_idx=prompt_template_idx,
-                category=None,
+                distractor_category=None,
                 subj=None,
                 n_distractors=n_distractors,
                 filter_by_lm_prediction=False,
                 obj_idx=None,
                 get_alt_obj=False,
                 exclude_objs=[obj],
-                exclude_distractor_categories=[category],
+                exclude_distractor_categories=[distractor_category],
                 output_formatting="zero_shot",
                 option_style=option_style,
             )
@@ -632,13 +637,14 @@ class SelectOddOneOutTask(SelectOneTask):
             obj=obj,
             obj_idx=obj_idx,
             options=options,
-            category=category,
+            category=distractor_category,
             ans_token_id=get_first_token_id(answer, tokenizer, prefix=" "),
             answer=answer,
             metadata=metadata,
             prompt_template=self.prompt_templates[prompt_template_idx],
             default_option_style=option_style,
         )
+        sample.metadata["odd_category"] = obj_category
 
         sample.prompt_template = prefix + sample.prompt_template
 
@@ -668,7 +674,7 @@ class SelectOddOneOutTask(SelectOneTask):
                     mt=mt,
                     n_distractors=n_distractors,
                     filter_by_lm_prediction=filter_by_lm_prediction,
-                    category=category,
+                    distractor_category=distractor_category,
                     exclude_objs=exclude_objs,
                     exclude_distractor_categories=exclude_distractor_categories,
                     insert_distractor=insert_distractor,
