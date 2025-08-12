@@ -10,9 +10,9 @@ from typing import Literal, Optional, Sequence
 
 from dataclasses_json import DataClassJsonMixin
 
-from src.functional import detensorize, predict_next_token
+from src.functional import detensorize, get_hs, interpret_logits, predict_next_token
 from src.models import ModelandTokenizer, unwrap_tokenizer
-from src.selection.utils import KeyedSet, get_first_token_id
+from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike, PredictedToken
@@ -433,17 +433,22 @@ class SelectOneTask(DataClassJsonMixin):
         if filter_by_lm_prediction:
             prompt = sample.prompt(option_style=option_style)
             # logger.info(f"\nPrompt: {prompt}")
-            inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata["tokenized"] = inputs.data
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
 
-            predictions = predict_next_token(
+            is_correct, predictions, track_objs = verify_correct_option(
                 mt=mt,
-                inputs=inputs,
-            )[0]
-            if predictions[0].token_id != obj_token_id:
+                input=tokenized_inputs,
+                target=obj_token_id,
+                options=options,
+                prefix=" ",
+            )
+
+            # if predictions[0].token_id != obj_token_id:
+            if not is_correct:
                 logger.error(
                     f"""Sample = {sample}
-    Top prediction {predictions[0]} does not match the object {obj}[{obj_token_id}, "{mt.tokenizer.decode(obj_token_id)}"].
+    Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {obj}[{obj_token_id}, "{mt.tokenizer.decode(obj_token_id)}"].
     Retry count: {retry_count + 1}. Retrying ...
     """
                 )

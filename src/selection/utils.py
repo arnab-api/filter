@@ -1,4 +1,11 @@
-from src.models import unwrap_tokenizer
+from typing import Optional
+
+import torch
+
+from src.functional import get_hs, interpret_logits
+from src.models import ModelandTokenizer, unwrap_tokenizer
+from src.tokens import prepare_input
+from src.utils.typing import PredictedToken, TokenizerOutput
 
 
 def get_first_token_id(name, tokenizer, prefix=" "):
@@ -45,3 +52,54 @@ class KeyedSet:
 # people_by_prof_set["chef"].show()
 # print("-" * 50)
 # (people_by_prof_set["actor"] - people_by_prof_set["chef"]).show()
+
+
+def verify_correct_option(
+    mt: ModelandTokenizer,
+    target: int | str,
+    options: list[str] | list[int],
+    input: Optional[str | TokenizerOutput] = None,
+    logits: torch.Tensor | None = None,
+    prefix: str = " ",
+    **kwargs,
+) -> tuple[bool, list[PredictedToken], dict[int, tuple[int, PredictedToken]]]:
+    assert (
+        logits is not None or input is not None
+    ), "Either logits or input must be provided."
+    if logits is None:
+        input = (
+            prepare_input(
+                prompts=input,
+                tokenizer=mt,
+            )
+            if isinstance(input, str)
+            else input
+        )
+        logit_module = (mt.lm_head_name, -1)
+        logits = get_hs(
+            mt=mt, input=input, locations=[logit_module], return_dict=False
+        ).squeeze()
+
+    target = (
+        get_first_token_id(target, mt.tokenizer, prefix=prefix)
+        if isinstance(target, str)
+        else target
+    )
+    options = [
+        (
+            get_first_token_id(opt, mt.tokenizer, prefix=prefix)
+            if isinstance(opt, str)
+            else opt
+        )
+        for opt in options
+    ]
+    predictions, track_options = interpret_logits(
+        tokenizer=mt.tokenizer,
+        logits=logits,
+        interested_tokens=options,
+        **kwargs,
+    )
+    option_scores = [pred for obj_tok, (obj_rank, pred) in track_options.items()]
+    option_scores = sorted(option_scores, key=lambda x: x.logit, reverse=True)
+    correct = option_scores[0].token_id == target
+    return correct, predictions, track_options

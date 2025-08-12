@@ -40,6 +40,17 @@ def get_patches_to_verify_independent_enrichment(
             substring=opt,
             offset_mapping=offsets,
         )
+        # print(
+        #     [
+        #         mt.tokenizer.decode(tokenized_prompt.input_ids[0][i])
+        #         for i in range(*opt_range)
+        #     ]
+        # )
+
+        if mt.tokenizer.decode(tokenized_prompt.input_ids[0][opt_range[0]]) == "\n":
+            # If the option starts with a newline, we need to adjust the range
+            opt_range = (opt_range[0] + 1, opt_range[1])
+
         bare_prompt = bare_prompt_template.format(opt)
         bare_tokenized = prepare_input(
             tokenizer=mt,
@@ -53,8 +64,12 @@ def get_patches_to_verify_independent_enrichment(
             substring=opt,
             offset_mapping=bare_offsets,
         )
+        logger.debug(f"{opt} | {opt_range=} | {bare_opt_range=}")
         logger.debug(
-            f'{opt} | {opt_range=} | {bare_opt_range=} | "{mt.tokenizer.decode(tokenized_prompt.input_ids[0][range(*opt_range)])}"'
+            f'"{mt.tokenizer.decode(tokenized_prompt.input_ids[0][range(*opt_range)])}"'
+        )
+        logger.debug(
+            f'"{mt.tokenizer.decode(bare_tokenized.input_ids[0][range(*bare_opt_range)])}"'
         )
         assert (
             opt_range[1] - opt_range[0] == bare_opt_range[1] - bare_opt_range[0]
@@ -128,6 +143,7 @@ def verify_head_patterns(
             max_new_tokens=30,
             patches=patches,
             remove_prefix=True,
+            do_sample=False,
         )[0]
         logger.debug(f'Generated full answer: "{gen}"')
         ret_dict["full_answer"] = gen
