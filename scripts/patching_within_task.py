@@ -34,21 +34,29 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
     clean_sample: SelectionSample
     interested_tokens: list[int]
     base_results: dict[int, tuple[int, PredictedToken]]
-    gold_results: dict[int, tuple[int, PredictedToken]]
     headwise_patching_effects: dict[
         tuple[int, int], dict[int, tuple[int, PredictedToken]]
     ]
+    gold_results: dict[int, tuple[int, PredictedToken]] | None = None
 
     def __post_init__(self):
-        self.track_obj_token_id = self.clean_sample.metadata["track_type_obj_token_id"]
+        if "track_type_obj_token_id" in self.clean_sample.metadata:
+            self.track_obj_token_id = self.clean_sample.metadata[
+                "track_type_obj_token_id"
+            ]
+        elif "track_obj_token_id" in self.clean_sample.metadata:
+            self.track_obj_token_id = self.clean_sample.metadata["track_obj_token_id"]
+        else:
+            raise AssertionError("Set `track_obj_token_id` in metadata of clean sample")
 
     def head_effect(
         self, layer_idx, head_idx, metric: Literal["prob", "logit"] = "logit"
     ):
-        low_score = getattr(self.base_results[self.track_obj_token_id][1], metric)
-        high_score = getattr(
-            self.gold_results[self.patch_sample.ans_token_id][1], metric
-        )
+        if isinstance(self.base_results, dict):
+            low_score = getattr(self.base_results[self.track_obj_token_id][1], metric)
+        else:
+            low_score = getattr(self.base_results[1], metric)
+
         patch_score = getattr(
             self.headwise_patching_effects[(layer_idx, head_idx)][
                 self.track_obj_token_id
@@ -57,8 +65,13 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
         )
 
         # logger.debug(f"{low_score=}, {high_score=}, {patch_score=}")
-
-        indirect_effect = (patch_score - low_score) / (high_score - low_score)
+        if self.gold_results is not None:
+            high_score = getattr(
+                self.gold_results[self.patch_sample.ans_token_id][1], metric
+            )
+            indirect_effect = (patch_score - low_score) / (high_score - low_score)
+        else:
+            indirect_effect = patch_score - low_score
         return indirect_effect
 
     def delist_patching_effects(self):
@@ -66,19 +79,6 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
             f"{layer_idx}_<>_{head_idx}": effect
             for (layer_idx, head_idx), effect in self.headwise_patching_effects.items()
         }
-
-    @staticmethod
-    def load_from_json(path: PathLike) -> "SelectionQprojPatchResult":
-        """
-        Load the object from a JSON file.
-        """
-        with open(path, "r") as f:
-            loaded_results = json.load(f)
-        loaded_results["headwise_patching_effects"] = {
-            (int(layer_idx.split("_<>_")[0]), int(layer_idx.split("_<>_")[1])): effect
-            for layer_idx, effect in loaded_results["headwise_patching_effects"].items()
-        }
-        return SelectionQprojPatchResult.from_dict(loaded_results)
 
 
 def get_counterfactual_samples_within_task(
@@ -297,15 +297,14 @@ def get_counterfactual_samples_within_task(
 def cache_q_projections(
     mt: ModelandTokenizer,
     input: TokenizerOutput,
-    heads: list[tuple[int, int]],
-    query_idx: int = -1,
+    query_locations: list[tuple[int, int, int]],  # (layer_idx, head_idx, query_idx)
     return_output: bool = False,
 ):
-    layer_to_heads = {}
-    for layer_idx, head_idx in heads:
-        if layer_idx not in layer_to_heads:
-            layer_to_heads[layer_idx] = []
-        layer_to_heads[layer_idx].append(head_idx)
+    layer_to_hq = {}
+    for layer_idx, head_idx, query_idx in query_locations:
+        if layer_idx not in layer_to_hq:
+            layer_to_hq[layer_idx] = []
+        layer_to_hq[layer_idx].append((head_idx, query_idx))
 
     q_projections = {}
     batch_size = input.input_ids.shape[0]
@@ -313,14 +312,14 @@ def cache_q_projections(
     n_heads = mt.config.num_attention_heads
     head_dim = mt.n_embd // n_heads
     with mt.trace(input) as tracer:  # noqa
-        for layer_idx, head_indices in layer_to_heads.items():
+        for layer_idx, query_locs in layer_to_hq.items():
             q_proj_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
             q_proj_module = get_module_nnsight(mt, q_proj_name)
             q_proj_out = q_proj_module.output.view(
                 batch_size, seq_len, n_heads, head_dim
             ).transpose(1, 2)
-            for head_idx in head_indices:
-                q_projections[(layer_idx, head_idx)] = (
+            for head_idx, query_idx in query_locs:
+                q_projections[(layer_idx, head_idx, query_idx)] = (
                     q_proj_out[:, head_idx, query_idx, :].squeeze().save()
                 )
 
@@ -338,7 +337,7 @@ def calculate_query_patching_results_for_sample_pair(
     clean_sample: SelectionSample,
     patch_sample: SelectionSample,
     heads: list[tuple[int, int]],  # layer_idx, head_idx
-    query_idx: int = -1,
+    query_indices: list[int] = [-3, -2, -1],
 ) -> SelectionQprojPatchResult:
     interested_tokens = [
         patch_sample.ans_token_id,
@@ -349,11 +348,15 @@ def calculate_query_patching_results_for_sample_pair(
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
 
     # cache the query states + gold results with the patch sample
+    query_locations = [
+        (layer_idx, head_idx, query_idx)
+        for layer_idx, head_idx in heads
+        for query_idx in query_indices
+    ]
     all_q_projections, patch_out = cache_q_projections(
         mt=mt,
         input=patch_tokenized,
-        heads=heads,
-        query_idx=query_idx,
+        query_locations=query_locations,
         return_output=True,
     )
     logger.debug(len(all_q_projections))
@@ -387,19 +390,22 @@ def calculate_query_patching_results_for_sample_pair(
     logger.debug("patching query states for each head one by one")
     head_wise_patching_effects = {}
     counter = 0
-    for (layer_idx, head_idx), q_proj in all_q_projections.items():
-        q_proj_patch = PatchSpec(
-            location=(
-                mt.attn_module_name_format.format(layer_idx) + ".q_proj",
-                head_idx,
-                query_idx,
-            ),
-            patch=q_proj,
-        )
+    for layer_idx, head_idx in heads:
+        q_proj_patch = [
+            PatchSpec(
+                location=(
+                    mt.attn_module_name_format.format(layer_idx) + ".q_proj",
+                    head_idx,
+                    query_idx,
+                ),
+                patch=all_q_projections[(layer_idx, head_idx, query_idx)],
+            )
+            for query_idx in query_indices
+        ]
         out = patch_with_baukit(
             mt=mt,
             inputs=clean_tokenized,
-            patches=[q_proj_patch],
+            patches=q_proj_patch,
         )
         logits = out.logits[:, -1, :].squeeze()
         _, track = interpret_logits(
