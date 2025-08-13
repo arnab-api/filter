@@ -6,7 +6,7 @@ import random
 from ast import literal_eval
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Any, Literal, Optional, Sequence
 
 from dataclasses_json import DataClassJsonMixin
 
@@ -32,7 +32,7 @@ class SelectionSample(DataClassJsonMixin):
     prediction: Optional[Sequence[PredictedToken]] = None
     ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
-    default_option_style: Literal["single_line", "numbered"] = "single_line"
+    default_option_style: Literal["single_line", "numbered", "bullet"] = "single_line"
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -74,6 +74,8 @@ class SelectionSample(DataClassJsonMixin):
             options_str = "\n".join(
                 f"{chr(ord('a') + i)}. {opt}" for i, opt in enumerate(self.options)
             )
+        elif option_style == "bullet":
+            options_str = "\n".join(f"* {opt}" for opt in self.options)
         else:
             raise ValueError(f"Invalid option_style: {option_style}.")
 
@@ -524,10 +526,16 @@ class SelectOddOneOutTask(SelectOneTask):
         insert_distractor: Sequence[tuple[str, int]] = [],
         retry_count: int = 0,
         output_formatting: Literal["zero_shot", "object", "lettered"] = "zero_shot",
+        **kwargs: dict[str, Any],
     ) -> SelectionSample:
         """
         Get a random sample with the specified attribute.
         """
+
+        if len(kwargs) > 0:
+            logger.warning(
+                f"{type(self)} >> Unused keyword arguments: {kwargs}. Please check the function signature."
+            )
 
         def format_answer(obj_idx, obj, formatting):
             if formatting == "lettered":
@@ -576,7 +584,7 @@ class SelectOddOneOutTask(SelectOneTask):
         distractors = random.sample(
             (
                 category_wise_examples[distractor_category]
-                - KeyedSet(items=[subj], tokenizer=tokenizer)
+                - KeyedSet(items=[subj] + exclude_objs, tokenizer=tokenizer)
             ).values,
             k=n_distractors,
         )

@@ -20,7 +20,7 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
-from src.selection.utils import KeyedSet, get_first_token_id
+from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
@@ -254,18 +254,30 @@ def get_counterfactual_samples_within_task(
     )
 
     if filter_by_lm_prediction:
-        for sample in [patch_sample, clean_sample]:
-            with torch.inference_mode():
-                pred = predict_next_token(
-                    mt=mt,
-                    inputs=sample.prompt(),
-                )[0]
-                logger.info(
-                    f"{sample.subj} -> {sample.obj} | pred={[str(p) for p in pred]}"
-                )
-            if pred[0].token_id != sample.ans_token_id:
+        test_samples = [patch_sample, clean_sample]
+        if distinct_options is True:
+            clean_sample_2 = copy.deepcopy(patch_sample)
+            clean_sample_2.options = clean_options
+            clean_sample_2.obj = clean_sample.metadata["track_type_obj"]
+            clean_sample_2.obj_idx = clean_sample.metadata["track_type_obj_idx"]
+            clean_sample_2.ans_token_id = clean_sample.metadata[
+                "track_type_obj_token_id"
+            ]
+            test_samples.append(clean_sample_2)
+
+        for sample in test_samples:
+            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
+            is_correct, predictions, track_options = verify_correct_option(
+                mt=mt, target=sample.obj, options=sample.options, input=tokenized
+            )
+            sample.metadata["tokenized"] = tokenized.data
+            logger.info(sample.prompt())
+            logger.info(
+                f"{sample.subj} | {sample.category} -> {sample.obj} | pred={[str(p) for p in predictions]}"
+            )
+            if not is_correct:
                 logger.error(
-                    f'Prediction mismatch: {pred[0].token_id}["{mt.tokenizer.decode(pred[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
+                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
                 )
                 return get_counterfactual_samples_within_task(
                     task=task,
@@ -276,7 +288,7 @@ def get_counterfactual_samples_within_task(
                     option_style=option_style,
                     filter_by_lm_prediction=filter_by_lm_prediction,
                 )
-            sample.prediction = pred
+            sample.prediction = predictions
 
     return patch_sample, clean_sample
 

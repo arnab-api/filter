@@ -11,11 +11,7 @@ from dataclasses_json import DataClassJsonMixin
 from src.attention import AttentionInformation, get_attention_matrices
 from src.functional import detensorize
 from src.models import ModelandTokenizer
-from src.selection.data import (
-    SelectionSample,
-    get_random_sample,
-    load_people_by_category,
-)
+from src.selection.data import SelectionSample, SelectOddOneOutTask, SelectOneTask
 from src.tokens import find_token_range, prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import ArrayLike, PathLike
@@ -150,7 +146,7 @@ def get_attention_pattern_for_selection_sample(
 ):
     tokenized = prepare_input(
         tokenizer=mt,
-        prompts=sample.prompt,
+        prompts=sample.prompt(),
         return_offsets_mapping=True,
         # add_bos_token="qwen" in mt.name.lower(), #! adding a bos token messes with the offsets
     )
@@ -158,7 +154,7 @@ def get_attention_pattern_for_selection_sample(
     options_ranges = []
     for opt in sample.options:
         start, end = find_token_range(
-            string=sample.prompt,
+            string=sample.prompt(),
             substring=opt,
             offset_mapping=offsets,
             tokenizer=mt.tokenizer,
@@ -191,11 +187,13 @@ def cache_attention_patterns_for_selection_samples(
     mt: ModelandTokenizer,
     limit: int = 12,
     save_dir: str | None = None,
-    category: str = "occupation",
+    category_type: str = "objects",
     n_distractors: int = 5,
+    prompt_template_idx: int = 3,
+    option_style: str = "single_line",
+    task: str = "select_one",
 ):
 
-    people_by_category = load_people_by_category(tokenizer=mt.tokenizer)
     os.makedirs(save_dir, exist_ok=True)
 
     test_head_map = {
@@ -203,19 +201,31 @@ def cache_attention_patterns_for_selection_samples(
         "Qwen/Qwen2.5-72B-Instruct": (54, 44),
     }
 
+    task_cls = {
+        "select_one": SelectOneTask,
+        "select_odd_one_out": SelectOddOneOutTask,
+    }
+
+    select_one_task = task_cls[task].load(
+        path=os.path.join(
+            env_utils.DEFAULT_DATA_DIR, "selection", f"{category_type}.json"
+        )
+    )
+
     layer_idx, head_idx = test_head_map.get(mt.name, (0, 0))
 
     sample_idx = 0
     for sample_idx in range(limit):
         logger.info(f"Processing sample {sample_idx + 1}/{limit}")
-        sample = get_random_sample(
-            people_by_category=people_by_category,
+        sample = select_one_task.get_random_sample(
             mt=mt,
-            category=category,
             n_distractors=n_distractors,
+            prompt_template_idx=prompt_template_idx,
+            option_style=option_style,
             filter_by_lm_prediction=True,
         )
         logger.debug(f"{str(sample)}")
+        logger.debug(sample.prompt())
         logger.debug(f"{[str(pred) for pred in sample.prediction]}")
 
         attn_pattern = get_attention_pattern_for_selection_sample(
@@ -271,9 +281,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--attr",
+        "--category_type",
         type=str,
-        default="occupation",
+        default="objects",
         help="Attribute Type",
     )
 
@@ -282,6 +292,28 @@ if __name__ == "__main__":
         type=int,
         default=5,
         help="Number of distractors to use",
+    )
+
+    parser.add_argument(
+        "--prompt_template_idx",
+        type=int,
+        default=3,
+        help="Prompt template index to use",
+    )
+
+    parser.add_argument(
+        "--option_style",
+        type=str,
+        default="single_line",
+        choices=["single_line", "multi_line"],
+        help="Option style to use",
+    )
+
+    parser.add_argument(
+        "--task",
+        type=str,
+        choices=["select_one", "select_odd_one_out"],
+        default="select_one",
     )
 
     args = parser.parse_args()
@@ -303,29 +335,13 @@ if __name__ == "__main__":
         attn_implementation="eager",
     )
 
-    # # fusing the trained deltas
-    # SYNTH_DATASET = "64"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR,
-    #     "trained_params",
-    #     f"{SYNTH_DATASET}",
-    #     "_full__clamp=0.001",
-    #     args.model.split("/")[-1],
-    # )
-    # version = "epoch_1"
-    # checkpoint_path = os.path.join(
-    #     env_utils.DEFAULT_RESULTS_DIR, checkpoint_path, version
-    # )
-    # checkpoint_path = os.path.join(checkpoint_path, "trainable_params.pt")
-    # loaded_deltas = torch.load(checkpoint_path, map_location="cpu")
-    # free_gpu_cache()
-    # TrainableLM_delta.fuse_with_model(mt._model, loaded_deltas)
-
     # Setup cache directory
     save_dir = os.path.join(
         env_utils.DEFAULT_RESULTS_DIR,
         args.save_dir,
+        args.task,
         mt.name.split("/")[-1],
+        args.category_type,
     )
     os.makedirs(save_dir, exist_ok=True)
 
@@ -334,6 +350,9 @@ if __name__ == "__main__":
         mt=mt,
         limit=args.limit,
         save_dir=save_dir,
-        category=args.attr,
+        category_type=args.category_type,
         n_distractors=args.n_distractors,
+        prompt_template_idx=args.prompt_template_idx,
+        option_style=args.option_style,
+        task=args.task,
     )

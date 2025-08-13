@@ -6,6 +6,14 @@
         "Which object from the following list is a <_category_>?\n<_options_>\nAnswer:",
         "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:"
     ],
+    "odd_one_prompt_templates": [
+        "Which object from the following list does not belong to the same category as <_pivot_entity_>?\n<_options_>\nAnswer:",
+        "<_options_>\nWhich among these objects mentioned above does not belong to the same category as <_pivot_entity_>?\nAnswer:",
+        "Which object from the following list is not a <_category_>?\n<_options_>\nAnswer:",
+        "<_options_>\nWhich among these objects mentioned above is not a <_category_>?\nAnswer:",
+        "Detect the odd one out from the following list of objects:\n<_options_>\nAnswer:",
+        "<_options_>\nWhich object in this list does not fit in with others?\nAnswer:"
+    ],
     "categories": {
         "fruit": [
             "Apple",
@@ -170,7 +178,6 @@
             "Cucumber",
             "Lettuce",
             "Pepper",
-            "Corn",
             "Cauliflower",
             "Celery",
             "Mushroom",
@@ -251,16 +258,16 @@
             "Maple",
             "Birch",
             "Willow",
-            "Palm",
-            "Cherry",
-            "Apple tree",
             "Elm",
             "Cedar",
             "Spruce",
             "Redwood",
             "Bamboo",
             "Eucalyptus",
-            "Magnolia"
+            "Magnolia",
+            "Palm",
+            "Ash",
+            "Hickory"
         ],
         "jewelry": [
             "Ring",

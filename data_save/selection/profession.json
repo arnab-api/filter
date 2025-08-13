@@ -6,6 +6,14 @@
         "Which person from the following list is by profession a <_category_>?\n<_options_>\nAnswer:",
         "<_options_>\nWho among these people mentioned above is a <_category_> by profession?\nAnswer:"
     ],
+    "odd_one_prompt_templates": [
+        "Which person from the following list does NOT share their profession with <_pivot_entity_>?\n<_options_>\nAnswer:",
+        "<_options_>\nWho among these people mentioned above does NOT share the same profession as <_pivot_entity_>?\nAnswer:",
+        "Which person from the following list is NOT a <_category_> by profession?\n<_options_>\nAnswer:",
+        "<_options_>\nWho among these people mentioned above is NOT a <_category_> by profession?\nAnswer:",
+        "Detect the person who does not belong in the list.\n<_options_>\nAnswer:",
+        "<_options_>\nWho is the odd one in the list?\nAnswer:"
+    ],
     "categories": {
         "actor": [
             "Tom Cruise",
