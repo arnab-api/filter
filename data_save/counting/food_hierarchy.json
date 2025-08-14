@@ -1,0 +1,37 @@
+{
+    "name": "fruits_food_edible_non-edible",
+    "prompt_templates": [
+        "How many of the items in the following list are <_category_>? <_options_>\nAnswer:",
+        "<_options_>\nHow many items in the previous list are <_category_>?\nAnswer:"
+    ],
+    "categories": {
+        "fruits": [
+            "apple", "banana", "orange", "grape", "strawberry", "blueberry", "raspberry",
+            "blackberry", "cherry", "peach", "nectarine", "plum", "pear", "kiwi", "mango",
+            "pineapple", "watermelon", "cantaloupe", "honeydew", "pomegranate", "grapefruit",
+            "tangerine", "clementine", "lemon", "lime", "coconut", "papaya", "apricot",
+            "fig", "date", "cranberry", "persimmon", "guava", "passion fruit",
+            "dragon fruit", "lychee", "starfruit", "quince", "boysenberry", "kumquat"
+        ],
+        "food": [
+            "bread", "rice", "pasta", "cheese", "egg", "chicken", "beef", "pork", "fish",
+            "shrimp", "lobster", "crab", "tofu", "lentils", "beans", "potato", "sweet potato",
+            "tomato", "broccoli", "carrot", "spinach", "lettuce", "mushroom", "onion",
+            "garlic", "pepper", "cucumber", "zucchini", "cauliflower", "pumpkin",
+            "eggplant", "peas", "corn", "avocado", "chili", "basil", "parsley"
+        ],
+        "edible": [
+            "water", "milk", "juice", "coffee", "tea", "soda", "smoothie", "beer", "wine",
+            "whiskey", "vodka", "rum", "gin", "champagne", "cocktail", "latte", "espresso",
+            "milkshake", "lemonade", "sports drink", "energy drink", "hot chocolate"
+        ],
+        "non-edible": [
+            "table", "chair", "pen", "pencil", "paper", "book", "phone", "laptop", "cup",
+            "plate", "spoon", "fork", "knife", "car", "bike", "shoe", "sock", "shirt",
+            "pants", "hat", "jacket", "lamp", "pillow", "blanket", "bed", "door", "window",
+            "key", "wallet", "watch", "towel", "soap", "comb", "toothbrush", "battery",
+            "candle", "broom", "bucket", "rug", "paint", "scissors", "glue", "mirror",
+            "radio", "television", "drill", "hammer", "nail", "screwdriver"
+        ]
+    }
+}
