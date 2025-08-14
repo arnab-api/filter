@@ -1,0 +1,352 @@
+import logging
+from typing import Optional
+
+import baukit
+import torch
+from torch.optim import AdamW
+
+from src.functional import (
+    PatchSpec,
+    free_gpu_cache,
+    interpret_logits,
+    patch_with_baukit,
+)
+from src.models import ModelandTokenizer
+from src.selection.data import SelectionSample
+from src.selection.functional import cache_q_projections, verify_head_patterns
+from src.selection.utils import get_first_token_id
+from src.tokens import prepare_input
+from src.utils.typing import TokenizerOutput
+
+logger = logging.getLogger(__name__)
+
+
+def get_optimal_head_mask(
+    mt: ModelandTokenizer,
+    train_set: list[tuple[SelectionSample, SelectionSample]],
+    learning_rate: float = 1e-3,
+    n_epochs: int = 5,
+    lamb: float = 1e-3,
+    batch_size: int = 4,
+    query_indices: int = [-1],
+):
+    hparams = {
+        "learning_rate": learning_rate,
+        "n_epochs": n_epochs,
+        "lamb": lamb,
+        "batch_size": batch_size,
+    }
+    logger.debug(f"Training with hparams: {hparams}")
+    n_layer = mt.n_layer
+    n_heads = mt.config.num_attention_heads
+
+    mask = torch.ones(
+        (n_layer, n_heads), dtype=mt.dtype, requires_grad=True, device=mt.device
+    )
+
+    # prompts = []
+    # prompts.extend([sample.prompt() for sample in clean_samples])
+    # prompts.extend([sample.prompt() for sample in patch_samples])
+    # tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+
+    # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
+    # patch_tokenized = TokenizerOutput(data = {k: v[len(clean_samples):, :] for k, v in tokenized.items()})
+
+    optimizer = AdamW([mask], lr=learning_rate)
+    losses = []
+
+    all_heads = [
+        (layer_idx, head_idx)
+        for layer_idx in range(n_layer)
+        for head_idx in range(n_heads)
+    ]
+    all_q_proj_modules = [
+        mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+        for layer_idx in range(n_layer)
+    ]
+    batches = []
+    for batch_start in range(0, len(train_set), batch_size):
+        batches.append(train_set[batch_start : batch_start + batch_size])
+
+    query_locations = [
+        (layer_idx, head_idx, query_idx)
+        for layer_idx, head_idx in all_heads
+        for query_idx in query_indices
+    ]
+
+    logger.info("Caching q projections from patch samples...")
+    q_projections_from_patch_samples = {}
+    for batch_idx, batch in enumerate(batches):
+        clean_samples, patch_samples = zip(*batch)
+        prompts = []
+        prompts.extend([sample.prompt() for sample in clean_samples])
+        prompts.extend([sample.prompt() for sample in patch_samples])
+        tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+        # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
+        patch_tokenized = TokenizerOutput(
+            data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+        )
+
+        q_projections = cache_q_projections(
+            mt=mt,
+            input=patch_tokenized,
+            query_locations=query_locations,
+            return_output=False,
+        )
+
+        patches = {}
+        for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
+            module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+            patches[(module_name, head_idx)] = (layer_idx, q_proj)
+        q_projections_from_patch_samples[batch_idx] = patches
+        logger.info(f"Caching completed > {batch_idx+1}/{len(batches)} batches.")
+        free_gpu_cache()
+
+    logger.info("Starting training...")
+
+    for epoch in range(n_epochs):
+        epoch_loss = 0
+        for batch_idx, batch in enumerate(batches):
+            optimizer.zero_grad()
+
+            batch_size_actual = len(batch)
+
+            clean_samples, patch_samples = zip(*batch)
+            prompts = []
+            prompts.extend([sample.prompt() for sample in clean_samples])
+            prompts.extend([sample.prompt() for sample in patch_samples])
+            tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+            clean_tokenized = TokenizerOutput(
+                data={k: v[: len(clean_samples), :] for k, v in tokenized.items()}
+            )
+            patch_tokenized = TokenizerOutput(
+                data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+            )
+            batch_target_tokens = [
+                clean_sample.metadata["track_type_obj_token_id"]
+                for clean_sample in clean_samples
+            ]
+            batch_distractor_tokens = [
+                [
+                    get_first_token_id(tokenizer=mt.tokenizer, name=option, prefix=" ")
+                    for idx, option in enumerate(clean_sample.options)
+                    if idx != clean_sample.metadata["track_type_obj_idx"]
+                ]
+                for clean_sample in clean_samples
+            ]
+
+            patch_q_states = q_projections_from_patch_samples[batch_idx]
+
+            batch_size = clean_tokenized.input_ids.shape[0]
+            seq_len = clean_tokenized.input_ids.shape[1]
+            head_dim = mt.n_embd // n_heads
+
+            def perform_patch(repr, layer_name):
+                if layer_name not in all_q_proj_modules:
+                    return repr
+
+                repr = repr.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
+                for head_idx in range(n_heads):
+                    q_clean = repr[:, head_idx, query_idx, :]
+                    layer_idx, q_patch = patch_q_states[(layer_name, head_idx)]
+                    q_patch = q_patch.clone().to(q_clean.dtype).to(q_clean.device)
+                    q_patch.requires_grad = True
+                    coeff = (
+                        mask[layer_idx, head_idx].to(q_clean.dtype).to(q_clean.device)
+                    )
+                    # head_patch = coeff * q_patch + (1 - coeff) * q_clean
+                    repr[:, head_idx, query_idx, :] += coeff * (q_patch - q_clean)
+
+                repr = repr.transpose(1, 2).view(
+                    batch_size, seq_len, n_heads * head_dim
+                )
+                return repr
+
+            with baukit.TraceDict(
+                module=mt._model, layers=all_q_proj_modules, edit_output=perform_patch
+            ):
+                output = mt._model(**clean_tokenized)
+
+            logits = output.logits[:, -1, :]
+
+            # calculate target loss
+            target_logits = [
+                logit[tok] for logit, tok in zip(logits, batch_target_tokens)
+            ]
+            target_loss = -torch.stack(target_logits).mean()  # need this to go up
+
+            # calculate distractor loss
+            distractor_logits = [
+                logit[distractor_tokens].mean()
+                for logit, distractor_tokens in zip(logits, batch_distractor_tokens)
+            ]
+            distractor_loss = torch.stack(distractor_logits).mean()
+
+            # mask_loss
+            mask_l1_loss = torch.abs(mask).sum() * lamb
+            loss = target_loss + distractor_loss + mask_l1_loss
+            logger.debug(
+                f"Epoch={epoch+1} | {batch_idx=} |>> {target_loss.item():.4f} + {distractor_loss.item():.4f} + {mask_l1_loss.item():.4f} = {loss.item():.4f}"
+            )
+
+            loss.backward()
+            optimizer.step()
+
+            with torch.no_grad():
+                mask.clamp_(0, 1)
+                mask += 1e-4  # to avoid zero gradients
+
+            epoch_loss += loss.item() * batch_size_actual
+            losses.append(loss.item())
+
+        epoch_loss /= len(train_set)
+        logger.info(f"Epoch {epoch+1}/{n_epochs} completed. Avg Loss: {epoch_loss:.4f}")
+        mt._model.zero_grad()
+        free_gpu_cache()
+
+    mt._model.zero_grad()
+    with torch.no_grad():
+        mask.clamp_(0, 1)
+
+    free_gpu_cache()
+    return mask.round().detach().cpu(), losses
+
+
+@torch.inference_mode()
+def validate_q_proj_ie_on_sample_pair(
+    mt: ModelandTokenizer,
+    clean_sample: SelectionSample,
+    patch_sample: SelectionSample,
+    heads: list[tuple[int, int]],
+    query_indices: int = [-1],
+    verify_head_behavior_on: Optional[int] = None,
+):
+    clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
+    patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
+
+    if verify_head_behavior_on is not None:
+        logger.info("Verifying head behavior...")
+
+        logger.info(f"Clean Sample >> Ans: {clean_sample.obj}")
+        clean_attn_pattern = verify_head_patterns(  # noqa
+            prompt=clean_tokenized,
+            options=clean_sample.options,
+            pivot=clean_sample.subj,
+            mt=mt,
+            heads=heads,
+            generate_full_answer=True,
+            query_index=verify_head_behavior_on,
+        )
+
+        logger.info(f"Patch Sample >> Ans: {patch_sample.obj}")
+        patch_attn_pattern = verify_head_patterns(  # noqa
+            prompt=patch_tokenized,
+            options=patch_sample.options,
+            pivot=patch_sample.subj,
+            mt=mt,
+            heads=heads,
+            generate_full_answer=True,
+            query_index=verify_head_behavior_on,
+        )
+
+    logger.info(f"Caching the query states for the {len(heads)} heads")
+
+    query_locations = [
+        (layer_idx, head_idx, query_idx)
+        for layer_idx, head_idx in heads
+        for query_idx in query_indices
+    ]
+
+    cached_q_states, patch_output = cache_q_projections(
+        mt=mt,
+        input=patch_tokenized,
+        query_locations=query_locations,
+        return_output=True,
+    )
+    q_proj_patches = []
+    for (layer_idx, head_idx, query_idx), q_proj in cached_q_states.items():
+        q_proj_patches.append(
+            PatchSpec(
+                location=(
+                    mt.attn_module_name_format.format(layer_idx) + ".q_proj",
+                    head_idx,
+                    query_idx,
+                ),
+                patch=q_proj,
+            )
+        )
+
+    patch_logits = patch_output.logits[:, -1, :].squeeze()
+    patch_predictions = interpret_logits(
+        tokenizer=mt,
+        logits=patch_logits,
+    )
+    logger.info(f"patch_prediction={[str(pred) for pred in patch_predictions]}")
+
+    # interested_tokens = [
+    #     patch_sample.ans_token_id,
+    #     clean_sample.ans_token_id,
+    #     clean_sample.metadata["track_type_obj_token_id"],
+    # ]
+    interested_tokens = clean_sample.options
+    interested_tokens = [
+        get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+        for opt in interested_tokens
+    ]
+    # interested_tokens += [patch_sample.ans_token_id]
+    # interested_tokens = list(set(interested_tokens))  # remove duplicates #! don't need to, made sure during sampling
+
+    logger.info("clean run")
+    clean_output = patch_with_baukit(
+        mt=mt,
+        inputs=clean_tokenized,
+        patches=[],
+    )
+    clean_logits = clean_output.logits[:, -1, :].squeeze()
+    clean_predictions, clean_track = interpret_logits(
+        tokenizer=mt,
+        logits=clean_logits,
+        interested_tokens=interested_tokens,
+    )
+    logger.info(f"clean_prediction={[str(pred) for pred in clean_predictions]}")
+    logger.info(f"clean_track={clean_track}")
+
+    logger.info("patching the q_proj states")
+    if verify_head_behavior_on is not None:
+        int_attn_pattern = verify_head_patterns(
+            prompt=clean_tokenized,
+            options=clean_sample.options,
+            pivot=clean_sample.subj,
+            mt=mt,
+            heads=heads,
+            query_patches=q_proj_patches,
+            generate_full_answer=False,
+            query_index=verify_head_behavior_on,
+        )
+        int_logits = int_attn_pattern["logits"].squeeze()
+
+    else:
+        int_out = patch_with_baukit(
+            mt=mt,
+            inputs=clean_tokenized,
+            patches=q_proj_patches,
+        )
+        int_logits = int_out.logits[:, -1, :].squeeze()
+
+    int_predictions, int_track = interpret_logits(
+        tokenizer=mt,
+        logits=int_logits,
+        interested_tokens=interested_tokens,
+    )
+    logger.info(f"int_prediction={[str(pred) for pred in int_predictions]}")
+    logger.info(f"int_track={int_track}")
+
+    return {
+        "clean_sample": clean_sample,
+        "patch_sample": patch_sample,
+        "clean_predictions": clean_predictions,
+        "patch_predictions": patch_predictions,
+        "int_predictions": int_predictions,
+        "clean_track": clean_track,
+        "int_track": int_track,
+    }

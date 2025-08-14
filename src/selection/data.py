@@ -1072,7 +1072,7 @@ class CountingTask(DataClassJsonMixin):
         Get a random sample with the specified attribute.
         """
 
-        kwargs = {
+        kwargs = {  # noqa
             "prompt_template_idx": prompt_template_idx,
             "option_style": option_style,
         }

@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import torch
@@ -6,6 +7,8 @@ from src.functional import get_hs, interpret_logits
 from src.models import ModelandTokenizer, unwrap_tokenizer
 from src.tokens import prepare_input
 from src.utils.typing import PredictedToken, TokenizerOutput
+
+logger = logging.getLogger(__name__)
 
 
 def get_first_token_id(name, tokenizer, prefix=" "):

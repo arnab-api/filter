@@ -20,7 +20,7 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
-from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
+from src.selection.functional import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
