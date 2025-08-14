@@ -1,8 +1,8 @@
 {
     "name": "fruits",
     "prompt_templates": [
-        "How many fruits are there in the following list? chalk, apple, lotion, banana\nAnswer: two\n\nHow many <_category_> are there in the following list? <_options_>\nAnswer:",
-        "chalk, apple, lotion, banana\nHow many fruits are there in the previous list?\nAnswer: two\n\n<_options_>\nHow many <_category_> are there in the previous list?\nAnswer:"
+        "How many <_category_> are there in the following list? <_options_>\nAnswer:",
+        "<_options_>\nHow many <_category_> are there in the previous list?\nAnswer:"
     ],
     "categories": {
         "fruits": [
