@@ -19,6 +19,19 @@ from src.utils.typing import PathLike, PredictedToken
 
 logger = logging.getLogger(__name__)
 
+index_to_order = {
+    0: "first",
+    1: "second",
+    2: "third",
+    3: "fourth",
+    4: "fifth",
+    5: "sixth",
+    6: "seventh",
+    7: "eighth",
+    8: "ninth",
+    9: "tenth",
+}
+
 
 @dataclass
 class SelectionSample(DataClassJsonMixin):
@@ -62,6 +75,10 @@ class SelectionSample(DataClassJsonMixin):
             prompt = prompt.replace("<_pivot_entity_>", self.subj)
         if "<_category_>" in prompt:
             prompt = prompt.replace("<_category_>", self.category)
+        if "<_order_>" in prompt:
+            prompt = prompt.replace(
+                "<_order_>", index_to_order.get(self.obj_idx, str(self.obj_idx))
+            )
 
         if option_style is None:
             option_style = self.default_option_style
@@ -697,6 +714,206 @@ class SelectOddOneOutTask(SelectOneTask):
 
     def __str__(self):
         return f"""SelectOddOneOutTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
+
+
+@dataclass
+class SelectOrderTask(SelectOneTask):
+    task_name: str = "select_order"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            selection_root = os.path.join(DEFAULT_DATA_DIR, "selection")
+            path = os.path.join(selection_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return SelectOrderTask(
+                task_name="select_order",
+                category_type=data.get("name", category_type),
+                prompt_templates=data["order_prompt_templates"],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        prompt_template_idx: int = 1,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        n_distractors: int = 5,
+        filter_by_lm_prediction: bool = False,
+        obj_idx: int | None = None,
+        exclude_objs: Sequence[str] = [],
+        exclude_distractor_categories: Sequence[str] = [],
+        insert_distractor: Sequence[tuple[str, int]] = [],
+        retry_count: int = 0,
+        output_formatting: Literal["zero_shot", "object", "lettered"] = "zero_shot",
+        **kwargs: dict[str, Any],
+    ) -> SelectionSample:
+        """
+        Get a random sample with the specified attribute.
+        """
+
+        if len(kwargs) > 0:
+            logger.warning(
+                f"{type(self)} >> Unused keyword arguments: {kwargs}. Please check the function signature."
+            )
+
+        def format_answer(obj_idx, obj, formatting):
+            if formatting == "lettered":
+                answer = f"{chr(ord('a') + obj_idx)}. {obj}"
+            elif formatting == "object":
+                answer = obj
+            return answer
+
+        kwargs = {
+            "obj_idx": obj_idx,
+            "prompt_template_idx": prompt_template_idx,
+            "option_style": option_style,
+            "output_formatting": output_formatting,
+        }
+
+        tokenizer = unwrap_tokenizer(mt)
+
+        category_wise_examples = {}
+        for cat in self.category_wise_examples:
+            examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
+            category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
+
+        category = category or random.choice(list(category_wise_examples.keys()))
+
+        obj = random.choice(
+            (
+                category_wise_examples[category]
+                - KeyedSet(exclude_objs, tokenizer=tokenizer)
+            ).values
+        )
+        obj_arr = [obj]
+        obj_token_id = get_first_token_id(obj, tokenizer, prefix=" ")
+        if obj_idx is None:
+            obj_idx = random.randint(0, n_distractors)
+        # logger.debug(f"{obj=}, {obj_token_id=}, {obj_idx=}, {exclude_objs=}")
+
+        distractors = []
+        obj_set = KeyedSet(obj_arr + exclude_objs, tokenizer=tokenizer)
+        other_categories = random.sample(
+            list(
+                set(category_wise_examples.keys())
+                - set([category] + exclude_distractor_categories)
+            ),
+            k=n_distractors,
+        )
+        # print(other_categories)
+        for other_attribute in other_categories:
+            distractors.append(
+                random.choice(
+                    (category_wise_examples[other_attribute] - obj_set).values
+                )
+            )
+
+        options = distractors[:obj_idx] + [obj] + distractors[obj_idx:]
+        for dist, idx in insert_distractor:
+            assert idx != obj_idx, "Cannot replace answer with a distractor."
+            assert idx < len(options), "Distractor index out of range."
+            options[idx] = dist
+        # logger.debug(f"{options=}")
+
+        prefix = ""
+        if output_formatting != "zero_shot":
+            one_shot = self.get_random_sample(
+                mt=mt,
+                prompt_template_idx=prompt_template_idx,
+                category=None,
+                n_distractors=n_distractors,
+                filter_by_lm_prediction=False,
+                obj_idx=None,
+                exclude_objs=[obj],
+                exclude_distractor_categories=[category],
+                output_formatting="zero_shot",
+                option_style=option_style,
+            )
+            one_shot_answer = format_answer(
+                obj_idx=one_shot.obj_idx,
+                obj=one_shot.obj,
+                formatting=output_formatting,
+            )
+            prefix = f"{one_shot.prompt()} {one_shot_answer}\n\n"
+
+        answer = obj
+        if output_formatting != "zero_shot":
+            answer = format_answer(
+                obj_idx=obj_idx,
+                obj=obj,
+                formatting=output_formatting,
+            )
+
+        metadata = {}
+        sample = SelectionSample(
+            subj=None,
+            obj=obj,
+            obj_idx=obj_idx,
+            options=options,
+            category=category,
+            ans_token_id=get_first_token_id(answer, tokenizer, prefix=" "),
+            answer=answer,
+            metadata=metadata,
+            prompt_template=self.prompt_templates[prompt_template_idx],
+            default_option_style=option_style,
+        )
+
+        sample.prompt_template = prefix + sample.prompt_template
+
+        if filter_by_lm_prediction:
+            prompt = sample.prompt(option_style=option_style)
+            # logger.info(f"\nPrompt: {prompt}")
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                input=tokenized_inputs,
+                target=obj_token_id,
+                options=options,
+                prefix=" ",
+            )
+
+            # if predictions[0].token_id != obj_token_id:
+            if not is_correct:
+                logger.error(
+                    f"""Sample = {sample}
+    Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {obj}[{obj_token_id}, "{mt.tokenizer.decode(obj_token_id)}"].
+    Retry count: {retry_count + 1}. Retrying ...
+    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    category=category,
+                    exclude_objs=exclude_objs,
+                    exclude_distractor_categories=exclude_distractor_categories,
+                    insert_distractor=insert_distractor,
+                    retry_count=retry_count + 1,
+                    **kwargs,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
+
+    def __str__(self):
+        return f"""SelectOrderTask: ({self.category_type})
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
 

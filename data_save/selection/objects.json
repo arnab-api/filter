@@ -14,6 +14,10 @@
         "Detect the odd one out from the following list of objects:\n<_options_>\nAnswer:",
         "<_options_>\nWhich object in this list does not fit in with others?\nAnswer:"
     ],
+    "order_prompt_templates": [
+        "What is the <_order_> object in the following list?\n<_options_>\nAnswer:",
+        "<_options_>\nWhat is the <_order_> object from the list above?\nAnswer:"
+    ],
     "categories": {
         "fruit": [
             "Apple",
