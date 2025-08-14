@@ -35,12 +35,14 @@ index_to_order = {
 
 @dataclass
 class SelectionSample(DataClassJsonMixin):
-    obj: str
-    answer: str
-    obj_idx: int
     prompt_template: str
     options: Sequence[str]
+    answer: str | None = None
+    task_type: Literal["selection", "counting"] = "selection"
+    obj: str | None = None
+    obj_idx: int | None = None
     subj: str | None = None
+    count: int | None = None
     category: str | None = None
     prediction: Optional[Sequence[PredictedToken]] = None
     ans_token_id: Optional[int] = None
@@ -57,12 +59,16 @@ class SelectionSample(DataClassJsonMixin):
             raise TypeError("Options must be a Sequence.")
         if len(self.options) < 2:
             raise ValueError("There must be at least two options.")
-        assert (
-            self.options[self.obj_idx] == self.obj
-        ), "Object must be one of the options and match the object index."
+        if self.task_type == "selection":
+            assert (
+                self.options[self.obj_idx] == self.obj
+            ), "Object must be one of the options and match the object index."
 
     def __str__(self):
-        return f"{self.subj} -> {self.obj} ({self.obj_idx}): {self.options}"
+        if self.task_type == "selection":
+            return f"{self.subj} -> {self.obj} ({self.obj_idx}): {self.options}"
+        elif self.task_type == "counting":
+            return f"{self.count} {self.category} -> {self.options}: Ans: '{self.answer}'"
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
@@ -93,6 +99,7 @@ class SelectionSample(DataClassJsonMixin):
             )
         elif option_style == "bullet":
             options_str = "\n".join(f"* {opt}" for opt in self.options)
+
         else:
             raise ValueError(f"Invalid option_style: {option_style}.")
 
@@ -1067,7 +1074,7 @@ class CountingTask(DataClassJsonMixin):
         n_distractors: int = 3,
         filter_by_lm_prediction: bool = True,
         retry_count: int = 0,
-    ) -> CountingSample:
+    ) -> SelectionSample:
         """
         Get a random sample with the specified attribute.
         """
@@ -1112,9 +1119,10 @@ class CountingTask(DataClassJsonMixin):
 
         random.shuffle(options)
 
-        sample = CountingSample(
+        sample = SelectionSample(
             prompt_template=self.prompt_templates[prompt_template_idx],
             options=options,
+            task_type=self.task_name,
             count=n_count,
             category=category,
             prediction=None,
