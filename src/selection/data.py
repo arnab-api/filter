@@ -10,7 +10,7 @@ from typing import Any, Literal, Optional, Sequence
 
 from dataclasses_json import DataClassJsonMixin
 
-from src.functional import detensorize, predict_next_token
+from src.functional import detensorize, predict_next_token, get_hs, interpret_logits
 from src.models import ModelandTokenizer, unwrap_tokenizer
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
@@ -1119,43 +1119,70 @@ class CountingTask(DataClassJsonMixin):
 
         random.shuffle(options)
 
+        count_str_map = {
+            0: " Zero",
+            1: " One",
+            2: " Two",
+            3: " Three",
+            4: " Four",
+            5: " Five",
+            6: " Six",
+            7: " Seven",
+            8: " Eight",
+            9: " Nine",
+            10: " Ten"
+        }
+
         sample = SelectionSample(
-            prompt_template=self.prompt_templates[prompt_template_idx],
-            options=options,
+            answer = count_str_map[n_count],
+            prompt_template = self.prompt_templates[prompt_template_idx],
+            options = options,
             task_type=self.task_name,
-            count=n_count,
-            category=category,
-            prediction=None,
-            default_option_style=option_style,
+            count = n_count,
+            category = category,
+            prediction = None,
+            default_option_style = option_style,
         )
 
         if filter_by_lm_prediction:
-            prompt = sample.prompt(option_style=option_style)
-            inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata["tokenized"] = inputs.data
+            if retry_count >= 100: return
 
-            predictions = predict_next_token(
+            prompt = sample.prompt(option_style=option_style)
+            tokenized_input = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata['tokenized'] = tokenized_input.data
+
+            answer_token_id = get_first_token_id(
+                count_str_map[n_count], tokenizer, prefix=""
+            )
+
+            logits = get_hs(
                 mt=mt,
-                inputs=inputs,
-            )[0]
-            print(f"{predictions[0].token=}")
-            count_str_map = {
-                0: " zero",
-                1: " one",
-                2: " two",
-                3: " three",
-                4: " four",
-                5: " five",
-                6: " six",
-                7: " seven",
-                8: " eight",
-                9: " nine",
-                10: " ten",
-            }
-            if predictions[0].token != count_str_map[n_count]:
+                input=tokenized_input,
+                locations=("lm_head", -1)
+            )
+
+            option_count = len(options)
+            answer_options = tuple(
+                count_str_map[i] for i in range(option_count)
+            )
+
+            tokenized_answer_options = [
+                tokenizer.encode(ans, add_special_tokens=False)[0] for ans in answer_options
+            ]
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                logits=logits,
+                target=answer_token_id,
+                options=tokenized_answer_options,
+                prefix=" "
+            )
+
+            if not is_correct:
                 logger.error(
                     f"""Sample = {sample}
-                    Top prediction {predictions[0]} does not match the count '{n_count}'.
+                    Top tracked token does not match the answer token {track_objs[answer_token_id]}.
+                    Tracked token ranking: {track_objs}.
                     Retry count: {retry_count + 1}. Retrying ...
                     """
                 )
