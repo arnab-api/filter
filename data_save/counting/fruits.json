@@ -13,7 +13,19 @@
             "fig", "date", "cranberry", "persimmon", "guava", "passion fruit",
             "dragon fruit", "lychee", "starfruit", "quince", "boysenberry", "kumquat"
         ],
-        "non-fruits": [
+        "food": [
+            "bread", "rice", "pasta", "cheese", "egg", "chicken", "beef", "pork", "fish",
+            "shrimp", "lobster", "crab", "tofu", "lentils", "beans", "potato", "sweet potato",
+            "tomato", "broccoli", "carrot", "spinach", "lettuce", "mushroom", "onion",
+            "garlic", "pepper", "cucumber", "zucchini", "cauliflower", "pumpkin",
+            "eggplant", "peas", "corn", "avocado", "chili", "basil", "parsley"
+        ],
+        "edible": [
+            "water", "milk", "juice", "coffee", "tea", "soda", "smoothie", "beer", "wine",
+            "whiskey", "vodka", "rum", "gin", "champagne", "cocktail", "latte", "espresso",
+            "milkshake", "lemonade", "sports drink", "energy drink", "hot chocolate"
+        ],
+        "non-edible": [
             "table", "chair", "pen", "pencil", "paper", "book", "phone", "laptop", "cup",
             "plate", "spoon", "fork", "knife", "car", "bike", "shoe", "sock", "shirt",
             "pants", "hat", "jacket", "lamp", "pillow", "blanket", "bed", "door", "window",
