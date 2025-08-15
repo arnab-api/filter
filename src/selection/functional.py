@@ -111,6 +111,7 @@ def verify_head_patterns(
     pivot: str,
     mt: ModelandTokenizer,
     heads: list[tuple[int, int]],
+    tokenized_prompt: TokenizerOutput | None = None,
     visualize_individual_heads: bool = False,
     layers: list[int] | None = None,
     value_weighted: bool = False,
@@ -126,8 +127,8 @@ def verify_head_patterns(
             prompts=prompt,
             return_offsets_mapping=True,
         )
-        if isinstance(prompt, str)
-        else prompt
+        if tokenized_prompt is None
+        else tokenized_prompt
     )
     patches = (
         get_patches_to_verify_independent_enrichment(
@@ -247,143 +248,3 @@ def cache_q_projections(
     if return_output:
         return q_projections, output
     return q_projections
-
-
-@torch.inference_mode()
-def validate_q_proj_ie_on_sample_pair(
-    mt: ModelandTokenizer,
-    clean_sample: SelectionSample,
-    patch_sample: SelectionSample,
-    heads: list[tuple[int, int]],
-    query_indices: int = [-1],
-    verify_head_behavior_on: Optional[int] = None,
-):
-    clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
-    patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
-
-    if verify_head_behavior_on is not None:
-        logger.info("Verifying head behavior...")
-
-        logger.info(f"Clean Sample >> Ans: {clean_sample.obj}")
-        clean_attn_pattern = verify_head_patterns(  # noqa
-            prompt=clean_tokenized,
-            options=clean_sample.options,
-            pivot=clean_sample.subj,
-            mt=mt,
-            heads=heads,
-            generate_full_answer=True,
-            query_index=verify_head_behavior_on,
-        )
-
-        logger.info(f"Patch Sample >> Ans: {patch_sample.obj}")
-        patch_attn_pattern = verify_head_patterns(  # noqa
-            prompt=patch_tokenized,
-            options=patch_sample.options,
-            pivot=patch_sample.subj,
-            mt=mt,
-            heads=heads,
-            generate_full_answer=True,
-            query_index=verify_head_behavior_on,
-        )
-
-    logger.info(f"Caching the query states for the {len(heads)} heads")
-
-    query_locations = [
-        (layer_idx, head_idx, query_idx)
-        for layer_idx, head_idx in heads
-        for query_idx in query_indices
-    ]
-
-    cached_q_states, patch_output = cache_q_projections(
-        mt=mt,
-        input=patch_tokenized,
-        query_locations=query_locations,
-        return_output=True,
-    )
-    q_proj_patches = []
-    for (layer_idx, head_idx, query_idx), q_proj in cached_q_states.items():
-        q_proj_patches.append(
-            PatchSpec(
-                location=(
-                    mt.attn_module_name_format.format(layer_idx) + ".q_proj",
-                    head_idx,
-                    query_idx,
-                ),
-                patch=q_proj,
-            )
-        )
-
-    patch_logits = patch_output.logits[:, -1, :].squeeze()
-    patch_predictions = interpret_logits(
-        tokenizer=mt,
-        logits=patch_logits,
-    )
-    logger.info(f"patch_prediction={[str(pred) for pred in patch_predictions]}")
-
-    # interested_tokens = [
-    #     patch_sample.ans_token_id,
-    #     clean_sample.ans_token_id,
-    #     clean_sample.metadata["track_type_obj_token_id"],
-    # ]
-    interested_tokens = clean_sample.options
-    interested_tokens = [
-        get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
-        for opt in interested_tokens
-    ]
-    interested_tokens += [patch_sample.ans_token_id]
-    # interested_tokens = list(set(interested_tokens))  # remove duplicates #! don't need to, made sure during sampling
-
-    logger.info("clean run")
-    clean_output = patch_with_baukit(
-        mt=mt,
-        inputs=clean_tokenized,
-        patches=[],
-    )
-    clean_logits = clean_output.logits[:, -1, :].squeeze()
-    clean_predictions, clean_track = interpret_logits(
-        tokenizer=mt,
-        logits=clean_logits,
-        interested_tokens=interested_tokens,
-    )
-    logger.info(f"clean_prediction={[str(pred) for pred in clean_predictions]}")
-    logger.info(f"clean_track={clean_track}")
-
-    logger.info("patching the q_proj states")
-    if verify_head_behavior_on is not None:
-        int_attn_pattern = verify_head_patterns(
-            prompt=clean_tokenized,
-            options=clean_sample.options,
-            pivot=clean_sample.subj,
-            mt=mt,
-            heads=heads,
-            query_patches=q_proj_patches,
-            generate_full_answer=False,
-            query_index=verify_head_behavior_on,
-        )
-        int_logits = int_attn_pattern["logits"].squeeze()
-
-    else:
-        int_out = patch_with_baukit(
-            mt=mt,
-            inputs=clean_tokenized,
-            patches=q_proj_patches,
-        )
-        int_logits = int_out.logits[:, -1, :].squeeze()
-
-    int_predictions, int_track = interpret_logits(
-        tokenizer=mt,
-        logits=int_logits,
-        interested_tokens=interested_tokens,
-    )
-    logger.info(f"int_prediction={[str(pred) for pred in int_predictions]}")
-    logger.info(f"int_track={int_track}")
-
-    return {
-        "clean_sample": clean_sample,
-        "patch_sample": patch_sample,
-        "clean_predictions": clean_predictions,
-        "patch_predictions": patch_predictions,
-        "int_predictions": int_predictions,
-        "clean_track": clean_track,
-        "int_track": int_track,
-    }

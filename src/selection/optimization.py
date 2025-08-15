@@ -13,7 +13,11 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample
-from src.selection.functional import cache_q_projections, verify_head_patterns
+from src.selection.functional import (
+    cache_q_projections,
+    get_patches_to_verify_independent_enrichment,
+    verify_head_patterns,
+)
 from src.selection.utils import get_first_token_id
 from src.tokens import prepare_input
 from src.utils.typing import TokenizerOutput
@@ -220,6 +224,7 @@ def validate_q_proj_ie_on_sample_pair(
     heads: list[tuple[int, int]],
     query_indices: int = [-1],
     verify_head_behavior_on: Optional[int] = None,
+    ablate_possible_ans_info_from_options: bool = False,
 ):
     clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
@@ -229,24 +234,32 @@ def validate_q_proj_ie_on_sample_pair(
 
         logger.info(f"Clean Sample >> Ans: {clean_sample.obj}")
         clean_attn_pattern = verify_head_patterns(  # noqa
-            prompt=clean_tokenized,
-            options=clean_sample.options,
+            prompt=clean_sample.prompt(),
+            tokenized_prompt=clean_tokenized,
+            # options=clean_sample.options,
+            options=[f"{opt}," for opt in clean_sample.options[:-1]]
+            + [f"{clean_sample.options[-1]}."],
             pivot=clean_sample.subj,
             mt=mt,
             heads=heads,
             generate_full_answer=True,
             query_index=verify_head_behavior_on,
+            ablate_possible_ans_info_from_options=ablate_possible_ans_info_from_options,
         )
 
         logger.info(f"Patch Sample >> Ans: {patch_sample.obj}")
         patch_attn_pattern = verify_head_patterns(  # noqa
-            prompt=patch_tokenized,
-            options=patch_sample.options,
+            prompt=patch_sample.prompt(),
+            tokenized_prompt=patch_tokenized,
+            # options=patch_sample.options,
+            options=[f"{opt}," for opt in patch_sample.options[:-1]]
+            + [f"{patch_sample.options[-1]}."],
             pivot=patch_sample.subj,
             mt=mt,
             heads=heads,
             generate_full_answer=True,
             query_index=verify_head_behavior_on,
+            ablate_possible_ans_info_from_options=ablate_possible_ans_info_from_options,
         )
 
     logger.info(f"Caching the query states for the {len(heads)} heads")
@@ -314,22 +327,36 @@ def validate_q_proj_ie_on_sample_pair(
     logger.info("patching the q_proj states")
     if verify_head_behavior_on is not None:
         int_attn_pattern = verify_head_patterns(
-            prompt=clean_tokenized,
-            options=clean_sample.options,
+            prompt=clean_sample.prompt(),
+            tokenized_prompt=clean_tokenized,
+            # options=clean_sample.options,
+            options=[f"{opt}," for opt in clean_sample.options[:-1]]
+            + [f"{clean_sample.options[-1]}."],
             pivot=clean_sample.subj,
             mt=mt,
             heads=heads,
             query_patches=q_proj_patches,
             generate_full_answer=False,
             query_index=verify_head_behavior_on,
+            ablate_possible_ans_info_from_options=ablate_possible_ans_info_from_options,
         )
         int_logits = int_attn_pattern["logits"].squeeze()
 
     else:
+        if ablate_possible_ans_info_from_options:
+            patches = get_patches_to_verify_independent_enrichment(
+                prompt=clean_sample.prompt(),
+                options=clean_sample.options,
+                pivot=clean_sample.subj,
+                mt=mt,
+                tokenized_prompt=clean_tokenized,
+            )
+        else:
+            patches = []
         int_out = patch_with_baukit(
             mt=mt,
             inputs=clean_tokenized,
-            patches=q_proj_patches,
+            patches=q_proj_patches + patches,
         )
         int_logits = int_out.logits[:, -1, :].squeeze()
 
