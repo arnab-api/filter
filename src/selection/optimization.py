@@ -1,4 +1,5 @@
 import logging
+import types
 from typing import Optional
 
 import baukit
@@ -11,12 +12,14 @@ from src.functional import (
     interpret_logits,
     patch_with_baukit,
 )
+from src.hooking.llama_attention import LlamaAttentionPatcher
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample
 from src.selection.functional import (
     cache_q_projections,
     get_patches_to_verify_independent_enrichment,
     verify_head_patterns,
+    visualize_attn_matrix,
 )
 from src.selection.utils import get_first_token_id
 from src.tokens import prepare_input
@@ -225,6 +228,7 @@ def validate_q_proj_ie_on_sample_pair(
     query_indices: int = [-1],
     verify_head_behavior_on: Optional[int] = None,
     ablate_possible_ans_info_from_options: bool = False,
+    amplification_scale: float = 1.0,
 ):
     clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
@@ -325,7 +329,8 @@ def validate_q_proj_ie_on_sample_pair(
     logger.info(f"clean_track={clean_track}")
 
     logger.info("patching the q_proj states")
-    if verify_head_behavior_on is not None:
+
+    if verify_head_behavior_on is not None and amplification_scale == 1.0:
         int_attn_pattern = verify_head_patterns(
             prompt=clean_sample.prompt(),
             tokenized_prompt=clean_tokenized,
@@ -343,22 +348,90 @@ def validate_q_proj_ie_on_sample_pair(
         int_logits = int_attn_pattern["logits"].squeeze()
 
     else:
-        if ablate_possible_ans_info_from_options:
-            patches = get_patches_to_verify_independent_enrichment(
-                prompt=clean_sample.prompt(),
-                options=clean_sample.options,
-                pivot=clean_sample.subj,
-                mt=mt,
-                tokenized_prompt=clean_tokenized,
-            )
+        default_attn_implementation = mt.config._attn_implementation
+        if amplification_scale != 1.0:
+            mt.reset_forward()
+            mt.set_attn_implementation("sdpa")
+
+            layers_to_heads = {}
+            for layer_idx, head_idx in heads:
+                if layer_idx not in layers_to_heads:
+                    layers_to_heads[layer_idx] = []
+                layers_to_heads[layer_idx].append(head_idx)
+
+            layers_to_q_patches = {}
+            for (layer_idx, head_idx, query_idx), patch in cached_q_states.items():
+                if layer_idx not in layers_to_q_patches:
+                    layers_to_q_patches[layer_idx] = []
+                layers_to_q_patches[layer_idx].append((head_idx, query_idx, patch))
+
+            attention_patterns = {}
+            head_contributions = {}
+            for layer_idx, head_indices in layers_to_heads.items():
+                attn_block_name = mt.attn_module_name_format.format(layer_idx)
+                attn_block = baukit.get_module(mt._model, attn_block_name)
+
+                attention_patterns[layer_idx] = {}
+                head_contributions[layer_idx] = {}
+
+                attn_block.forward = types.MethodType(
+                    LlamaAttentionPatcher(
+                        block_name=attn_block_name,
+                        save_attn_for=head_indices,
+                        store_attn_matrices=attention_patterns[layer_idx],
+                        store_head_contributions=head_contributions[layer_idx],
+                        query_patches=layers_to_q_patches[layer_idx],
+                        amplify_contributions=[
+                            (head_idx, q_idx, amplification_scale)
+                            for head_idx in head_indices
+                            for q_idx in query_indices
+                        ],
+                        # value_weighted=True,
+                    ),
+                    attn_block,
+                )
+            patches = []  # already handled by hooking the default forward pass
+
         else:
-            patches = []
+            patches = q_proj_patches
+
+        if ablate_possible_ans_info_from_options:
+            patches.extend(
+                get_patches_to_verify_independent_enrichment(
+                    prompt=clean_sample.prompt(),
+                    options=clean_sample.options,
+                    pivot=clean_sample.subj,
+                    mt=mt,
+                    tokenized_prompt=clean_tokenized,
+                )
+            )
+
         int_out = patch_with_baukit(
             mt=mt,
             inputs=clean_tokenized,
-            patches=q_proj_patches + patches,
+            patches=patches,
         )
         int_logits = int_out.logits[:, -1, :].squeeze()
+
+        if amplification_scale != 1.0:
+            mt.reset_forward()
+            mt.set_attn_implementation(default_attn_implementation)
+
+            if verify_head_behavior_on is not None:
+                attn_matrix = []
+                for layer_idx in attention_patterns:
+                    for head_idx in attention_patterns[layer_idx]:
+                        attn_matrix.append(
+                            attention_patterns[layer_idx][head_idx].cpu()
+                        )
+                attn_matrix = torch.stack(attn_matrix).squeeze().mean(dim=0)
+
+                visualize_attn_matrix(
+                    attn_matrix=attn_matrix,
+                    tokens=[
+                        mt.tokenizer.decode(t) for t in clean_tokenized["input_ids"][0]
+                    ],
+                )
 
     int_predictions, int_track = interpret_logits(
         tokenizer=mt,

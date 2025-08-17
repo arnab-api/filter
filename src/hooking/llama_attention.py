@@ -150,13 +150,14 @@ def attn_per_head(
     o_proj: torch.nn.modules.linear.Linear,
     attn_output: torch.Tensor,
     freeze_head_contributions: Optional[dict[int, torch.Tensor]] = None,
+    amplify_contributions: Optional[list[Tuple[int, int, float]]] = None,
 ):
     # print(attn_output.size())
     b, q_len, n_head, h_dim = attn_output.size()
     o_proj_weight_split = o_proj.weight.view(o_proj.out_features, n_head, h_dim)
 
-    print(f"{o_proj_weight_split.size()=}")
-    print(f"{attn_output.size()=}")
+    # print(f"{o_proj_weight_split.size()=}")
+    # print(f"{attn_output.size()=}")
 
     per_head_contributions = []
     for head_idx in range(n_head):
@@ -183,6 +184,11 @@ def attn_per_head(
     per_head_contributions = torch.stack(
         per_head_contributions, dim=1
     )  # shape: (b, n_head, q_len, out_features)
+
+    if amplify_contributions is not None:
+        for head_idx, token_idx, scale in amplify_contributions:
+            per_head_contributions[:, head_idx, token_idx, :] *= scale
+
     attn_output = per_head_contributions.sum(dim=1)  # shape: (b, q_len, out_features)
 
     # print(f"{attn_output.size()=} | {per_head_contributions.size()=}")
@@ -269,6 +275,9 @@ def LlamaAttentionPatcher(
     store_head_contributions: Optional[dict[int, torch.Tensor]] = None,
     freeze_attn_contributions: Optional[dict[int, torch.Tensor]] = None,
     query_patches: Optional[list[Tuple[int, int, torch.Tensor]]] = None,
+    amplify_contributions: Optional[
+        list[Tuple[int, int, float]]
+    ] = None,  # head_idx, token_idx, scale
 ) -> callable:
     """
     Wraps the forward method of the `LlamaSdpaAttention` class
@@ -307,7 +316,7 @@ def LlamaAttentionPatcher(
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        logger.debug(f"LlamaAttentionPatcher <> {block_name}")
+        # logger.debug(f"LlamaAttentionPatcher <> {block_name}")
 
         # if kwargs.get("output_attentions", True):
         #     raise NotImplementedError(
@@ -316,7 +325,7 @@ def LlamaAttentionPatcher(
 
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
-        logger.debug(f"{hidden_shape=} | {input_shape=} | {hidden_states.shape}")
+        # logger.debug(f"{hidden_shape=} | {input_shape=} | {hidden_states.shape}")
 
         batch_size, q_len = input_shape
         d_model = hidden_states.size(-1)
@@ -338,9 +347,9 @@ def LlamaAttentionPatcher(
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        logger.debug(
-            f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
-        )
+        # logger.debug(
+        #     f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
+        # )
         if query_patches is not None:
             for head_idx, token_idx, patch in query_patches:
                 query_states[:, head_idx, token_idx, :] = patch
@@ -386,11 +395,13 @@ def LlamaAttentionPatcher(
         if (
             store_head_contributions is not None
             or freeze_attn_contributions is not None
+            or amplify_contributions is not None
         ):
             __attn_output, per_head_contribution = attn_per_head(
                 self.o_proj,
                 attn_output,
                 freeze_head_contributions=freeze_attn_contributions,
+                amplify_contributions=amplify_contributions,
             )
 
         if store_head_contributions is not None:
@@ -400,14 +411,14 @@ def LlamaAttentionPatcher(
                     :, head_idx, :, :
                 ]
 
-        if freeze_attn_contributions is not None:
+        if freeze_attn_contributions is not None or amplify_contributions is not None:
             # logger.warning(
             #     f"{block_name} >> setting modified attn_output to the frozen contributions"
             # )
             attn_output = __attn_output
 
         else:
-            # clean impmementation
+            # clean implementation
             attn_output = attn_output.reshape(*input_shape, -1).contiguous()
             attn_output = self.o_proj(attn_output)
 
@@ -416,7 +427,7 @@ def LlamaAttentionPatcher(
         # print(f"{attn_output.size()=}")
 
         if store_head_contributions is not None:
-            if torch.allclose(attn_output, __attn_output, atol=1e-1) is False:
+            if torch.allclose(attn_output, __attn_output, atol=1e-2) is False:
                 logger.warning(
                     f"{block_name} >> allclose(attn_output, __attn_output)=False | {attn_output.norm().item()=}, {__attn_output.norm().item()=}"
                 )

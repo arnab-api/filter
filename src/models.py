@@ -170,6 +170,13 @@ class ModelandTokenizer(LanguageModel):
         """Call the model."""
         return self._model(*args, **kwargs)
 
+    def set_attn_implementation(self, attn_implementation: Literal["sdpa", "eager"]):
+        self.config._attn_implementation = attn_implementation
+        for layer_idx in range(self.config.num_hidden_layers):
+            attn_block_name = self.attn_module_name_format.format(layer_idx)
+            attn_block = baukit.get_module(self._model, attn_block_name)
+            attn_block.config._attn_implementation = attn_implementation
+
 
 class LMHead(torch.nn.Module):
     def __init__(self, final_layer_norm: torch.nn.Module, lm_head: torch.nn.Module):
