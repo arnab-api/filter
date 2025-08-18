@@ -36,6 +36,9 @@ def get_optimal_head_mask(
     lamb: float = 1e-3,
     batch_size: int = 4,
     query_indices: int = [-1],
+    black_list_heads: list[
+        tuple[int, int]
+    ] = [],  #! don't consider these heads during training
 ):
     hparams = {
         "learning_rate": learning_rate,
@@ -200,6 +203,10 @@ def get_optimal_head_mask(
             optimizer.step()
 
             with torch.no_grad():
+                #! if there are blacklisted heads, set their mask to 0
+                if black_list_heads:
+                    for layer_idx, head_idx in black_list_heads:
+                        mask[layer_idx, head_idx] = 0.0
                 mask.clamp_(0, 1)
                 mask += 1e-4  # to avoid zero gradients
 
@@ -225,10 +232,11 @@ def validate_q_proj_ie_on_sample_pair(
     clean_sample: SelectionSample,
     patch_sample: SelectionSample,
     heads: list[tuple[int, int]],
-    query_indices: int = [-1],
+    query_indices: dict[int, int] = {-1: -1},
     verify_head_behavior_on: Optional[int] = None,
     ablate_possible_ans_info_from_options: bool = False,
     amplification_scale: float = 1.0,
+    must_track_tokens: list[int] = [],
 ):
     clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
@@ -269,9 +277,9 @@ def validate_q_proj_ie_on_sample_pair(
     logger.info(f"Caching the query states for the {len(heads)} heads")
 
     query_locations = [
-        (layer_idx, head_idx, query_idx)
+        (layer_idx, head_idx, patch_query_idx)
         for layer_idx, head_idx in heads
-        for query_idx in query_indices
+        for patch_query_idx in query_indices.keys()
     ]
 
     cached_q_states, patch_output = cache_q_projections(
@@ -281,13 +289,13 @@ def validate_q_proj_ie_on_sample_pair(
         return_output=True,
     )
     q_proj_patches = []
-    for (layer_idx, head_idx, query_idx), q_proj in cached_q_states.items():
+    for (layer_idx, head_idx, patch_query_idx), q_proj in cached_q_states.items():
         q_proj_patches.append(
             PatchSpec(
                 location=(
                     mt.attn_module_name_format.format(layer_idx) + ".q_proj",
                     head_idx,
-                    query_idx,
+                    query_indices[patch_query_idx],
                 ),
                 patch=q_proj,
             )
@@ -323,7 +331,7 @@ def validate_q_proj_ie_on_sample_pair(
     clean_predictions, clean_track = interpret_logits(
         tokenizer=mt,
         logits=clean_logits,
-        interested_tokens=interested_tokens,
+        interested_tokens=interested_tokens + must_track_tokens,
     )
     logger.info(f"clean_prediction={[str(pred) for pred in clean_predictions]}")
     logger.info(f"clean_track={clean_track}")
@@ -360,10 +368,16 @@ def validate_q_proj_ie_on_sample_pair(
                 layers_to_heads[layer_idx].append(head_idx)
 
             layers_to_q_patches = {}
-            for (layer_idx, head_idx, query_idx), patch in cached_q_states.items():
+            for (
+                layer_idx,
+                head_idx,
+                patch_query_idx,
+            ), patch in cached_q_states.items():
                 if layer_idx not in layers_to_q_patches:
                     layers_to_q_patches[layer_idx] = []
-                layers_to_q_patches[layer_idx].append((head_idx, query_idx, patch))
+                layers_to_q_patches[layer_idx].append(
+                    (head_idx, query_indices[patch_query_idx], patch)
+                )
 
             attention_patterns = {}
             head_contributions = {}
@@ -384,7 +398,7 @@ def validate_q_proj_ie_on_sample_pair(
                         amplify_contributions=[
                             (head_idx, q_idx, amplification_scale)
                             for head_idx in head_indices
-                            for q_idx in query_indices
+                            for q_idx in query_indices.values()
                         ],
                         # value_weighted=True,
                     ),
@@ -436,7 +450,7 @@ def validate_q_proj_ie_on_sample_pair(
     int_predictions, int_track = interpret_logits(
         tokenizer=mt,
         logits=int_logits,
-        interested_tokens=interested_tokens,
+        interested_tokens=interested_tokens + must_track_tokens,
     )
     logger.info(f"int_prediction={[str(pred) for pred in int_predictions]}")
     logger.info(f"int_track={int_track}")
