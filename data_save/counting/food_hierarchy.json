@@ -1,8 +1,8 @@
 {
-    "name": "fruits",
+    "name": "fruits_food_edible_non-edible",
     "prompt_templates": [
-        "How many <_category_> are there in the following list? <_options_>\nAnswer:",
-        "<_options_>\nHow many <_category_> are there in the previous list?\nAnswer:"
+        "How many of the items in the following list are <_category_>? <_options_>\nAnswer:",
+        "<_options_>\nHow many items in the previous list are <_category_>?\nAnswer:"
     ],
     "categories": {
         "fruits": [
@@ -29,8 +29,9 @@
             "table", "chair", "pen", "pencil", "paper", "book", "phone", "laptop", "cup",
             "plate", "spoon", "fork", "knife", "car", "bike", "shoe", "sock", "shirt",
             "pants", "hat", "jacket", "lamp", "pillow", "blanket", "bed", "door", "window",
-            "key", "wallet", "watch", "bottle", "towel", "soap", "comb", "toothbrush",
-            "battery", "candle", "broom", "bucket", "rug"
+            "key", "wallet", "watch", "towel", "soap", "comb", "toothbrush", "battery",
+            "candle", "broom", "bucket", "rug", "paint", "scissors", "glue", "mirror",
+            "radio", "television", "drill", "hammer", "nail", "screwdriver"
         ]
     }
 }
