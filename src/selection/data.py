@@ -36,10 +36,10 @@ index_to_order = {
 @dataclass
 class SelectionSample(DataClassJsonMixin):
     obj: str
-    answer: str
     obj_idx: int
     prompt_template: str
     options: Sequence[str]
+    answer: str | None = None  # if obj != answer
     subj: str | None = None
     category: str | None = None
     prediction: Optional[Sequence[PredictedToken]] = None

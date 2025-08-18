@@ -20,7 +20,7 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
-from src.selection.functional import KeyedSet, get_first_token_id, verify_correct_option
+from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
 from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
@@ -79,6 +79,19 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
             f"{layer_idx}_<>_{head_idx}": effect
             for (layer_idx, head_idx), effect in self.headwise_patching_effects.items()
         }
+
+    @staticmethod
+    def load_from_json(file_path: str) -> "SelectionQprojPatchResult":
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        head_wise_patching_effects = {}
+        for key, value in data["headwise_patching_effects"].items():
+            layer_idx, head_idx = map(int, key.split("_<>_"))
+            head_wise_patching_effects[(layer_idx, head_idx)] = value
+        data["headwise_patching_effects"] = head_wise_patching_effects
+        data["patch_sample"]["ans_token_id"] = data["patch_sample"]["obj_token_id"]
+        data["clean_sample"]["ans_token_id"] = data["clean_sample"]["obj_token_id"]
+        return SelectionQprojPatchResult.from_dict(data)
 
 
 def get_counterfactual_samples_within_task(
