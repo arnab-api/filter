@@ -272,7 +272,7 @@ class SelectOneTask(DataClassJsonMixin):
     @staticmethod
     def load(
         path: PathLike | None = os.path.join(
-            DEFAULT_DATA_DIR, "selection/profession.json"
+            DEFAULT_DATA_DIR, "selection/objects.json"
         ),
         category_type: str | None = None,
     ):
@@ -289,6 +289,21 @@ class SelectOneTask(DataClassJsonMixin):
                 prompt_templates=data["prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
+
+    def filter_single_token(self, tokenizer, prefix=" "):
+        """
+        Filter the examples to only include those with a single token.
+        """
+        filtered = {}
+        for cat, examples in self.category_wise_examples.items():
+            filtered[cat] = []
+            for example in examples:
+                tokenized = tokenizer(
+                    prefix + example, return_tensors="pt", add_special_tokens=False
+                )
+                if len(tokenized["input_ids"][0]) == 1:
+                    filtered[cat].append(example)
+        self.category_wise_examples = filtered
 
     @property
     def categories(self):
