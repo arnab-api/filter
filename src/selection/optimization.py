@@ -1,7 +1,9 @@
+import copy
 import logging
 import os
+import random
 import types
-from typing import Optional
+from typing import Any, Optional
 
 import baukit
 import numpy as np
@@ -275,9 +277,32 @@ def validate_q_proj_ie_on_sample_pair(
     ablate_possible_ans_info_from_options: bool = False,
     amplification_scale: float = 1.0,
     must_track_tokens: list[int] = [],
+    patch_args: dict[str, Any] = {},
 ):
     clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
+    if patch_args.get("batch_size", 1) > 1:
+        patch_samples = []
+        task = patch_args["task"]
+        logger.debug(f"Sampling {patch_args.get('batch_size', 1)} patch samples...")
+        while len(patch_samples) < patch_args.get("batch_size", 1):
+            if patch_args["distinct_options"] is True:
+                sample = task.get_random_sample(
+                    mt=mt,
+                    category=patch_sample.category,
+                    prompt_template_idx=patch_args["prompt_template_idx"],
+                    option_style=patch_args["option_style"],
+                    filter_by_lm_prediction=True,
+                    exclude_objs=[clean_sample.obj, patch_sample.obj],
+                )
+            else:
+                sample = copy.deepcopy(patch_sample)
+                random.shuffle(sample.options)
+            patch_samples.append(sample)
+        patch_tokenized_batch = prepare_input(
+            prompts=[sample.prompt() for sample in patch_samples], tokenizer=mt
+        )
+        logger.debug(f"{patch_tokenized_batch.input_ids.shape}")
 
     if verify_head_behavior_on is not None:
         logger.info("Verifying head behavior...")
@@ -326,6 +351,16 @@ def validate_q_proj_ie_on_sample_pair(
         query_locations=query_locations,
         return_output=True,
     )
+    if patch_args.get("batch_size", 1) > 1:
+        cached_q_states = cache_q_projections(
+            mt=mt,
+            input=patch_tokenized_batch,
+            query_locations=query_locations,
+            return_output=False,
+        )
+        for lok in cached_q_states:
+            cached_q_states[lok] = cached_q_states[lok].mean(dim=0)
+
     q_proj_patches = []
     for (layer_idx, head_idx, patch_query_idx), q_proj in cached_q_states.items():
         q_proj_patches.append(

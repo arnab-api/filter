@@ -120,6 +120,7 @@ def verify_head_patterns(
     bare_prompt_template=" The fact that {}",
     query_index: int = -1,
     query_patches: list[PatchSpec] = [],
+    start_from: int = 1,
 ):
     tokenized_prompt = (
         prepare_input(
@@ -197,7 +198,7 @@ def verify_head_patterns(
                     attn_matrix=head_matrix,
                     tokens=attn_matrices.tokenized_prompt,
                     q_index=query_index,
-                    start_from=1,
+                    start_from=start_from,
                 )
 
         logger.info("Combined attention matrix for all heads")
@@ -206,7 +207,7 @@ def verify_head_patterns(
             attn_matrix=combined_matrix,
             tokens=attn_matrices.tokenized_prompt,
             q_index=query_index,
-            start_from=1,
+            start_from=start_from,
         )
 
     return ret_dict
