@@ -1,8 +1,10 @@
 import logging
+import os
 import types
 from typing import Optional
 
 import baukit
+import numpy as np
 import torch
 from torch.optim import AdamW
 
@@ -23,7 +25,7 @@ from src.selection.functional import (
 )
 from src.selection.utils import get_first_token_id
 from src.tokens import prepare_input
-from src.utils.typing import TokenizerOutput
+from src.utils.typing import PathLike, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ def get_optimal_head_mask(
     black_list_heads: list[
         tuple[int, int]
     ] = [],  #! don't consider these heads during training
+    cache_q_states_before: bool = True,
+    save_path: PathLike | None = None,
+    save_step: int = 5,
 ):
     hparams = {
         "learning_rate": learning_rate,
@@ -53,6 +58,8 @@ def get_optimal_head_mask(
     mask = torch.ones(
         (n_layer, n_heads), dtype=mt.dtype, requires_grad=True, device=mt.device
     )
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     # prompts = []
     # prompts.extend([sample.prompt() for sample in clean_samples])
@@ -84,33 +91,34 @@ def get_optimal_head_mask(
         for query_idx in query_indices
     ]
 
-    logger.info("Caching q projections from patch samples...")
-    q_projections_from_patch_samples = {}
-    for batch_idx, batch in enumerate(batches):
-        clean_samples, patch_samples = zip(*batch)
-        prompts = []
-        prompts.extend([sample.prompt() for sample in clean_samples])
-        prompts.extend([sample.prompt() for sample in patch_samples])
-        tokenized = prepare_input(prompts=prompts, tokenizer=mt)
-        # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
-        patch_tokenized = TokenizerOutput(
-            data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
-        )
+    if cache_q_states_before:
+        logger.info("Caching q projections from patch samples...")
+        q_projections_from_patch_samples = {}
+        for batch_idx, batch in enumerate(batches):
+            clean_samples, patch_samples = zip(*batch)
+            prompts = []
+            prompts.extend([sample.prompt() for sample in clean_samples])
+            prompts.extend([sample.prompt() for sample in patch_samples])
+            tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+            # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
+            patch_tokenized = TokenizerOutput(
+                data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+            )
 
-        q_projections = cache_q_projections(
-            mt=mt,
-            input=patch_tokenized,
-            query_locations=query_locations,
-            return_output=False,
-        )
+            q_projections = cache_q_projections(
+                mt=mt,
+                input=patch_tokenized,
+                query_locations=query_locations,
+                return_output=False,
+            )
 
-        patches = {}
-        for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
-            module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
-            patches[(module_name, head_idx)] = (layer_idx, q_proj)
-        q_projections_from_patch_samples[batch_idx] = patches
-        logger.info(f"Caching completed > {batch_idx+1}/{len(batches)} batches.")
-        free_gpu_cache()
+            patches = {}
+            for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
+                module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+                patches[(module_name, head_idx)] = (layer_idx, q_proj)
+            q_projections_from_patch_samples[batch_idx] = patches
+            logger.info(f"Caching completed > {batch_idx+1}/{len(batches)} batches.")
+            free_gpu_cache()
 
     logger.info("Starting training...")
 
@@ -145,7 +153,22 @@ def get_optimal_head_mask(
                 for clean_sample in clean_samples
             ]
 
-            patch_q_states = q_projections_from_patch_samples[batch_idx]
+            if cache_q_states_before:
+                patch_q_states = q_projections_from_patch_samples[batch_idx]
+            else:
+                q_projections = cache_q_projections(
+                    mt=mt,
+                    input=patch_tokenized,
+                    query_locations=query_locations,
+                    return_output=False,
+                )
+                patches = {}
+                for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
+                    module_name = (
+                        mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+                    )
+                    patches[(module_name, head_idx)] = (layer_idx, q_proj)
+                patch_q_states = patches
 
             batch_size = clean_tokenized.input_ids.shape[0]
             seq_len = clean_tokenized.input_ids.shape[1]
@@ -217,6 +240,21 @@ def get_optimal_head_mask(
         logger.info(f"Epoch {epoch+1}/{n_epochs} completed. Avg Loss: {epoch_loss:.4f}")
         mt._model.zero_grad()
         free_gpu_cache()
+
+        if save_path is not None and (
+            (epoch + 1) % save_step == 0 or (epoch + 1) == n_epochs
+        ):
+            weight_path = os.path.join(save_path, f"epoch_{epoch+1}.npz")
+            os.makedirs(os.path.dirname(weight_path), exist_ok=True)
+            optimal_mask = mask.round().detach().cpu()
+            np.savez_compressed(
+                weight_path,
+                **dict(
+                    optimal_mask=optimal_mask.to(torch.float32).numpy(),
+                    losses=np.array(losses, dtype=np.float32),
+                ),
+                allow_pickle=True,
+            )
 
     mt._model.zero_grad()
     with torch.no_grad():
