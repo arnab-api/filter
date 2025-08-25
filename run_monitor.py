@@ -8,7 +8,7 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # Command to run when GPU becomes available
-COMMAND_TO_RUN = "python run_finetuning.py"
+COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="Qwen/Qwen2.5-32B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" -v |& tee qwen_32_distinct.log'
 # COMMAND_TO_RUN = 'echo ">>> Running command because GPU memory is sufficient. <<<"'
 
 # Memory threshold in GB

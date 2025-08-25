@@ -665,6 +665,7 @@ def patch_with_baukit(
     seq_len = inputs.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
     head_dim = mt.config.hidden_size // n_heads
+    group_size = n_heads // mt.config.num_key_value_heads
 
     modules_to_patches = {}
     for patch in patches:
@@ -712,7 +713,7 @@ def patch_with_baukit(
                     raise ValueError(f"Unknown patch strategy: {patch.strategy}")
             else:
                 current_state = current_state.reshape(
-                    batch_size, seq_len, n_heads, head_dim
+                    batch_size, seq_len, -1, head_dim
                 ).transpose(1, 2)
                 if patch.strategy == "replace":
                     current_state[:, head_idx, token_idx, :] = patch.patch
@@ -721,7 +722,7 @@ def patch_with_baukit(
                 else:
                     raise ValueError(f"Unknown patch strategy: {patch.strategy}")
                 current_state = current_state.transpose(1, 2).reshape(
-                    batch_size, seq_len, n_heads * head_dim
+                    batch_size, seq_len, -1
                 )
 
         return repr
@@ -894,7 +895,7 @@ def get_hs(
         # print(
         #     layer_name, layer_states[layer_name].shape, type(layer_states[layer_name])
         # )
-        hs[(layer_name, index)] = untuple(layer_states[layer_name].value)[
+        hs[(layer_name, index)] = untuple(layer_states[layer_name])[
             :, index, :
         ].squeeze()
 
@@ -1171,3 +1172,17 @@ def save_object(obj, save_path):
         save_path,
         **obj,
     )
+
+
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
+    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(
+        batch, num_key_value_heads, n_rep, slen, head_dim
+    )
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)

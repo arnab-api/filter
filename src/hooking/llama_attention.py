@@ -206,9 +206,9 @@ def sdpa_attention_forward(
     is_causal: Optional[bool] = None,
     **kwargs,
 ) -> Tuple[torch.Tensor, None]:
-    if hasattr(module, "num_key_value_groups"):
-        key = repeat_kv(key, module.num_key_value_groups)
-        value = repeat_kv(value, module.num_key_value_groups)
+    # if hasattr(module, "num_key_value_groups"):
+    #     key = repeat_kv(key, module.num_key_value_groups)
+    #     value = repeat_kv(value, module.num_key_value_groups)
 
     cut_attn_edges = kwargs.get("cut_attn_edges", None)
     store_attn_matrices = kwargs.get("store_attn_matrices", None)
@@ -275,6 +275,7 @@ def LlamaAttentionPatcher(
     store_head_contributions: Optional[dict[int, torch.Tensor]] = None,
     freeze_attn_contributions: Optional[dict[int, torch.Tensor]] = None,
     query_patches: Optional[list[Tuple[int, int, torch.Tensor]]] = None,
+    key_patches: Optional[list[Tuple[int, int, torch.Tensor]]] = None,
     amplify_contributions: Optional[
         list[Tuple[int, int, float]]
     ] = None,  # head_idx, token_idx, scale
@@ -347,14 +348,38 @@ def LlamaAttentionPatcher(
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        #! Needed to change where repeat_kv is called to perform the intervention before positional embedding is applied
+        #! Should give numerically equivalent results
+        if hasattr(self, "num_key_value_groups"):
+            key_states = repeat_kv(key_states, self.num_key_value_groups)
+            value_states = repeat_kv(value_states, self.num_key_value_groups)
+
         # logger.debug(
         #     f"{query_states.size()=} | {key_states.size()=} | {value_states.size()=}"
         # )
+
+        # cos, sin = position_embeddings
+        # logger.debug(f"{cos.size()=} | {sin.size()=}")
+        # query_states, key_states = apply_rotary_pos_emb(
+        #     query_states, key_states, cos, sin
+        # )
+
         if query_patches is not None:
             for head_idx, token_idx, patch in query_patches:
+                # logger.debug(
+                #     f"Applying query patch: {head_idx=} | {token_idx=} | {patch.size()=}"
+                # )
                 query_states[:, head_idx, token_idx, :] = patch
+        if key_patches is not None:
+            for head_idx, token_idx, patch in key_patches:
+                # logger.debug(
+                #     f"Applying key patch: {head_idx=} | {token_idx=} | {patch.size()=}"
+                # )
+                key_states[:, head_idx, token_idx, :] = patch
 
         cos, sin = position_embeddings
+        # logger.debug(f"{cos.size()=} | {sin.size()=}")
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin
         )

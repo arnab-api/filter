@@ -286,6 +286,7 @@ def validate_q_proj_ie_on_sample_pair(
         task = patch_args["task"]
         logger.debug(f"Sampling {patch_args.get('batch_size', 1)} patch samples...")
         while len(patch_samples) < patch_args.get("batch_size", 1):
+            obj_idx = len(patch_samples) % len(patch_sample.options)
             if patch_args["distinct_options"] is True:
                 sample = task.get_random_sample(
                     mt=mt,
@@ -294,10 +295,17 @@ def validate_q_proj_ie_on_sample_pair(
                     option_style=patch_args["option_style"],
                     filter_by_lm_prediction=True,
                     exclude_objs=[clean_sample.obj, patch_sample.obj],
+                    n_distractors=patch_args["n_distractors"],
+                    obj_idx=obj_idx,
                 )
             else:
                 sample = copy.deepcopy(patch_sample)
-                random.shuffle(sample.options)
+                sample.options[obj_idx], sample.options[sample.obj_idx] = (
+                    sample.options[sample.obj_idx],
+                    sample.options[obj_idx],
+                )
+                sample.obj_idx = obj_idx
+                # random.shuffle(sample.options)
             patch_samples.append(sample)
         patch_tokenized_batch = prepare_input(
             prompts=[sample.prompt() for sample in patch_samples], tokenizer=mt

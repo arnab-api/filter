@@ -525,6 +525,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.2-3B",
             "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
+            "Qwen/Qwen2.5-14B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
         ],
@@ -627,9 +628,10 @@ if __name__ == "__main__":
         env_utils.DEFAULT_RESULTS_DIR,
         args.save_dir,
         mt.name.split("/")[-1],
-        "same_options",
+        "same_options" if args.not_distinct else "distinct_options",
         select_task.task_name,
     )
+    logger.info(f"{save_dir=}")
     os.makedirs(save_dir, exist_ok=True)
 
     logger.info(f"Saving results to {save_dir}")

@@ -1,6 +1,5 @@
 import logging
 from itertools import product
-from typing import Optional
 
 import torch
 
@@ -15,11 +14,9 @@ from src.functional import (
     get_hs,
     get_module_nnsight,
     interpret_logits,
-    patch_with_baukit,
+    repeat_kv,
 )
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample
-from src.selection.utils import get_first_token_id
 from src.tokens import find_token_range, prepare_input
 from src.utils.typing import TokenizerOutput
 
@@ -50,12 +47,6 @@ def get_patches_to_verify_independent_enrichment(
             substring=opt,
             offset_mapping=offsets,
         )
-        # print(
-        #     [
-        #         mt.tokenizer.decode(tokenized_prompt.input_ids[0][i])
-        #         for i in range(*opt_range)
-        #     ]
-        # )
 
         if mt.tokenizer.decode(tokenized_prompt.input_ids[0][opt_range[0]]) == "\n":
             # If the option starts with a newline, we need to adjust the range
@@ -219,6 +210,7 @@ def cache_q_projections(
     input: TokenizerOutput,
     query_locations: list[tuple[int, int, int]],  # (layer_idx, head_idx, query_idx)
     return_output: bool = False,
+    projection_signature: str = ".q_proj",
 ):
     layer_to_hq = {}
     for layer_idx, head_idx, query_idx in query_locations:
@@ -231,20 +223,36 @@ def cache_q_projections(
     seq_len = input.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
     head_dim = mt.n_embd // n_heads
+    group_size = n_heads // mt.config.num_key_value_heads
+    q_module_projections_per_layer = {}
     with mt.trace(input) as tracer:  # noqa
         for layer_idx, query_locs in layer_to_hq.items():
-            q_proj_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+            q_proj_name = (
+                mt.attn_module_name_format.format(layer_idx) + projection_signature
+            )
             q_proj_module = get_module_nnsight(mt, q_proj_name)
-            q_proj_out = q_proj_module.output.view(
-                batch_size, seq_len, n_heads, head_dim
-            ).transpose(1, 2)
-            for head_idx, query_idx in query_locs:
-                q_projections[(layer_idx, head_idx, query_idx)] = (
-                    q_proj_out[:, head_idx, query_idx, :].squeeze().save()
-                )
+            q_module_projections_per_layer[q_proj_name] = q_proj_module.output.save()
 
         if return_output:
             output = mt.output.save()
+
+    for layer_idx, query_locs in layer_to_hq.items():
+        q_proj_name = (
+            mt.attn_module_name_format.format(layer_idx) + projection_signature
+        )
+        # print(q_proj_name)
+        q_proj_out = (
+            q_module_projections_per_layer[q_proj_name]
+            .view(batch_size, seq_len, -1, head_dim)
+            .transpose(1, 2)
+        )
+        if projection_signature in [".k_proj", ".v_proj"] and group_size != 1:
+            q_proj_out = repeat_kv(q_proj_out, n_rep=group_size)
+        # print(q_proj_out.shape, q_proj_out.norm())
+        for head_idx, query_idx in query_locs:
+            q_projections[(layer_idx, head_idx, query_idx)] = (
+                q_proj_out[:, head_idx, query_idx, :].clone().squeeze()
+            )
 
     if return_output:
         return q_projections, output
