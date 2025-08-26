@@ -20,6 +20,7 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
+from src.selection.functional import cache_q_projections
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
@@ -89,8 +90,10 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
             layer_idx, head_idx = map(int, key.split("_<>_"))
             head_wise_patching_effects[(layer_idx, head_idx)] = value
         data["headwise_patching_effects"] = head_wise_patching_effects
-        data["patch_sample"]["ans_token_id"] = data["patch_sample"]["obj_token_id"]
-        data["clean_sample"]["ans_token_id"] = data["clean_sample"]["obj_token_id"]
+        if "obj_token_id" in data["patch_sample"]:
+            data["patch_sample"]["ans_token_id"] = data["patch_sample"]["obj_token_id"]
+        if "obj_token_id" in data["clean_sample"]:
+            data["clean_sample"]["ans_token_id"] = data["clean_sample"]["obj_token_id"]
         return SelectionQprojPatchResult.from_dict(data)
 
 
@@ -307,44 +310,6 @@ def get_counterfactual_samples_within_task(
 
 
 @torch.inference_mode()
-def cache_q_projections(
-    mt: ModelandTokenizer,
-    input: TokenizerOutput,
-    query_locations: list[tuple[int, int, int]],  # (layer_idx, head_idx, query_idx)
-    return_output: bool = False,
-):
-    layer_to_hq = {}
-    for layer_idx, head_idx, query_idx in query_locations:
-        if layer_idx not in layer_to_hq:
-            layer_to_hq[layer_idx] = []
-        layer_to_hq[layer_idx].append((head_idx, query_idx))
-
-    q_projections = {}
-    batch_size = input.input_ids.shape[0]
-    seq_len = input.input_ids.shape[1]
-    n_heads = mt.config.num_attention_heads
-    head_dim = mt.n_embd // n_heads
-    with mt.trace(input) as tracer:  # noqa
-        for layer_idx, query_locs in layer_to_hq.items():
-            q_proj_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
-            q_proj_module = get_module_nnsight(mt, q_proj_name)
-            q_proj_out = q_proj_module.output.view(
-                batch_size, seq_len, n_heads, head_dim
-            ).transpose(1, 2)
-            for head_idx, query_idx in query_locs:
-                q_projections[(layer_idx, head_idx, query_idx)] = (
-                    q_proj_out[:, head_idx, query_idx, :].squeeze().save()
-                )
-
-        if return_output:
-            output = mt.output.save()
-
-    if return_output:
-        return q_projections, output
-    return q_projections
-
-
-@torch.inference_mode()
 def calculate_query_patching_results_for_sample_pair(
     mt: ModelandTokenizer,
     clean_sample: SelectionSample,
@@ -429,7 +394,7 @@ def calculate_query_patching_results_for_sample_pair(
 
         if counter % 100 == 0:
             logger.debug(
-                f"Got patching results for {counter}/{len(all_q_projections)} ({counter/len(all_q_projections):.2%})"
+                f"Got patching results for {counter}/{len(heads)} ({counter/len(heads):.2%})"
             )
 
     return SelectionQprojPatchResult(
@@ -450,7 +415,7 @@ def cache_attention_patterns_for_selection_samples(
     n_distractors: int = 5,
     prompt_template_idx: int = 3,
     option_style: str = "single_line",
-    query_idx: int = -1,
+    query_indices: list[int] = [-1],
     limit: int = 100,
 ):
     save_dir = os.path.join(save_dir, category_type)
@@ -479,9 +444,11 @@ def cache_attention_patterns_for_selection_samples(
             clean_sample=clean_sample,
             patch_sample=patch_sample,
             heads=all_heads,
-            query_idx=query_idx,
+            query_indices=query_indices,
         )
         q_states_patching_results.delist_patching_effects()
+        q_states_patching_results.patch_sample.metadata.pop("tokenized")
+        q_states_patching_results.clean_sample.metadata.pop("tokenized")
         file_path = os.path.join(save_dir, f"sample_pair_{sample_idx:04d}.json")
         with open(file_path, "w") as f:
             json.dump(
@@ -510,6 +477,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.3-70B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
+            "Qwen/Qwen2.5-3B-Instruct",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",
@@ -559,10 +527,10 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--query_idx",
-        type=int,
-        default=-1,
-        help="Index of the query token to patch (default: -1 for the last token)",
+        "--query_indices",
+        type=list[int],
+        default=[-3, -2, -1],
+        help="Indices of the query token to patch (default: last 3 tokens)",
     )
 
     args = parser.parse_args()
@@ -600,7 +568,7 @@ if __name__ == "__main__":
         n_distractors=args.n_distractors,
         prompt_template_idx=args.prompt_temp_idx,
         option_style=args.option_style,
-        query_idx=args.query_idx,
+        query_indices=args.query_indices,
         limit=args.limit,
     )
     logger.info("#" * 100)

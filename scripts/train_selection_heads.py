@@ -493,9 +493,9 @@ def find_optimal_masks(
     optimal_masks, losses = get_optimal_head_mask(
         mt=mt,
         train_set=train_set,
-        learning_rate=1e-2,
+        learning_rate=1e-3,
         n_epochs=n_epochs,
-        lamb=2e-2,
+        lamb=2e-3,
         batch_size=batch_size,
         query_indices=[-3, -2, -1],
         save_path=save_path,
