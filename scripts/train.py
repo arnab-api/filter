@@ -84,7 +84,7 @@ def run_finetuning(
             regularization_dataloader=reg_loader,
             regularizer_lambda=regularizer_lambda,
             block_indices=trainable_block_indices,
-            # tunable_module_signatures=None, #!
+            tunable_module_signatures=None, #!
         )
 
     if use_8bit_optim:

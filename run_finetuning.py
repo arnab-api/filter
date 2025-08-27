@@ -16,7 +16,7 @@ MODELS = [
 SYNTH_DATASET = "64"
 
 TRAIN_DOC_PATH = f"synthetic_entities/{SYNTH_DATASET}"
-SAVE_PATH = f"trained_params/{SYNTH_DATASET}"
+SAVE_PATH = f"trained_params/{SYNTH_DATASET}_ATTN"
 REG_LIMIT = 15000
 BATCH_SIZE = 8
 MAX_EPOCHS = 5
@@ -25,7 +25,7 @@ WARMUP_STEPS = 1000
 
 # LORA_RANKS = [None, 512]
 LORA_RANKS = [None]
-CLAMP_ABS_VALUE = 1e-2
+CLAMP_ABS_VALUE = 1e-3
 UPTO_LAYER = 15  # None means full model
 LAYER_STEP = 1
 

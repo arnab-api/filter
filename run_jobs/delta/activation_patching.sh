@@ -2,7 +2,7 @@
 #SBATCH --mem=256g
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=4    # <- match to OMP_NUM_THREADS
+#SBATCH --gpus-per-task=1    # <- match to OMP_NUM_THREADS
 #SBATCH --partition=gpuH200x8      # <- or one of: gpuA100x4 gpuA40x4 gpuA100x8 gpuMI100x8
 #SBATCH --account=bezl-delta-gpu    # <- match to a "Project" returned by the "accounts" command
 #SBATCH --job-name=finetuning
@@ -30,4 +30,4 @@ export WANDB_API_KEY=$(cat ~/keys/wandb.key)
 # cd to project directory
 cd ~/Codes/Projects/retrieval
 # run the script
-python run_finetuning.py
+python -m scripts.patching_within_task --model="meta-llama/Llama-3.3-70B-Instruct" --category="objects" --limit=256 -v
