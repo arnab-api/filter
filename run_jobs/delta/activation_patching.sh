@@ -5,7 +5,7 @@
 #SBATCH --gpus-per-task=1    # <- match to OMP_NUM_THREADS
 #SBATCH --partition=gpuH200x8      # <- or one of: gpuA100x4 gpuA40x4 gpuA100x8 gpuMI100x8
 #SBATCH --account=bezl-delta-gpu    # <- match to a "Project" returned by the "accounts" command
-#SBATCH --job-name=finetuning
+#SBATCH --job-name=activation_patching
 #SBATCH --time=15:00:00      # hh:mm:ss for the job
 #SBATCH -e slurm-%j.err
 #SBATCH -o slurm-%j.out
