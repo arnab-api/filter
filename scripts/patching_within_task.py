@@ -13,10 +13,8 @@ from dataclasses_json import DataClassJsonMixin
 
 from src.functional import (
     PatchSpec,
-    get_module_nnsight,
     interpret_logits,
     patch_with_baukit,
-    predict_next_token,
 )
 from src.models import ModelandTokenizer
 from src.selection.data import SelectionSample, SelectOneTask
@@ -24,7 +22,7 @@ from src.selection.functional import cache_q_projections
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
+from src.utils.typing import PathLike, PredictedToken
 
 logger = logging.getLogger(__name__)
 
