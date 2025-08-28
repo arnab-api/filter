@@ -17,7 +17,7 @@ from src.functional import (
     patch_with_baukit,
 )
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample, SelectOneTask
+from src.selection.data import SelectionSample, SelectOneTask, SelectOrderTask
 from src.selection.functional import cache_q_projections
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
@@ -95,8 +95,10 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
         return SelectionQprojPatchResult.from_dict(data)
 
 
+@torch.inference_mode()
 def get_counterfactual_samples_within_task(
-    task: SelectOneTask,
+    task: SelectOneTask | SelectOrderTask,
+    mt: ModelandTokenizer,
     patch_category: str | None = None,
     clean_category: str | None = None,
     shuffle_clean_options: bool = False,
@@ -105,10 +107,15 @@ def get_counterfactual_samples_within_task(
     filter_by_lm_prediction: bool = True,
     distinct_options: bool = False,
     n_distractors: int = 5,
+    patch_n_distractors: int | None = None,
+    clean_n_distractors: int | None = None,
 ):
     categories = list(task.category_wise_examples.keys())
     if patch_category is None:
         patch_category = random.choice(categories)
+
+    if patch_n_distractors is None:
+        patch_n_distractors = n_distractors
 
     patch_subj, patch_obj = random.sample(
         task.category_wise_examples[patch_category], 2
@@ -134,8 +141,6 @@ def get_counterfactual_samples_within_task(
     )
 
     if distinct_options is False:
-        # patch_must_have_options = [patch_obj, clean_obj]
-        # clean_must_have_options = [clean_obj, patch_obj]
         patch_type_obj = patch_obj
         clean_type_obj = clean_obj
     else:
@@ -163,7 +168,7 @@ def get_counterfactual_samples_within_task(
     patch_distractors = []
     other_categories = random.sample(
         list(set(categories) - {patch_category, clean_category}),
-        k=n_distractors - (len(patch_must_have_options)) + 1,
+        k=patch_n_distractors - (len(patch_must_have_options)) + 1,
     )
 
     for other_category in other_categories:
@@ -188,20 +193,26 @@ def get_counterfactual_samples_within_task(
     logger.info(f"{patch_obj_idx=} | {patch_options}")
 
     if distinct_options is not True:
+        if clean_n_distractors is not None:
+            logger.warning(
+                f"Passed {clean_n_distractors=}. But distinct_options is False, so clean options will be same as patch options."
+            )
         clean_options = copy.deepcopy(patch_options)
         if shuffle_clean_options:
             # Useful for the pointer experiments
             while (
                 clean_options.index(clean_obj) == patch_obj_idx
-                or clean_options.index(patch_obj) == patch_obj_idx
+                or clean_options.index(patch_type_obj) == patch_obj_idx
             ):
                 random.shuffle(clean_options)
         clean_obj_idx = clean_options.index(clean_obj)
 
     else:
+        if clean_n_distractors is None:
+            clean_n_distractors = n_distractors
         other_categories = random.sample(
             list(set(categories) - {patch_category, clean_category}),
-            k=n_distractors - (len(clean_must_have_options)) + 1,
+            k=clean_n_distractors - (len(clean_must_have_options)) + 1,
         )
         clean_distractors = []
         for other_category in other_categories:
@@ -221,6 +232,11 @@ def get_counterfactual_samples_within_task(
             )
         clean_options = clean_must_have_options + clean_distractors
         random.shuffle(clean_options)
+        while (
+            clean_options.index(clean_obj) == patch_obj_idx
+            or clean_options.index(patch_type_obj) == patch_obj_idx
+        ):
+            random.shuffle(clean_options)
         clean_obj_idx = clean_options.index(clean_obj)
 
     logger.info(f"{clean_obj_idx=} | {clean_options}")
@@ -229,26 +245,46 @@ def get_counterfactual_samples_within_task(
         prompt_template=task.prompt_templates[prompt_template_idx],
         default_option_style=option_style,
     )
-    patch_metadata = {
-        "track_category": clean_category,
-        "track_type_obj": clean_type_obj,
-        "track_type_obj_idx": patch_options.index(clean_type_obj),
-        "track_type_obj_token_id": get_first_token_id(
-            clean_type_obj, mt.tokenizer, prefix=" "
-        ),
-    }
-    clean_metadata = {
-        "track_category": patch_category,
-        "track_type_obj": patch_type_obj,
-        "track_type_obj_idx": clean_options.index(patch_type_obj),
-        "track_type_obj_token_id": get_first_token_id(
-            patch_type_obj, mt.tokenizer, prefix=" "
-        ),
-    }
+    print(f"{type(task)=}")
+    if isinstance(task, SelectOrderTask):
+        patch_metadata = {
+            "track_type_obj_idx": clean_obj_idx,
+            "track_type_obj": patch_options[clean_obj_idx],
+            "track_type_obj_token_id": get_first_token_id(
+                patch_options[clean_obj_idx], mt.tokenizer, prefix=" "
+            ),
+        }
+        clean_metadata = {
+            "track_type_obj_idx": patch_obj_idx,
+            "track_type_obj": clean_options[patch_obj_idx],
+            "track_type_obj_token_id": get_first_token_id(
+                clean_options[patch_obj_idx], mt.tokenizer, prefix=" "
+            ),
+        }
+    elif isinstance(task, SelectOneTask):
+        patch_metadata = {
+            "track_category": clean_category,
+            "track_type_obj": clean_type_obj,
+            "track_type_obj_idx": patch_options.index(clean_type_obj),
+            "track_type_obj_token_id": get_first_token_id(
+                clean_type_obj, mt.tokenizer, prefix=" "
+            ),
+        }
+        clean_metadata = {
+            "track_category": patch_category,
+            "track_type_obj": patch_type_obj,
+            "track_type_obj_idx": clean_options.index(patch_type_obj),
+            "track_type_obj_token_id": get_first_token_id(
+                patch_type_obj, mt.tokenizer, prefix=" "
+            ),
+        }
+    else:
+        raise NotImplementedError(f"Unsupported task type: {type(task)}")
 
     patch_sample = SelectionSample(
         subj=patch_subj,
         obj=patch_obj,
+        answer=patch_obj,
         obj_idx=patch_obj_idx,
         ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
         options=patch_options,
@@ -259,6 +295,7 @@ def get_counterfactual_samples_within_task(
     clean_sample = SelectionSample(
         subj=clean_subj,
         obj=clean_obj,
+        answer=clean_obj,
         obj_idx=clean_obj_idx,
         ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
         options=clean_options,
@@ -284,7 +321,7 @@ def get_counterfactual_samples_within_task(
             is_correct, predictions, track_options = verify_correct_option(
                 mt=mt, target=sample.obj, options=sample.options, input=tokenized
             )
-            sample.metadata["tokenized"] = tokenized.data
+            # sample.metadata["tokenized"] = tokenized.data
             logger.info(sample.prompt())
             logger.info(
                 f"{sample.subj} | {sample.category} -> {sample.obj} | pred={[str(p) for p in predictions]}"
@@ -294,6 +331,7 @@ def get_counterfactual_samples_within_task(
                     f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
                 )
                 return get_counterfactual_samples_within_task(
+                    mt=mt,
                     task=task,
                     patch_category=patch_category,
                     clean_category=clean_category,
@@ -301,6 +339,8 @@ def get_counterfactual_samples_within_task(
                     prompt_template_idx=prompt_template_idx,
                     option_style=option_style,
                     filter_by_lm_prediction=filter_by_lm_prediction,
+                    distinct_options=distinct_options,
+                    n_distractors=n_distractors,
                 )
             sample.prediction = predictions
 

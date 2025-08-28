@@ -171,7 +171,10 @@ def get_counterfactual_samples_within_task(
             )
         clean_options = clean_must_have_options + clean_distractors
         random.shuffle(clean_options)
-        while clean_options.index(clean_obj) == patch_obj_idx:
+        while (
+            clean_options.index(clean_obj) == patch_obj_idx
+            or clean_options.index(patch_type_obj) == patch_obj_idx
+        ):
             random.shuffle(clean_options)
         clean_obj_idx = clean_options.index(clean_obj)
 

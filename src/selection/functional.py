@@ -97,9 +97,7 @@ def get_patches_to_verify_independent_enrichment(
 
 
 def verify_head_patterns(
-    prompt: str | TokenizerOutput,
-    options: list[str],
-    pivot: str,
+    prompt: str,
     mt: ModelandTokenizer,
     heads: list[tuple[int, int]],
     tokenized_prompt: TokenizerOutput | None = None,
@@ -108,22 +106,24 @@ def verify_head_patterns(
     value_weighted: bool = False,
     generate_full_answer: bool = False,
     ablate_possible_ans_info_from_options: bool = False,
+    options: list[str] | None = None,
+    pivot: str | None = None,
     bare_prompt_template=" The fact that {}",
     query_index: int = -1,
     query_patches: list[PatchSpec] = [],
     start_from: int = 1,
 ):
-    tokenized_prompt = (
-        prepare_input(
+    if tokenized_prompt is None:
+        tokenized_prompt = prepare_input(
             tokenizer=mt,
             prompts=prompt,
             return_offsets_mapping=True,
         )
-        if tokenized_prompt is None
-        else tokenized_prompt
-    )
-    patches = (
-        get_patches_to_verify_independent_enrichment(
+    if ablate_possible_ans_info_from_options:
+        assert (
+            options is not None and pivot is not None
+        ), "Options and pivot must be provided if ablate_possible_ans_info_from_options is True"
+        patches = get_patches_to_verify_independent_enrichment(
             prompt=prompt,
             options=options,
             pivot=pivot,
@@ -131,9 +131,8 @@ def verify_head_patterns(
             tokenized_prompt=tokenized_prompt,
             bare_prompt_template=bare_prompt_template,
         )
-        if ablate_possible_ans_info_from_options
-        else []
-    )
+    else:
+        patches = []
     patches = patches + query_patches
     print(len(patches), "patches to ablate possible answer information from options")
 

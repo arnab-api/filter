@@ -101,7 +101,9 @@ def get_optimal_head_mask(
             prompts = []
             prompts.extend([sample.prompt() for sample in clean_samples])
             prompts.extend([sample.prompt() for sample in patch_samples])
-            tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+            tokenized = prepare_input(
+                prompts=prompts, tokenizer=mt, add_bos_token="qwen" in mt.name.lower()
+            )
             # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
             patch_tokenized = TokenizerOutput(
                 data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
@@ -519,7 +521,10 @@ def validate_q_proj_ie_on_sample_pair(
                         attn_matrix.append(
                             attention_patterns[layer_idx][head_idx].cpu()
                         )
-                attn_matrix = torch.stack(attn_matrix).squeeze().mean(dim=0)
+
+                attn_matrix = torch.stack(attn_matrix).squeeze()
+                if attn_matrix.dim() == 3:
+                    attn_matrix = attn_matrix.mean(dim=0)
 
                 visualize_attn_matrix(
                     attn_matrix=attn_matrix,

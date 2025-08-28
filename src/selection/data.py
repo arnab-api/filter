@@ -470,6 +470,8 @@ class SelectOneTask(DataClassJsonMixin):
         )
 
         sample.prompt_template = prefix + sample.prompt_template
+        if "qwen" in mt.name.lower():
+            sample.prompt_template = "# " + sample.prompt_template  # for attention sink
 
         if filter_by_lm_prediction:
             prompt = sample.prompt(option_style=option_style)
