@@ -134,7 +134,6 @@ def verify_head_patterns(
     else:
         patches = []
     patches = patches + query_patches
-    print(len(patches), "patches to ablate possible answer information from options")
 
     ret_dict = {}
     if generate_full_answer:
@@ -221,7 +220,10 @@ def cache_q_projections(
     batch_size = input.input_ids.shape[0]
     seq_len = input.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
-    head_dim = mt.n_embd // n_heads
+    # head_dim = mt.n_embd // n_heads
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
     group_size = n_heads // mt.config.num_key_value_heads
     q_module_projections_per_layer = {}
     with mt.trace(input) as tracer:  # noqa

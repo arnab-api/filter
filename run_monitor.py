@@ -8,11 +8,11 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # Command to run when GPU becomes available
-COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="Qwen/Qwen2.5-32B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" -v |& tee qwen_32_distinct.log'
+COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.1-70B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" -v'
 # COMMAND_TO_RUN = 'echo ">>> Running command because GPU memory is sufficient. <<<"'
 
 # Memory threshold in GB
-MEM_THRESHOLD = 20
+MEM_THRESHOLD = 60
 CUDA_INDEX = 0
 
 # Check interval in seconds (10 minutes)
@@ -79,4 +79,5 @@ def main():
 
 if __name__ == "__main__":
     print(">>> Running GPU monitor <<<")
+    print(f"{COMMAND_TO_RUN}")
     main()

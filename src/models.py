@@ -296,7 +296,12 @@ def is_gemma_variant(mt: Model | ModelandTokenizer) -> bool:
     """Determine if model/tokenizer is gemma variant."""
     if isinstance(mt, ModelandTokenizer) or isinstance(mt, LanguageModel):
         mt = unwrap_model(mt)
-    if isinstance(mt, transformers.GemmaForCausalLM | transformers.Gemma2ForCausalLM):
+    if isinstance(
+        mt,
+        transformers.GemmaForCausalLM
+        | transformers.Gemma2ForCausalLM
+        | transformers.Gemma3ForConditionalGeneration,
+    ):
         return True
     if hasattr(mt, "config"):
         config = mt.config

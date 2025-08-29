@@ -22,6 +22,7 @@ Model = (
     | transformers.GPTJForCausalLM
     | transformers.GPTNeoXForCausalLM
     | transformers.LlamaForCausalLM
+    | transformers.Gemma3ForConditionalGeneration
     | transformers.Gemma2ForCausalLM
     | transformers.GemmaForCausalLM
     | transformers.Qwen2ForCausalLM

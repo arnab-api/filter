@@ -511,7 +511,7 @@ def generate_with_beam_search(
     return [processor(g) for g in generations]
 
 
-@torch.inference_mode()
+@torch.no_grad()
 def predict_next_token(
     mt: ModelandTokenizer,
     inputs: Union[str, list[str]] | TokenizerOutput,
@@ -598,6 +598,8 @@ def predict_next_token(
                         if ("mlp" in module_name or module_name == mt.embedder_name)
                         else module.output[0].save()
                     )
+                    if current_state.ndim == 2:
+                        current_state = current_state.unsqueeze(0)
                     current_state[:, index, :] = cur_patch.patch
             batch_logits = mt.output.logits.save()
 
@@ -664,7 +666,10 @@ def patch_with_baukit(
     batch_size = inputs.input_ids.shape[0]
     seq_len = inputs.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
-    head_dim = mt.config.hidden_size // n_heads
+    # head_dim = mt.config.hidden_size // n_heads
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
     group_size = n_heads // mt.config.num_key_value_heads
 
     modules_to_patches = {}
@@ -744,7 +749,10 @@ def patch_with_nnsight(
     batch_size = inputs.input_ids.shape[0]
     seq_len = inputs.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
-    head_dim = mt.config.hidden_size // n_heads
+    # head_dim = mt.config.hidden_size // n_heads
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
 
     with mt.trace(inputs, **model_kwargs) as tracer:
         for cur_patch in patches:
@@ -817,7 +825,7 @@ def patch_with_nnsight(
     return output
 
 
-@torch.inference_mode()
+@torch.no_grad()
 def get_hs(
     mt: ModelandTokenizer,
     input: str | TokenizerOutput,
@@ -849,7 +857,11 @@ def get_hs(
         return layer_id, int(head_id)
 
     layer_names = [layer_name for layer_name, _ in locations]
-    layer_names = list(set(layer_names))
+    unique_layer_names = []
+    for layer_name in layer_names:
+        if layer_name not in unique_layer_names:
+            unique_layer_names.append(layer_name)
+
     layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
     with mt.trace(input, scan=False):
         if patches is not None:
@@ -876,7 +888,8 @@ def get_hs(
                         f"patch_strategy must be one of 'replace', 'add'. got {cur_patch.strategy}"
                     )
 
-        for layer_name in layer_names:
+        for layer_name in unique_layer_names:
+            # print(f"Getting state for {layer_name}")
             if is_an_attn_head(layer_name) is False:
                 module = get_module_nnsight(mt, layer_name)
                 layer_states[layer_name] = module.output.save()

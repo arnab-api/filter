@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Sequence
 
+import torch
 from dataclasses_json import DataClassJsonMixin
 
 from src.functional import detensorize, predict_next_token
@@ -1318,177 +1319,263 @@ Topics: {list(self.topics.keys())}
         """
 
 
-# def load_people_by_category(
-#     tokenizer: Tokenizer,
-#     path: PathLike = os.path.join(DEFAULT_DATA_DIR, "selection_real/profession.json"),
-#     category: str = None,
-# ):
-
-#     with open(path, "r") as f:
-#         data = json.load(f)
-#     people_by_category = {
-#         k: KeyedSet(v, tokenizer=tokenizer) for k, v in data["categories"].items()
-#     }
-#     logger.info(f"Loaded {len(people_by_category)} categories")
-#     return people_by_category
+#################################################################################################
+# Counterfactual Sample Generation for patching experiments
+#################################################################################################
 
 
-# def load_people_by_category_fakeverse(
-#     tokenizer: Tokenizer,
-#     path: PathLike = os.path.join(
-#         DEFAULT_DATA_DIR, "synthetic_entities/64/profiles.json"
-#     ),
-#     category: str = "occupation",
-# ):
-#     """Load people by profession from a JSON file."""
-#     with open(path, "r") as f:
-#         data = json.load(f)
+@torch.inference_mode()
+def get_counterfactual_samples_within_task(
+    task: SelectOneTask | SelectOrderTask,
+    mt: ModelandTokenizer,
+    patch_category: str | None = None,
+    clean_category: str | None = None,
+    shuffle_clean_options: bool = False,
+    prompt_template_idx=3,
+    option_style="single_line",
+    filter_by_lm_prediction: bool = True,
+    distinct_options: bool = False,
+    n_distractors: int = 5,
+    patch_n_distractors: int | None = None,
+    clean_n_distractors: int | None = None,
+):
+    categories = list(task.category_wise_examples.keys())
+    if patch_category is None:
+        patch_category = random.choice(categories)
 
-#     entity_by_category = defaultdict(list)
-#     for entity in data:
-#         entity_by_category[entity[category]].append(entity["name"])
+    if patch_n_distractors is None:
+        patch_n_distractors = n_distractors
 
-#     people_by_category = {
-#         k: KeyedSet(v, tokenizer=tokenizer) for k, v in entity_by_category.items()
-#     }
+    patch_subj, patch_obj = random.sample(
+        task.category_wise_examples[patch_category], 2
+    )
+    # logger.info(
+    #     f"Patch category: {patch_category}, subject: {patch_subj}, object: {patch_obj}"
+    # )
 
-#     logger.info(f"Loaded {len(people_by_category)} categories")
-#     return people_by_category
+    if clean_category is None:
+        clean_category = random.choice(list(set(categories) - {patch_category}))
 
+    clean_options = task.category_wise_examples[clean_category]
+    random.shuffle(clean_options)
 
-# def get_random_sample(
-#     people_by_category: dict[str, KeyedSet],
-#     mt: ModelandTokenizer,
-#     category: str = "occupation",
-#     attribute: str | None = None,
-#     subj: str | None = None,
-#     n_distractors: int = 5,
-#     filter_by_lm_prediction: bool = True,
-#     obj_idx: int | None = None,
-#     get_alt_obj: bool = False,  # TODO(arnab): Need to check accuracy with the alt obj as well
-#     exclude_objs: Sequence[str] = [],
-#     exclude_distractor_categories: Sequence[str] = [],
-#     insert_distractor: Sequence[tuple[str, int]] = [],
-#     retry_count: int = 0,
-# ) -> SelectionSample:
-#     """
-#     Get a random sample with the specified attribute.
-#     """
+    clean_subj, clean_obj = random.sample(
+        (
+            KeyedSet(clean_options, mt.tokenizer) - KeyedSet([patch_obj], mt.tokenizer)
+        ).values,
+        2,
+    )
+    # logger.info(
+    #     f"Clean category: {clean_category}, subject: {clean_subj}, object: {clean_obj}"
+    # )
 
-#     tokenizer = unwrap_tokenizer(mt)
-#     if not people_by_category:
-#         load_people_by_category_fakeverse(tokenizer, category=category)
+    if distinct_options is False:
+        patch_type_obj = patch_obj
+        clean_type_obj = clean_obj
+    else:
+        patch_type_obj = random.choice(
+            (
+                KeyedSet(task.category_wise_examples[patch_category], mt.tokenizer)
+                - KeyedSet([patch_obj], mt.tokenizer)
+            ).values
+        )
+        clean_type_obj = random.choice(
+            (
+                KeyedSet(task.category_wise_examples[clean_category], mt.tokenizer)
+                - KeyedSet([clean_obj], mt.tokenizer)
+            ).values
+        )
 
-#     attribute = attribute or random.choice(list(people_by_category.keys()))
-#     if attribute not in people_by_category:
-#         raise ValueError(
-#             f"Attribute '{attribute}' not found in {people_by_category.keys()}."
-#         )
-#     kwargs = {
-#         "subj": subj,
-#         "obj_idx": obj_idx,
-#     }
-#     # print(f"Category: {category}")
-#     # print(people_by_category[category].values)
-#     subj = (
-#         random.choice(list(people_by_category[attribute].values))
-#         if subj is None
-#         else subj
-#     )
-#     # logger.debug(f"{subj=}")
-#     obj = random.choice(
-#         (
-#             people_by_category[attribute]
-#             - KeyedSet([subj] + exclude_objs, tokenizer=tokenizer)
-#         ).values
-#     )
-#     obj_token_id = get_first_token_id(obj, tokenizer, prefix=" ")
-#     if obj_idx is None:
-#         obj_idx = random.randint(0, n_distractors)
-#     # logger.debug(f"{obj=}, {obj_token_id=}, {obj_idx=}, {exclude_objs=}")
+    patch_must_have_options = [patch_obj, clean_type_obj]
+    clean_must_have_options = [clean_obj, patch_type_obj]
 
-#     obj_arr = [obj]
-#     if get_alt_obj:
-#         # Get an alternative object with the same attribute
-#         alt_obj = random.choice(
-#             (
-#                 people_by_category[attribute]
-#                 - KeyedSet([subj, obj] + exclude_objs, tokenizer=tokenizer)
-#             ).values
-#         )
-#         obj_arr.append(alt_obj)
-#     else:
-#         alt_obj = None
+    # logger.info(f"{patch_must_have_options=}")
+    # logger.info(f"{clean_must_have_options=}")
+    # logger.info(f"{clean_type_obj=}")
+    # logger.info(f"{patch_type_obj=}")
 
-#     distractors = []
-#     obj_set = KeyedSet(obj_arr + exclude_objs, tokenizer=tokenizer)
-#     other_attributes = random.sample(
-#         list(
-#             set(people_by_category.keys())
-#             - set([attribute] + exclude_distractor_categories)
-#         ),
-#         k=n_distractors,
-#     )
-#     # print(other_categories)
-#     for other_attribute in other_attributes:
-#         distractors.append(
-#             random.choice((people_by_category[other_attribute] - obj_set).values)
-#         )
+    patch_distractors = []
+    other_categories = random.sample(
+        list(set(categories) - {patch_category, clean_category}),
+        k=patch_n_distractors - (len(patch_must_have_options)) + 1,
+    )
 
-#     options = distractors[:obj_idx] + [obj] + distractors[obj_idx:]
-#     for dist, idx in insert_distractor:
-#         assert idx != obj_idx, "Cannot replace answer with a distractor."
-#         assert idx < len(options), "Distractor index out of range."
-#         options[idx] = dist
-#     # logger.debug(f"{options=}")
+    for other_category in other_categories:
+        other_examples = task.category_wise_examples[other_category]
+        random.shuffle(other_examples)
+        other_examples = KeyedSet(other_examples, mt.tokenizer)
+        patch_distractors.append(
+            random.choice(
+                (
+                    other_examples
+                    - KeyedSet(
+                        patch_must_have_options + patch_distractors,
+                        tokenizer=mt.tokenizer,
+                    )
+                ).values
+            )
+        )
 
-#     metadata = {"attribute": attribute}
-#     if get_alt_obj:
-#         alt_obj_token_id = get_first_token_id(alt_obj, tokenizer, prefix=" ")
-#         metadata["alt_obj"] = (alt_obj, alt_obj_token_id)
-#     sample = SelectionSample(
-#         match_with=subj,
-#         obj=obj,
-#         obj_idx=obj_idx,
-#         options=options,
-#         category=category,
-#         obj_token_id=obj_token_id,
-#         metadata=metadata,
-#     )
+    patch_options = patch_must_have_options + patch_distractors
+    random.shuffle(patch_options)
+    patch_obj_idx = patch_options.index(patch_obj)
+    # logger.info(f"{patch_obj_idx=} | {patch_options}")
 
-#     if filter_by_lm_prediction:
-#         prompt = sample.prompt
-#         # logger.info(f"\nPrompt: {prompt}")
-#         inputs = prepare_input(prompts=prompt, tokenizer=mt)
-#         sample.metadata["tokenized"] = inputs.data
+    if distinct_options is not True:
+        if clean_n_distractors is not None:
+            logger.warning(
+                f"Passed {clean_n_distractors=}. But distinct_options is False, so clean options will be same as patch options."
+            )
+        clean_options = copy.deepcopy(patch_options)
+        if shuffle_clean_options:
+            # Useful for the pointer experiments
+            while (
+                clean_options.index(clean_obj) == patch_obj_idx
+                or clean_options.index(patch_type_obj) == patch_obj_idx
+            ):
+                random.shuffle(clean_options)
+        clean_obj_idx = clean_options.index(clean_obj)
 
-#         predictions = predict_next_token(
-#             mt=mt,
-#             inputs=inputs,
-#         )[0]
-#         if predictions[0].token_id != obj_token_id:
-#             logger.error(
-#                 f"""Sample = {sample}
-# Top prediction {predictions[0]} does not match the object {obj}[{obj_token_id}, "{mt.tokenizer.decode(obj_token_id)}"].
-# Retry count: {retry_count + 1}. Retrying ...
-# """
-#             )
-#             return get_random_sample(
-#                 people_by_category=people_by_category,
-#                 mt=mt,
-#                 n_distractors=n_distractors,
-#                 get_alt_obj=get_alt_obj,
-#                 filter_by_lm_prediction=filter_by_lm_prediction,
-#                 category=category,
-#                 attribute=attribute,
-#                 exclude_objs=exclude_objs,
-#                 exclude_distractor_categories=exclude_distractor_categories,
-#                 insert_distractor=insert_distractor,
-#                 retry_count=retry_count + 1,
-#                 **kwargs,
-#             )
+    else:
+        if clean_n_distractors is None:
+            clean_n_distractors = n_distractors
+        other_categories = random.sample(
+            list(set(categories) - {patch_category, clean_category}),
+            k=clean_n_distractors - (len(clean_must_have_options)) + 1,
+        )
+        clean_distractors = []
+        for other_category in other_categories:
+            other_examples = task.category_wise_examples[other_category]
+            random.shuffle(other_examples)
+            other_examples = KeyedSet(other_examples, mt.tokenizer)
+            clean_distractors.append(
+                random.choice(
+                    (
+                        other_examples
+                        - KeyedSet(
+                            clean_must_have_options + clean_distractors,
+                            tokenizer=mt.tokenizer,
+                        )
+                    ).values
+                )
+            )
+        clean_options = clean_must_have_options + clean_distractors
+        random.shuffle(clean_options)
+        while (
+            clean_options.index(clean_obj) == patch_obj_idx
+            or clean_options.index(patch_type_obj) == patch_obj_idx
+        ):
+            random.shuffle(clean_options)
+        clean_obj_idx = clean_options.index(clean_obj)
 
-#         sample.prediction = predictions
+    logger.info(f"{clean_obj_idx=} | {clean_options}")
 
-#     sample.metadata["retry_count"] = retry_count
-#     return sample
+    kwargs = dict(
+        prompt_template=task.prompt_templates[prompt_template_idx],
+        default_option_style=option_style,
+    )
+    print(f"{type(task)=}")
+    if isinstance(task, SelectOrderTask):
+        patch_metadata = {
+            "track_type_obj_idx": clean_obj_idx,
+            "track_type_obj": patch_options[clean_obj_idx],
+            "track_type_obj_token_id": get_first_token_id(
+                patch_options[clean_obj_idx], mt.tokenizer, prefix=" "
+            ),
+        }
+        clean_metadata = {
+            "track_type_obj_idx": patch_obj_idx,
+            "track_type_obj": clean_options[patch_obj_idx],
+            "track_type_obj_token_id": get_first_token_id(
+                clean_options[patch_obj_idx], mt.tokenizer, prefix=" "
+            ),
+        }
+    elif isinstance(task, SelectOneTask):
+        patch_metadata = {
+            "track_category": clean_category,
+            "track_type_obj": clean_type_obj,
+            "track_type_obj_idx": patch_options.index(clean_type_obj),
+            "track_type_obj_token_id": get_first_token_id(
+                clean_type_obj, mt.tokenizer, prefix=" "
+            ),
+        }
+        clean_metadata = {
+            "track_category": patch_category,
+            "track_type_obj": patch_type_obj,
+            "track_type_obj_idx": clean_options.index(patch_type_obj),
+            "track_type_obj_token_id": get_first_token_id(
+                patch_type_obj, mt.tokenizer, prefix=" "
+            ),
+        }
+    else:
+        raise NotImplementedError(f"Unsupported task type: {type(task)}")
+
+    patch_sample = SelectionSample(
+        subj=patch_subj,
+        obj=patch_obj,
+        answer=patch_obj,
+        obj_idx=patch_obj_idx,
+        ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
+        options=patch_options,
+        category=patch_category,
+        metadata=patch_metadata,
+        **kwargs,
+    )
+    clean_sample = SelectionSample(
+        subj=clean_subj,
+        obj=clean_obj,
+        answer=clean_obj,
+        obj_idx=clean_obj_idx,
+        ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
+        options=clean_options,
+        category=clean_category,
+        metadata=clean_metadata,
+        **kwargs,
+    )
+
+    if "qwen" in mt.name.lower():
+        # for attention sink
+        patch_sample.prompt_template = "# " + patch_sample.prompt_template
+        clean_sample.prompt_template = "# " + clean_sample.prompt_template
+
+    if filter_by_lm_prediction:
+        test_samples = [patch_sample, clean_sample]
+        if distinct_options is True:
+            clean_sample_2 = copy.deepcopy(patch_sample)
+            clean_sample_2.options = clean_options
+            clean_sample_2.obj = clean_sample.metadata["track_type_obj"]
+            clean_sample_2.obj_idx = clean_sample.metadata["track_type_obj_idx"]
+            clean_sample_2.ans_token_id = clean_sample.metadata[
+                "track_type_obj_token_id"
+            ]
+            test_samples.append(clean_sample_2)
+
+        for sample in test_samples:
+            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
+            is_correct, predictions, track_options = verify_correct_option(
+                mt=mt, target=sample.obj, options=sample.options, input=tokenized
+            )
+            # sample.metadata["tokenized"] = tokenized.data
+            logger.info(sample.prompt())
+            logger.info(
+                f"{sample.subj} | {sample.category} -> {sample.obj} | pred={[str(p) for p in predictions]}"
+            )
+            if not is_correct:
+                logger.error(
+                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
+                )
+                return get_counterfactual_samples_within_task(
+                    mt=mt,
+                    task=task,
+                    patch_category=patch_category,
+                    clean_category=clean_category,
+                    shuffle_clean_options=shuffle_clean_options,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    distinct_options=distinct_options,
+                    n_distractors=n_distractors,
+                )
+            sample.prediction = predictions
+
+    return patch_sample, clean_sample

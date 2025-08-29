@@ -243,6 +243,11 @@ def get_counterfactual_samples_within_task(
         **kwargs,
     )
 
+    if "qwen" in mt.name.lower():
+        # for attention sink
+        patch_sample.prompt_template = "# " + patch_sample.prompt_template
+        clean_sample.prompt_template = "# " + clean_sample.prompt_template
+
     if filter_by_lm_prediction:
         test_samples = [patch_sample, clean_sample]
         if distinct_options is True:
@@ -302,8 +307,9 @@ def prepare_dataset(
     limit = train_limit + validation_limit
     dataset = []
     while len(dataset) < limit:
-        patch_n_distractors = random.choice(range(1, 7))
-        clean_n_distractors = random.choice(range(1, 7))
+        logger.debug(f"sample {len(dataset)+1} / {limit}")
+        patch_n_distractors = random.choice(range(2, 7))
+        clean_n_distractors = random.choice(range(2, 7))
         patch_sample, clean_sample = get_counterfactual_samples_within_task(
             task=select_task,
             mt=mt,
@@ -496,9 +502,9 @@ def find_optimal_masks(
     optimal_masks, losses = get_optimal_head_mask(
         mt=mt,
         train_set=train_set,
-        learning_rate=1e-3,
+        learning_rate=1e-2,
         n_epochs=n_epochs,
-        lamb=2e-3,
+        lamb=2e-2,
         batch_size=batch_size,
         query_indices=[-3, -2, -1],
         save_path=save_path,
@@ -527,10 +533,12 @@ if __name__ == "__main__":
         choices=[
             "meta-llama/Llama-3.2-3B",
             "meta-llama/Llama-3.1-8B-Instruct",
+            "meta-llama/Llama-3.1-70B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
             "Qwen/Qwen2.5-14B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
+            "google/gemma-2-27b-it",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",
