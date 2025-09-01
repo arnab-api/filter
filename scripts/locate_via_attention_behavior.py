@@ -261,6 +261,7 @@ if __name__ == "__main__":
             "meta-llama/Llama-3.3-70B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
+            "google/gemma-2-27b-it",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",

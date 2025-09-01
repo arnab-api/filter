@@ -469,6 +469,7 @@ def cache_attention_patterns_for_selection_samples(
     for sample_idx in range(limit):
         logger.info(f"Processing sample pair {sample_idx + 1}/{limit}")
         patch_sample, clean_sample = get_counterfactual_samples_within_task(
+            mt=mt,
             task=select_task,
             prompt_template_idx=prompt_template_idx,
             option_style=option_style,
@@ -516,6 +517,7 @@ if __name__ == "__main__":
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
             "Qwen/Qwen2.5-3B-Instruct",
+            "google/gemma-2-27b-it",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",

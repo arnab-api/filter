@@ -103,7 +103,8 @@ def get_optimal_head_mask(
             prompts.extend([sample.prompt() for sample in clean_samples])
             prompts.extend([sample.prompt() for sample in patch_samples])
             tokenized = prepare_input(
-                prompts=prompts, tokenizer=mt, add_bos_token="qwen" in mt.name.lower()
+                prompts=prompts,
+                tokenizer=mt,
             )
             # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
             patch_tokenized = TokenizerOutput(
@@ -126,6 +127,10 @@ def get_optimal_head_mask(
             free_gpu_cache()
 
     logger.info("Starting training...")
+
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
 
     for epoch in range(n_epochs):
         epoch_loss = 0
@@ -178,9 +183,6 @@ def get_optimal_head_mask(
             batch_size = clean_tokenized.input_ids.shape[0]
             seq_len = clean_tokenized.input_ids.shape[1]
             # head_dim = mt.n_embd // n_heads
-            head_dim = get_module_nnsight(
-                mt._model, mt.attn_module_name_format.format(0)
-            ).head_dim
 
             def perform_patch(repr, layer_name):
                 if layer_name not in all_q_proj_modules:
