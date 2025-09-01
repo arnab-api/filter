@@ -279,6 +279,8 @@ def validate_q_proj_ie_on_sample_pair(
     must_track_tokens: list[int] = [],
     patch_args: dict[str, Any] = {},
 ):
+    if isinstance(query_indices, list):
+        query_indices = {i: i for i in query_indices}
     clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
     if patch_args.get("batch_size", 1) > 1:
