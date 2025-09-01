@@ -486,8 +486,10 @@ def cache_attention_patterns_for_selection_samples(
             query_indices=query_indices,
         )
         q_states_patching_results.delist_patching_effects()
-        q_states_patching_results.patch_sample.metadata.pop("tokenized")
-        q_states_patching_results.clean_sample.metadata.pop("tokenized")
+        if "tokenized" in q_states_patching_results.patch_sample.metadata:
+            q_states_patching_results.patch_sample.metadata.pop("tokenized")
+        if "tokenized" in q_states_patching_results.clean_sample.metadata:
+            q_states_patching_results.clean_sample.metadata.pop("tokenized")
         file_path = os.path.join(save_dir, f"sample_pair_{sample_idx:04d}.json")
         with open(file_path, "w") as f:
             json.dump(
