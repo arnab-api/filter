@@ -295,6 +295,7 @@ def get_counterfactual_samples_within_task(
 def prepare_dataset(
     mt: ModelandTokenizer,
     select_task: SelectOneTask | SelectOrderTask,
+    option_config: Literal["distinct", "same", "position"],
     train_limit: int = 512,
     validation_limit: int = 256,
     prompt_template_idx: int = 3,
@@ -308,8 +309,13 @@ def prepare_dataset(
     dataset = []
     while len(dataset) < limit:
         logger.debug(f"sample {len(dataset)+1} / {limit}")
-        patch_n_distractors = random.choice(range(2, 7))
-        clean_n_distractors = random.choice(range(2, 7))
+        if option_config == "position":
+            n_distractors = random.choice(range(3, 7))
+            patch_n_distractors = n_distractors
+            clean_n_distractors = n_distractors
+        else:
+            patch_n_distractors = random.choice(range(2, 7))
+            clean_n_distractors = random.choice(range(2, 7))
         patch_sample, clean_sample = get_counterfactual_samples_within_task(
             task=select_task,
             mt=mt,
@@ -320,8 +326,22 @@ def prepare_dataset(
             distinct_options=distinct_options,
             filter_by_lm_prediction=True,
         )
+        if option_config == "position":
+            clean_sample.metadata = {
+                "track_category": "position",
+                "track_type_obj_idx": patch_sample.obj_idx,
+                "track_type_obj": clean_sample.options[patch_sample.obj_idx],
+                "track_type_obj_token_id": get_first_token_id(
+                    name=clean_sample.options[patch_sample.obj_idx],
+                    tokenizer=mt.tokenizer,
+                    prefix=" ",
+                ),
+            }
+            logger.debug(f"Clean sample metadata: {clean_sample.metadata}")
+            #! not really using patch_sample.metadata
+            patch_sample.metadata = {}
         dataset.append((clean_sample, patch_sample))
-        if len(dataset) % 100 == 0:
+        if len(dataset) % 128 == 0:
             logger.debug("=" * 100)
             logger.info(f"Prepared {len(dataset)} / {limit} samples")
             logger.debug("=" * 100)
@@ -481,6 +501,7 @@ def validate(
 def find_optimal_masks(
     mt: ModelandTokenizer,
     select_task: SelectOneTask | SelectOrderTask,
+    option_config: Literal["distinct", "same", "position"],
     save_path: PathLike,
     train_limit: int = 512,
     validation_limit: int = 256,
@@ -493,6 +514,7 @@ def find_optimal_masks(
     train_set, validation_set = prepare_dataset(
         mt=mt,
         select_task=select_task,
+        option_config=option_config,
         train_limit=train_limit,
         validation_limit=validation_limit,
         prompt_template_idx=prompt_template_idx,
@@ -574,9 +596,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--not_distinct",
-        action="store_true",
-        help="Whether to use distinct options for each sample",
+        "--option_config",
+        choices=["distinct", "same", "position"],
+        help="Configuration for option selection",
     )
 
     parser.add_argument(
@@ -635,11 +657,16 @@ if __name__ == "__main__":
     logger.info(f"{select_task=}")
 
     # Setup cache directory
+    opt_config_dir = {
+        "distinct": "distinct_options",
+        "same": "same_options",
+        "position": "ans_pointer",
+    }
     save_dir = os.path.join(
         env_utils.DEFAULT_RESULTS_DIR,
         args.save_dir,
         mt.name.split("/")[-1],
-        "same_options" if args.not_distinct else "distinct_options",
+        opt_config_dir[args.option_config],
         select_task.task_name,
     )
     logger.info(f"{save_dir=}")
@@ -655,7 +682,8 @@ if __name__ == "__main__":
         validation_limit=args.validation_limit,
         prompt_template_idx=args.prompt_temp_idx,
         option_style=args.option_style,
-        distinct_options=not args.not_distinct,
+        distinct_options=args.option_config in ["distinct", "position"],
+        option_config=args.option_config,
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
     )
