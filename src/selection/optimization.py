@@ -27,7 +27,7 @@ from src.selection.functional import (
     visualize_attn_matrix,
 )
 from src.selection.utils import get_first_token_id
-from src.tokens import prepare_input
+from src.tokens import find_token_range, prepare_input
 from src.utils.typing import PathLike, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ def get_optimal_head_mask(
     lamb: float = 1e-3,
     batch_size: int = 4,
     query_indices: int = [-1],
+    add_ques_pos_to_query_indices: bool = False,
     black_list_heads: list[
         tuple[int, int]
     ] = [],  #! don't consider these heads during training
@@ -94,28 +95,58 @@ def get_optimal_head_mask(
         for query_idx in query_indices
     ]
 
+    def call_cache_projections(
+        clean_samples: list[SelectionSample],
+        patch_samples: list[SelectionSample],
+    ):
+        prompts = []
+        prompts.extend([sample.prompt() for sample in clean_samples])
+        prompts.extend([sample.prompt() for sample in patch_samples])
+        tokenized = prepare_input(
+            prompts=prompts, tokenizer=mt, return_offsets_mapping=True
+        )
+        offset_mapping = tokenized.pop("offset_mapping")
+        patch_tokenized = TokenizerOutput(
+            data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+        )
+        token_indices = []
+        for idx in range(len(patch_samples)):
+            if add_ques_pos_to_query_indices:
+                ques_range = find_token_range(
+                    string=patch_samples[idx].prompt(),
+                    substring="?",
+                    occurrence=-1,
+                    offset_mapping=offset_mapping[len(clean_samples) + idx],
+                    tokenizer=mt,
+                )
+                ques_pos = ques_range[1] - 1
+                assert (
+                    mt.tokenizer.decode(
+                        patch_tokenized["input_ids"][idx][ques_pos]
+                    ).strip()
+                    == "?"
+                )
+                token_indices.append(list(query_indices) + [ques_pos])
+            else:
+                token_indices.append(list(query_indices))
+        q_projections = cache_q_projections(
+            mt=mt,
+            input=patch_tokenized,
+            heads=all_heads,
+            token_indices=token_indices,
+            return_output=False,
+        )
+        return q_projections
+
     if cache_q_states_before:
         logger.info("Caching q projections from patch samples...")
         q_projections_from_patch_samples = {}
         for batch_idx, batch in enumerate(batches):
             clean_samples, patch_samples = zip(*batch)
-            prompts = []
-            prompts.extend([sample.prompt() for sample in clean_samples])
-            prompts.extend([sample.prompt() for sample in patch_samples])
-            tokenized = prepare_input(
-                prompts=prompts,
-                tokenizer=mt,
-            )
-            # clean_tokenized = TokenizerOutput(data = {k: v[:len(clean_samples), :] for k, v in tokenized.items()})
-            patch_tokenized = TokenizerOutput(
-                data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
-            )
 
-            q_projections = cache_q_projections(
-                mt=mt,
-                input=patch_tokenized,
-                query_locations=query_locations,
-                return_output=False,
+            q_projections = call_cache_projections(
+                clean_samples=list(clean_samples),
+                patch_samples=list(patch_samples),
             )
 
             patches = {}
@@ -147,9 +178,9 @@ def get_optimal_head_mask(
             clean_tokenized = TokenizerOutput(
                 data={k: v[: len(clean_samples), :] for k, v in tokenized.items()}
             )
-            patch_tokenized = TokenizerOutput(
-                data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
-            )
+            # patch_tokenized = TokenizerOutput(
+            #     data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+            # )
             batch_target_tokens = [
                 clean_sample.metadata["track_type_obj_token_id"]
                 for clean_sample in clean_samples
@@ -166,11 +197,9 @@ def get_optimal_head_mask(
             if cache_q_states_before:
                 patch_q_states = q_projections_from_patch_samples[batch_idx]
             else:
-                q_projections = cache_q_projections(
-                    mt=mt,
-                    input=patch_tokenized,
-                    query_locations=query_locations,
-                    return_output=False,
+                q_projections = call_cache_projections(
+                    clean_samples=list(clean_samples),
+                    patch_samples=list(patch_samples),
                 )
                 patches = {}
                 for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
@@ -280,7 +309,7 @@ def validate_q_proj_ie_on_sample_pair(
     clean_sample: SelectionSample,
     patch_sample: SelectionSample,
     heads: list[tuple[int, int]],
-    query_indices: dict[int, int] = {-1: -1},
+    query_indices: dict[int, int] = {-1: -1},  # patch_idx -> clean_idx
     verify_head_behavior_on: Optional[int] = None,
     ablate_possible_ans_info_from_options: bool = False,
     amplification_scale: float = 1.0,
@@ -355,23 +384,19 @@ def validate_q_proj_ie_on_sample_pair(
 
     logger.info(f"Caching the query states for the {len(heads)} heads")
 
-    query_locations = [
-        (layer_idx, head_idx, patch_query_idx)
-        for layer_idx, head_idx in heads
-        for patch_query_idx in query_indices.keys()
-    ]
-
     cached_q_states, patch_output = cache_q_projections(
         mt=mt,
         input=patch_tokenized,
-        query_locations=query_locations,
+        heads=heads,
+        token_indices=list(query_indices.keys()),
         return_output=True,
     )
     if patch_args.get("batch_size", 1) > 1:
         cached_q_states = cache_q_projections(
             mt=mt,
             input=patch_tokenized_batch,
-            query_locations=query_locations,
+            heads=heads,
+            token_indices=list(query_indices.keys()),
             return_output=False,
         )
         for lok in cached_q_states:

@@ -436,6 +436,13 @@ def generate_with_patch(
             n_gen_per_prompt=n_gen_per_prompt,
         )
 
+    if patches is not None and isinstance(patches, PatchSpec):
+        patches = [patches]
+    if patches is not None:
+        patches = sorted(
+            patches, key=lambda patch: int(patch.location[0].split(".")[2])
+        )
+
     with mt.generate(
         inputs,
         max_new_tokens=max_new_tokens,
@@ -777,7 +784,7 @@ def patch_with_nnsight(
                 current_state = current_state.unsqueeze(0)
 
             # current_state = current_state.clone()
-            tracer.log(
+            print(
                 "log",
                 current_state.shape,
                 cur_patch.location,
@@ -798,13 +805,13 @@ def patch_with_nnsight(
 
             else:
                 print("-- not working")
-                tracer.log(">> tracer")
+                print(">> tracer")
                 # print("HI", cur_patch.strategy, cur_patch.location)
                 current_state = current_state.clone()
                 current_state = current_state.reshape(
                     batch_size, seq_len, n_heads, head_dim
                 ).transpose(1, 2)
-                tracer.log(current_state.shape, head_idx, index)
+                print(current_state.shape, head_idx, index)
 
                 if cur_patch.strategy == "replace":
                     current_state[:, head_idx, index, :] = cur_patch.patch
@@ -817,7 +824,7 @@ def patch_with_nnsight(
                 current_state = current_state.transpose(1, 2).reshape(
                     batch_size, seq_len, n_heads * head_dim
                 )
-                tracer.log(current_state.shape)
+                print(current_state.shape)
                 print(current_state.shape, "Setting")
                 module.output[...] = current_state
 
@@ -843,6 +850,10 @@ def get_hs(
         locations = [locations]
     if patches is not None and isinstance(patches, PatchSpec):
         patches = [patches]
+    if patches is not None:
+        patches = sorted(
+            patches, key=lambda patch: int(patch.location[0].split(".")[2])
+        )
 
     def is_an_attn_head(module_name) -> bool | tuple[int, int]:
         attn_id = mt.attn_module_name_format.split(".")[-1]

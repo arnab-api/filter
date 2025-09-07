@@ -14,7 +14,7 @@ from dataclasses_json import DataClassJsonMixin
 from src.functional import detensorize, predict_next_token
 from src.models import ModelandTokenizer, unwrap_tokenizer
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
-from src.tokens import prepare_input
+from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
 from src.utils.typing import PathLike, PredictedToken
 
@@ -1331,20 +1331,27 @@ def get_counterfactual_samples_within_task(
     patch_category: str | None = None,
     clean_category: str | None = None,
     shuffle_clean_options: bool = False,
-    prompt_template_idx=3,
-    option_style="single_line",
     filter_by_lm_prediction: bool = True,
     distinct_options: bool = False,
     n_distractors: int = 5,
     patch_n_distractors: int | None = None,
     clean_n_distractors: int | None = None,
+    prompt_template_idx=3,
+    patch_prompt_template_idx: int | None = None,
+    clean_prompt_template_idx: int | None = None,
+    option_style="single_line",
+    patch_option_style: str | None = None,
+    clean_option_style: str | None = None,
 ):
     categories = list(task.category_wise_examples.keys())
     if patch_category is None:
         patch_category = random.choice(categories)
-
     if patch_n_distractors is None:
         patch_n_distractors = n_distractors
+    if patch_prompt_template_idx is None:
+        patch_prompt_template_idx = prompt_template_idx
+    if clean_prompt_template_idx is None:
+        clean_prompt_template_idx = prompt_template_idx
 
     patch_subj, patch_obj = random.sample(
         task.category_wise_examples[patch_category], 2
@@ -1470,10 +1477,6 @@ def get_counterfactual_samples_within_task(
 
     logger.info(f"{clean_obj_idx=} | {clean_options}")
 
-    kwargs = dict(
-        prompt_template=task.prompt_templates[prompt_template_idx],
-        default_option_style=option_style,
-    )
     print(f"{type(task)=}")
     if isinstance(task, SelectOrderTask):
         patch_metadata = {
@@ -1519,7 +1522,8 @@ def get_counterfactual_samples_within_task(
         options=patch_options,
         category=patch_category,
         metadata=patch_metadata,
-        **kwargs,
+        prompt_template=task.prompt_templates[patch_prompt_template_idx],
+        default_option_style=patch_option_style or option_style,
     )
     clean_sample = SelectionSample(
         subj=clean_subj,
@@ -1530,7 +1534,8 @@ def get_counterfactual_samples_within_task(
         options=clean_options,
         category=clean_category,
         metadata=clean_metadata,
-        **kwargs,
+        prompt_template=task.prompt_templates[clean_prompt_template_idx],
+        default_option_style=clean_option_style or option_style,
     )
 
     if "qwen" in mt.name.lower():
@@ -1577,5 +1582,20 @@ def get_counterfactual_samples_within_task(
                     n_distractors=n_distractors,
                 )
             sample.prediction = predictions
+
+        # find the "?" token position in the samples
+        for sample in [patch_sample, clean_sample]:
+            tokenized = prepare_input(
+                tokenizer=mt, prompts=sample.prompt(), return_offsets_mapping=True
+            )
+            offsets = tokenized.pop("offset_mapping")[0]
+            ques_range = find_token_range(
+                string=sample.prompt(),
+                substring="?",
+                tokenizer=mt.tokenizer,
+                offset_mapping=offsets,
+            )
+            sample.metadata["ques_pos"] = ques_range[1] - 1
+            sample.metadata["tokenized"] = tokenized.data
 
     return patch_sample, clean_sample

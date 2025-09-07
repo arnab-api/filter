@@ -17,7 +17,7 @@ from src.functional import (
     repeat_kv,
 )
 from src.models import ModelandTokenizer
-from src.tokens import find_token_range, prepare_input
+from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
 from src.utils.typing import TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -28,10 +28,12 @@ def get_patches_to_verify_independent_enrichment(
     options: list[str],
     pivot: str,
     mt: ModelandTokenizer,
-    bare_prompt_template: str = " The fact that {}",
+    bare_prompt_template: str = " {}",
     tokenized_prompt: TokenizerOutput | None = None,
 ):
-    if tokenized_prompt and "offset_mapping" not in tokenized_prompt:
+    if not tokenized_prompt or (
+        tokenized_prompt and "offset_mapping" not in tokenized_prompt
+    ):
         tokenized_prompt = prepare_input(
             tokenizer=mt,
             prompts=prompt,
@@ -66,19 +68,30 @@ def get_patches_to_verify_independent_enrichment(
             offset_mapping=bare_offsets,
         )
         logger.debug(f"{opt} | {opt_range=} | {bare_opt_range=}")
+
         logger.debug(
-            f'"{mt.tokenizer.decode(tokenized_prompt.input_ids[0][range(*opt_range)])}"'
-        )
-        logger.debug(
-            f'"{mt.tokenizer.decode(bare_tokenized.input_ids[0][range(*bare_opt_range)])}"'
+            f'opt="{mt.tokenizer.decode(tokenized_prompt.input_ids[0][range(*opt_range)])}" | bare_opt="{mt.tokenizer.decode(bare_tokenized.input_ids[0][range(*bare_opt_range)])}"'
         )
         assert (
             opt_range[1] - opt_range[0] == bare_opt_range[1] - bare_opt_range[0]
         ), f"Option range {opt_range} and bare option range {bare_opt_range} do not match for option '{opt}' in prompt '{prompt}'"
 
+        range_diff = opt_range[0] - bare_opt_range[0]
+        bare_tokenized = insert_padding_before_pos(
+            inp=bare_tokenized,
+            token_position=0,
+            pad_len=range_diff,
+            pad_id=mt.tokenizer.bos_token_id,
+            fill_attn_mask=False,
+        )
+        bare_opt_range = opt_range
+        logger.debug(
+            f'After adjusted {bare_opt_range=}: bare_opt="{mt.tokenizer.decode(bare_tokenized.input_ids[0][range(*bare_opt_range)])}"'
+        )
+
         bare_hs = get_hs(
             mt=mt,
-            input=bare_prompt,
+            input=bare_tokenized,
             locations=list(product(mt.layer_names, range(*bare_opt_range))),
             return_dict=True,
             patches=[],
@@ -108,7 +121,7 @@ def verify_head_patterns(
     ablate_possible_ans_info_from_options: bool = False,
     options: list[str] | None = None,
     pivot: str | None = None,
-    bare_prompt_template=" The fact that {}",
+    bare_prompt_template=" {}",
     query_index: int = -1,
     query_patches: list[PatchSpec] = [],
     start_from: int = 1,
@@ -206,18 +219,19 @@ def verify_head_patterns(
 def cache_q_projections(
     mt: ModelandTokenizer,
     input: TokenizerOutput,
-    query_locations: list[tuple[int, int, int]],  # (layer_idx, head_idx, query_idx)
+    heads: list[tuple[int, int]],  # (layer_idx, head_idx)
+    token_indices: list[list[int]],
     return_output: bool = False,
     projection_signature: str = ".q_proj",
 ):
-    layer_to_hq = {}
-    for layer_idx, head_idx, query_idx in query_locations:
-        if layer_idx not in layer_to_hq:
-            layer_to_hq[layer_idx] = []
-        layer_to_hq[layer_idx].append((head_idx, query_idx))
-
-    q_projections = {}
     batch_size = input.input_ids.shape[0]
+    assert len(token_indices) == batch_size, f"{len(token_indices)=} != {batch_size=}"
+    layer_to_head = {}
+    for layer_idx, head_idx in heads:
+        if layer_idx not in layer_to_head:
+            layer_to_head[layer_idx] = []
+        layer_to_head[layer_idx].append(head_idx)
+
     seq_len = input.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
     # head_dim = mt.n_embd // n_heads
@@ -227,7 +241,7 @@ def cache_q_projections(
     group_size = n_heads // mt.config.num_key_value_heads
     q_module_projections_per_layer = {}
     with mt.trace(input) as tracer:  # noqa
-        for layer_idx, query_locs in layer_to_hq.items():
+        for layer_idx, head_indices in layer_to_head.items():
             q_proj_name = (
                 mt.attn_module_name_format.format(layer_idx) + projection_signature
             )
@@ -237,7 +251,8 @@ def cache_q_projections(
         if return_output:
             output = mt.output.save()
 
-    for layer_idx, query_locs in layer_to_hq.items():
+    q_projections = [{} for _ in range(batch_size)]
+    for layer_idx, head_indices in layer_to_head.items():
         q_proj_name = (
             mt.attn_module_name_format.format(layer_idx) + projection_signature
         )
@@ -250,10 +265,12 @@ def cache_q_projections(
         if projection_signature in [".k_proj", ".v_proj"] and group_size != 1:
             q_proj_out = repeat_kv(q_proj_out, n_rep=group_size)
         # print(q_proj_out.shape, q_proj_out.norm())
-        for head_idx, query_idx in query_locs:
-            q_projections[(layer_idx, head_idx, query_idx)] = (
-                q_proj_out[:, head_idx, query_idx, :].clone().squeeze()
-            )
+        for prompt_idx in range(batch_size):
+            for head_idx in head_indices:
+                for token_idx in token_indices[prompt_idx]:
+                    q_projections[prompt_idx][(layer_idx, head_idx, token_idx)] = (
+                        q_proj_out[prompt_idx, head_idx, token_idx]
+                    )
 
     if return_output:
         return q_projections, output
