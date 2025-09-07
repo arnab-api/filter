@@ -28,7 +28,7 @@ def get_patches_to_verify_independent_enrichment(
     options: list[str],
     pivot: str,
     mt: ModelandTokenizer,
-    bare_prompt_template: str = " {}",
+    bare_prompt_template: str = "Option: {}",
     tokenized_prompt: TokenizerOutput | None = None,
 ):
     if not tokenized_prompt or (
@@ -121,7 +121,7 @@ def verify_head_patterns(
     ablate_possible_ans_info_from_options: bool = False,
     options: list[str] | None = None,
     pivot: str | None = None,
-    bare_prompt_template=" {}",
+    bare_prompt_template=" Options: {}",
     query_index: int = -1,
     query_patches: list[PatchSpec] = [],
     start_from: int = 1,
