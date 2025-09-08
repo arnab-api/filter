@@ -2,6 +2,7 @@ import logging
 from itertools import product
 
 import torch
+import baukit
 
 from src.attention import (
     get_attention_matrices,
@@ -12,6 +13,7 @@ from src.functional import (
     PatchSpec,
     generate_with_patch,
     get_hs,
+    get_hidden_state,
     get_module_nnsight,
     interpret_logits,
     repeat_kv,
@@ -76,12 +78,12 @@ def get_patches_to_verify_independent_enrichment(
             opt_range[1] - opt_range[0] == bare_opt_range[1] - bare_opt_range[0]
         ), f"Option range {opt_range} and bare option range {bare_opt_range} do not match for option '{opt}' in prompt '{prompt}'"
 
-        bare_hs = get_hs(
+        bare_hs = get_hidden_state(
             mt=mt,
             input=bare_prompt,
             locations=list(product(mt.layer_names, range(*bare_opt_range))),
             return_dict=True,
-            patches=[],
+            patches=[]
         )
 
         for bare_idx, clean_idx in zip(range(*bare_opt_range), range(*opt_range)):
@@ -222,33 +224,30 @@ def cache_q_projections(
     batch_size = input.input_ids.shape[0]
     seq_len = input.input_ids.shape[1]
     n_heads = mt.config.num_attention_heads
-    head_dim = mt.n_embd // n_heads
     group_size = n_heads // mt.config.num_key_value_heads
-    q_module_projections_per_layer = {}
-    with mt.trace(input) as tracer:  # noqa
-        for layer_idx, query_locs in layer_to_hq.items():
-            q_proj_name = (
-                mt.attn_module_name_format.format(layer_idx) + projection_signature
-            )
-            q_proj_module = get_module_nnsight(mt, q_proj_name)
-            q_module_projections_per_layer[q_proj_name] = q_proj_module.output.save()
 
-        if return_output:
-            output = mt.output.save()
+    # Collect q_proj module names to trace
+    q_proj_names = [
+        mt.attn_module_name_format.format(layer_idx) + projection_signature
+        for layer_idx in layer_to_hq.keys()
+    ]
+
+    with baukit.TraceDict(mt._model, layers=q_proj_names) as td:
+        output = mt._model(**input) if return_output else mt._model(**input)
 
     for layer_idx, query_locs in layer_to_hq.items():
         q_proj_name = (
             mt.attn_module_name_format.format(layer_idx) + projection_signature
         )
-        # print(q_proj_name)
-        q_proj_out = (
-            q_module_projections_per_layer[q_proj_name]
-            .view(batch_size, seq_len, -1, head_dim)
-            .transpose(1, 2)
-        )
+        q_full = td[q_proj_name].output
+        last_dim = q_full.shape[-1]
+        assert (
+            last_dim % n_heads == 0
+        ), f"q_proj output dim {last_dim} not divisible by n_heads={n_heads}"
+        head_dim = last_dim // n_heads
+        q_proj_out = q_full.view(batch_size, seq_len, -1, head_dim).transpose(1, 2)
         if projection_signature in [".k_proj", ".v_proj"] and group_size != 1:
             q_proj_out = repeat_kv(q_proj_out, n_rep=group_size)
-        # print(q_proj_out.shape, q_proj_out.norm())
         for head_idx, query_idx in query_locs:
             q_projections[(layer_idx, head_idx, query_idx)] = (
                 q_proj_out[:, head_idx, query_idx, :].clone().squeeze()

@@ -816,6 +816,65 @@ def patch_with_nnsight(
         output = mt.output.save()
     return output
 
+def get_hidden_state(
+    mt,
+    input,
+    locations,
+    patches,
+    return_dict,
+):
+    if isinstance(input, TokenizerOutput):
+        if "offset_mapping" in input:
+            input.pop("offset_mapping")
+    else:
+        input = prepare_input(prompts=input, tokenizer=mt.tokenizer)
+
+    if isinstance(locations, tuple):
+        locations = [locations]
+    if patches is not None and isinstance(patches, PatchSpec):
+        patches = [patches]
+
+    def is_an_attn_head(module_name) -> bool | tuple[int, int]:
+        attn_id = mt.attn_module_name_format.split(".")[-1]
+        if attn_id not in module_name:
+            return False
+        if module_name.endswith(attn_id):
+            return False
+        
+        head_id = module_name.split(".")[-1]
+        layer_id = ".".join(module_name.split(".")[:-1])
+
+        return layer_id, int(head_id)
+
+    layer_names = [layer_name for layer_name, _ in locations]
+    layer_names = list(set(layer_names))
+    layer_names = sorted(layer_names, key=lambda x: int(x.split('.')[-1]))
+    layer_states = {layer_name: torch.empty(0) for layer_name in layer_names}
+    with mt.trace(input, scan=False):
+        for layer_name in layer_names:
+            if is_an_attn_head(layer_name) is False:
+                module = get_module_nnsight(mt, layer_name)
+                layer_states[layer_name] = module.output.save()
+            else:
+                attn_module_name, head_idx = is_an_attn_head(layer_name)
+                o_proj_name = attn_module_name + ".o_proj"
+                head_dim = mt.n_emd // mt.model.config.num_attention_heads
+                o_proj = get_module_nnsight(mt, o_proj_name)
+                layer_states[layer_name] = o_proj.input[0][0][
+                    :, :, head_idx * head_dim : (head_idx + 1) * head_dim
+                ].save()
+
+    hs = {}
+
+    for layer_name, index in locations:
+        hs[(layer_name, index)] = untuple(layer_states[layer_name])[
+            :, index, :
+        ].squeeze()
+
+    if len(hs) == 1 and not return_dict:
+        return list(hs.values())[0]
+    return hs
+
 
 @torch.inference_mode()
 def get_hs(

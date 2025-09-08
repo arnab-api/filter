@@ -1,4 +1,5 @@
 import logging
+from posix import preadv
 from typing import Optional
 
 import torch
@@ -64,6 +65,7 @@ def verify_correct_option(
     input: Optional[str | TokenizerOutput] = None,
     logits: torch.Tensor | None = None,
     prefix: str = " ",
+    is_counting_task: bool = False,
     **kwargs,
 ) -> tuple[bool, list[PredictedToken], dict[int, tuple[int, PredictedToken]]]:
     assert (
@@ -96,13 +98,24 @@ def verify_correct_option(
         )
         for opt in options
     ]
-    predictions, track_options = interpret_logits(
-        tokenizer=mt.tokenizer,
-        logits=logits,
-        interested_tokens=options,
-        **kwargs,
-    )
-    option_scores = [pred for obj_tok, (obj_rank, pred) in track_options.items()]
-    option_scores = sorted(option_scores, key=lambda x: x.logit, reverse=True)
-    correct = option_scores[0].token_id == target
-    return correct, predictions, track_options
+    if is_counting_task:
+        predictions, track_options = interpret_logits(
+            tokenizer=mt.tokenizer,
+            logits=logits,
+            interested_tokens=options,
+            **kwargs,
+        )
+        correct = predictions[0].token_id == target
+        print(f"{predictions[0].token_id=}")
+        return correct, predictions, track_options
+    else:
+        predictions, track_options = interpret_logits(
+            tokenizer=mt.tokenizer,
+            logits=logits,
+            interested_tokens=options,
+            **kwargs,
+        )
+        option_scores = [pred for obj_tok, (obj_rank, pred) in track_options.items()]
+        option_scores = sorted(option_scores, key=lambda x: x.logit, reverse=True)
+        correct = option_scores[0].token_id == target
+        return correct, predictions, track_options

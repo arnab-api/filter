@@ -174,7 +174,8 @@ def get_optimal_head_mask(
 
             batch_size = clean_tokenized.input_ids.shape[0]
             seq_len = clean_tokenized.input_ids.shape[1]
-            head_dim = mt.n_embd // n_heads
+            #head_dim = mt.n_embd // n_heads
+            head_dim = mt._model.model.layers[0].self_attn.q_proj.out_features // mt.config.num_attention_heads
 
             def perform_patch(repr, layer_name):
                 if layer_name not in all_q_proj_modules:
@@ -388,6 +389,7 @@ def validate_q_proj_ie_on_sample_pair(
     patch_predictions = interpret_logits(
         tokenizer=mt,
         logits=patch_logits,
+        k=2000,
     )
     logger.info(f"patch_prediction={[str(pred) for pred in patch_predictions]}")
 
@@ -534,6 +536,7 @@ def validate_q_proj_ie_on_sample_pair(
         tokenizer=mt,
         logits=int_logits,
         interested_tokens=interested_tokens + must_track_tokens,
+        k=2000,
     )
     logger.info(f"int_prediction={[str(pred) for pred in int_predictions]}")
     logger.info(f"int_track={int_track}")

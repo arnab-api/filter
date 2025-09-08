@@ -18,6 +18,10 @@
         "What is the <_order_> object in the following list?\n<_options_>\nAnswer:",
         "<_options_>\nWhat is the <_order_> object from the list above?\nAnswer:"
     ],
+    "first_item_templates": [
+        "What is the first <_category_> in the list?\n<_options_>\nAnswer:",
+        "<_options_>\nWhat is the first <_category_> in the list?\nAnswer:"
+    ],
     "categories": {
         "fruit": [
             "Blackberry",

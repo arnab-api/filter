@@ -46,6 +46,7 @@ class SelectionSample(DataClassJsonMixin):
     ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line", "numbered", "bullet"] = "single_line"
+    language: Literal["english", "spanish", "french"] = "english"
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -85,7 +86,12 @@ class SelectionSample(DataClassJsonMixin):
 
         if option_style == "single_line":
             options_str = ", ".join(f"{opt}" for opt in self.options)
-            options_str = f"Options: {options_str}."
+            if self.language == "english":
+                options_str = f"Options: {options_str}."
+            elif self.language == "spanish":
+                options_str = f"Opciones: {options_str}."
+            elif self.language == "french":
+                options_str = f"Options : {options_str}."
 
         elif option_style == "numbered":
             options_str = "\n".join(
@@ -193,6 +199,49 @@ class CountingSample(DataClassJsonMixin):
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
 
+    def prompt(
+        self, option_style: Literal["single_line", "numbered"] | None = None
+    ) -> str:
+        prompt = self.prompt_template
+        if "<_category_>" in prompt:
+            prompt = prompt.replace("<_category_>", self.category)
+
+        if option_style is None:
+            option_style = self.default_option_style
+
+        if option_style == "single_line":
+            options_str = ", ".join(f"{opt}" for opt in self.options)
+
+        else:
+            raise ValueError(f"Invalid option_style: {option_style}.")
+
+        prompt = prompt.replace("<_options_>", options_str)
+
+        return prompt
+
+@dataclass
+class YesNoSample(DataClassJsonMixin):
+    prompt_template: str
+    options: Sequence[str]
+    yes_mode: bool = True
+    category: str | None = None
+    prediction: Optional[Sequence[PredictedToken]] = None
+    metadata: dict = field(default_factory=dict)
+    default_option_style: Literal["single_line"] = "single_line"
+
+    def __post_init__(self):
+        assert "<_options_>" in self.prompt_template
+        if "<_category_>" in self.prompt_template:
+            assert self.category is not None
+        if not isinstance(self.options, Sequence):
+            raise TypeError("Options must be a Sequence.")
+        if len(self.options) < 2:
+            raise ValueError("There must be at least two options.")
+
+    def __str__(self):
+        answer = "Yes" if self.yes_mode else "No"
+        return f"{self.category} -> {self.options}: Ans: {answer}"
+    
     def prompt(
         self, option_style: Literal["single_line", "numbered"] | None = None
     ) -> str:
@@ -932,6 +981,37 @@ class SelectOrderTask(SelectOneTask):
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
 
+@dataclass
+class SelectFirstTask(SelectOneTask):
+    task_name: str = "select_first"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            selection_root = os.path.join(DEFAULT_DATA_DIR, "selection")
+            path = os.path.join(selection_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            print(data)
+            return SelectFirstTask(
+                task_name="select_first",
+                category_type=data.get("name", category_type),
+                prompt_templates=data["first_item_templates"],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def __str__(self):
+        return f"""SelectFirstTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
+
 
 @dataclass
 class SelectAllTask(DataClassJsonMixin):
@@ -1314,6 +1394,152 @@ class DeductionTask(DataClassJsonMixin):
 Depths: {list(self.logic_templates.keys())}
 Topics: {list(self.topics.keys())}
         """
+
+@dataclass
+class YesNoTask(DataClassJsonMixin):
+    category_type: str
+    prompt_templates: list[str]
+    category_wise_examples: dict[str, list] = field(default_factory=dict)
+    task_name: str = "yes_no"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "counting/fruits.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            counting_root = os.path.join(DEFAULT_DATA_DIR, "counting")
+            path = os.path.join(counting_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return YesNoTask(
+                task_name="yes_no",
+                category_type=data.get("name", category_type),
+                prompt_templates = [
+                    "Are there any <_category_> in the following options.\nOptions: <_options_>\nAnswer Yes or No.\nAnswer:",
+                    "<_options_>.\nHow many <_category_> are there in the previous options.\nAnswer Yes or No.\nAnswer:"
+                ],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer = None,
+        prompt_template_idx: int = 0,
+        yes_mode: bool = True,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        n_distractors = 5,
+        filter_by_lm_prediction: bool = False,
+        retry_count: int = 0
+    ) -> YesNoSample:
+        """
+        Get a random sample with a specified attribute.
+        """
+        
+        tokenizer = unwrap_tokenizer(mt)
+        
+        category_wise_examples = {}
+        for cat in self.category_wise_examples:
+            examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
+            category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
+
+        print(f"Category: {category}")
+        print(f"{category_wise_examples=}")
+
+        if category not in category_wise_examples:
+            raise ValueError(
+                f"Attribute '{category}' not found in {category_wise_examples.keys()}."
+            )
+
+        category_keys = list(category_wise_examples.keys())
+        assert category_keys[0] == category, "Main category must come first in the dataset categories"
+
+        main_category_items = category_wise_examples[category_keys[0]].values
+        generic_items = category_wise_examples[category_keys[1]].values
+
+        if yes_mode:
+            yes_item = random.choice(main_category_items)
+            distractors = random.sample(generic_items, k=n_distractors + 1)
+        else:
+            yes_item = None
+            distractors = random.sample(generic_items, k=n_distractors + 1)
+
+        if yes_item:
+            options = [yes_item] + distractors
+        else:
+            options = distractors
+        
+        random.shuffle(options)
+
+        sample = YesNoSample(
+            prompt_template = self.prompt_templates[prompt_template_idx],
+            options = options,
+            yes_mode = yes_mode,
+            category = category,
+            prediction = None,
+            default_option_style = option_style,
+        )
+
+        if filter_by_lm_prediction:
+            if retry_count >= 100: return
+            prompt = sample.prompt(option_style=option_style)
+            inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata['tokenized'] = inputs.data
+            correct_answer = "Yes" if yes_mode else "No"
+            incorrect_answer = "No" if yes_mode else "Yes"
+            correct_answer_token_id = get_first_token_id(correct_answer, tokenizer, prefix=" ")
+            incorrect_answer_token_id = get_first_token_id(incorrect_answer, tokenizer, prefix=" ")
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                input=inputs,
+                target=correct_answer_token_id,
+                options=[correct_answer_token_id, incorrect_answer_token_id],
+                prefix=" "
+            )
+            # predictions = predict_next_token(
+            #     mt=mt,
+            #     inputs=inputs,
+            # )[0]
+            # 
+            # print(f"{predictions[0].token=}")
+            # answer = "Yes" if yes_mode else "No"
+            # answer_token_id = get_first_token_id(answer, tokenizer, prefix=" ")
+            # print(f"{answer_token_id=}")
+            # print(f"{predictions[0].token_id=}")
+            #if predictions[0].token_id != answer_token_id:
+            if not is_correct:
+                logger.error(
+                    f"""Sample = {sample}
+                    Top prediction {predictions[0]} does not match the correct answer '{correct_answer}'.
+                    Retry count: {retry_count + 1}. Retrying ...
+                    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    category=category,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=True,
+                    retry_count=retry_count + 1,
+                )
+
+            sample.prediction = predictions 
+
+        sample.metadata["retry_count"] = retry_count
+        return sample   
+
+    def __str__(self):
+        return f"""YesNoTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
 
 
 # def load_people_by_category(
