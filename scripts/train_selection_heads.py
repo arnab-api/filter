@@ -263,6 +263,12 @@ def find_optimal_masks(
         option_style=option_style,
         distinct_options=distinct_options,
     )
+    indices_kwargs = {"query_indices": [-2, -1]}
+    if optimization_interface == get_optimal_head_mask_optimized:
+        indices_kwargs["add_ques_pos_to_query_indices"] = True
+    elif optimization_interface == get_optimal_head_mask_prev:
+        indices_kwargs["query_indices"] = [-3, -2, -1]
+
     optimal_masks, losses = optimization_interface(
         mt=mt,
         train_set=train_set,
@@ -274,7 +280,7 @@ def find_optimal_masks(
         add_ques_pos_to_query_indices=True,
         save_path=save_path,
         save_step=5,
-        cache_q_states_before=False,  # not suitable with larger training sets
+        **indices_kwargs,
     )
     selected_heads = (
         torch.nonzero(optimal_masks > 0.5, as_tuple=False).to(dtype=torch.int).tolist()
@@ -342,6 +348,7 @@ if __name__ == "__main__":
         "--option_config",
         choices=["distinct", "same", "position"],
         help="Configuration for option selection",
+        default="distinct",
     )
 
     parser.add_argument(
