@@ -57,12 +57,23 @@ def prepare_dataset(
         else:
             patch_n_distractors = random.choice(range(2, 7))
             clean_n_distractors = random.choice(range(2, 7))
+        if prompt_template_idx == -1:
+            patch_prompt_template_idx = random.choice(
+                range(len(select_task.prompt_templates))
+            )
+            clean_prompt_template_idx = random.choice(
+                range(len(select_task.prompt_templates))
+            )
+        else:
+            patch_prompt_template_idx = prompt_template_idx
+            clean_prompt_template_idx = prompt_template_idx
         patch_sample, clean_sample = get_counterfactual_samples_within_task(
             task=select_task,
             mt=mt,
             patch_n_distractors=patch_n_distractors,
             clean_n_distractors=clean_n_distractors,
-            prompt_template_idx=prompt_template_idx,
+            patch_prompt_template_idx=patch_prompt_template_idx,
+            clean_prompt_template_idx=clean_prompt_template_idx,
             option_style=option_style,
             distinct_options=distinct_options,
             filter_by_lm_prediction=True,
@@ -275,7 +286,7 @@ def find_optimal_masks(
         train_set=train_set,
         learning_rate=1e-2,
         n_epochs=n_epochs,
-        lamb=2e-2,
+        lamb=1e-1,
         batch_size=batch_size,
         save_path=save_path,
         save_step=5,

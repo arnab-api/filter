@@ -33,6 +33,20 @@ index_to_order = {
     9: "tenth",
 }
 
+COUNT_STR_MAP = {
+    0: "Zero",
+    1: "One",
+    2: "Two",
+    3: "Three",
+    4: "Four",
+    5: "Five",
+    6: "Six",
+    7: "Seven",
+    8: "Eight",
+    9: "Nine",
+    10: "Ten",
+}
+
 
 @dataclass
 class SelectionSample(DataClassJsonMixin):
@@ -178,6 +192,7 @@ class CountingSample(DataClassJsonMixin):
     prediction: Optional[Sequence[PredictedToken]] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line"] = "single_line"
+    ans_token_id: int | None = None
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -193,6 +208,50 @@ class CountingSample(DataClassJsonMixin):
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
+
+    def prompt(
+        self, option_style: Literal["single_line", "numbered"] | None = None
+    ) -> str:
+        prompt = self.prompt_template
+        if "<_category_>" in prompt:
+            prompt = prompt.replace("<_category_>", self.category)
+
+        if option_style is None:
+            option_style = self.default_option_style
+
+        if option_style == "single_line":
+            options_str = ", ".join(f"{opt}" for opt in self.options)
+
+        else:
+            raise ValueError(f"Invalid option_style: {option_style}.")
+
+        prompt = prompt.replace("<_options_>", options_str)
+
+        return prompt
+
+
+@dataclass
+class YesNoSample(DataClassJsonMixin):
+    prompt_template: str
+    options: Sequence[str]
+    yes_mode: bool = True
+    category: str | None = None
+    prediction: Optional[Sequence[PredictedToken]] = None
+    metadata: dict = field(default_factory=dict)
+    default_option_style: Literal["single_line"] = "single_line"
+
+    def __post_init__(self):
+        assert "<_options_>" in self.prompt_template
+        if "<_category_>" in self.prompt_template:
+            assert self.category is not None
+        if not isinstance(self.options, Sequence):
+            raise TypeError("Options must be a Sequence.")
+        if len(self.options) < 2:
+            raise ValueError("There must be at least two options.")
+
+    def __str__(self):
+        answer = "Yes" if self.yes_mode else "No"
+        return f"{self.category} -> {self.options}: Ans: {answer}"
 
     def prompt(
         self, option_style: Literal["single_line", "numbered"] | None = None
@@ -1058,12 +1117,14 @@ class CountingTask(DataClassJsonMixin):
 
     @staticmethod
     def load(
-        path: PathLike | None = os.path.join(DEFAULT_DATA_DIR, "counting/fruits.json"),
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
         category_type: str | None = None,
     ):
         if path is None:
             assert category_type is not None, "Path or category_type must be provided."
-            counting_root = os.path.join(DEFAULT_DATA_DIR, "counting")
+            counting_root = os.path.join(DEFAULT_DATA_DIR, "selection")
             path = os.path.join(counting_root, f"{category_type}.json")
 
         with open(path, "r") as f:
@@ -1071,7 +1132,7 @@ class CountingTask(DataClassJsonMixin):
             return CountingTask(
                 task_name="counting",
                 category_type=data.get("name", category_type),
-                prompt_templates=data["prompt_templates"],
+                prompt_templates=data["count_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
 
@@ -1083,7 +1144,10 @@ class CountingTask(DataClassJsonMixin):
         category: str | None = None,
         n_count: int = 2,
         n_distractors: int = 3,
-        filter_by_lm_prediction: bool = True,
+        filter_by_lm_prediction: bool = False,
+        exclude_objs: Sequence[str] = [],
+        exclude_distractor_categories: Sequence[str] = [],
+        insert_distractor: Sequence[tuple[str, int]] = [],
         retry_count: int = 0,
     ) -> CountingSample:
         """
@@ -1102,32 +1166,37 @@ class CountingTask(DataClassJsonMixin):
             random.shuffle(examples)
             category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
 
-        print(f"Category: {category}")
-        print(f"{category_wise_examples=}")
-
+        category = category or random.choice(list(category_wise_examples.keys()))
         if category not in category_wise_examples:
             raise ValueError(
                 f"Attribute '{category}' not found in {category_wise_examples.keys()}."
             )
 
-        category_keys = list(category_wise_examples.keys())
-        assert (
-            category_keys[0] == category
-        ), "Main category must come first in the dataset categories"
+        counting_items = random.sample(
+            category_wise_examples[category].values, k=n_count
+        )
 
-        main_category_items = category_wise_examples[category_keys[0]].values
-        counting_items = random.sample(main_category_items, k=n_count)
+        distractors = []
+        while len(distractors) < n_distractors:
+            other_category = random.choice(
+                list(
+                    set(category_wise_examples.keys())
+                    - set([category] + exclude_distractor_categories)
+                )
+            )
+            distractors.append(
+                random.choice(
+                    (
+                        category_wise_examples[other_category]
+                        - KeyedSet(
+                            counting_items + exclude_objs + distractors,
+                            tokenizer=tokenizer,
+                        )
+                    ).values
+                )
+            )
 
-        generic_items = category_wise_examples[category_keys[1]].values
-        distractors = random.sample(generic_items, k=n_distractors)
-
-        if len(counting_items) > 1 and len(distractors) > 1:
-            options = counting_items + distractors
-        elif len(counting_items) == 1 and len(distractors) > 1:
-            options = [counting_items] + distractors
-        elif len(counting_items) > 1 and len(distractors) == 1:
-            options = counting_items + [distractors]
-
+        options = counting_items + distractors[:n_distractors]
         random.shuffle(options)
 
         sample = CountingSample(
@@ -1135,52 +1204,51 @@ class CountingTask(DataClassJsonMixin):
             options=options,
             count=n_count,
             category=category,
-            prediction=None,
             default_option_style=option_style,
+            ans_token_id=get_first_token_id(
+                name=COUNT_STR_MAP[n_count], tokenizer=tokenizer, prefix=" "
+            ),
         )
 
         if filter_by_lm_prediction:
             prompt = sample.prompt(option_style=option_style)
-            inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata["tokenized"] = inputs.data
+            # logger.info(f"\nPrompt: {prompt}")
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
 
-            predictions = predict_next_token(
+            is_correct, predictions, track_objs = verify_correct_option(
                 mt=mt,
-                inputs=inputs,
-            )[0]
-            print(f"{predictions[0].token=}")
-            count_str_map = {
-                0: " zero",
-                1: " one",
-                2: " two",
-                3: " three",
-                4: " four",
-                5: " five",
-                6: " six",
-                7: " seven",
-                8: " eight",
-                9: " nine",
-                10: " ten",
-            }
-            if predictions[0].token != count_str_map[n_count]:
+                input=tokenized_inputs,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in COUNT_STR_MAP.values()
+                ],
+                prefix=" ",
+            )
+
+            # if predictions[0].token_id != obj_token_id:
+            if not is_correct:
                 logger.error(
                     f"""Sample = {sample}
-                    Top prediction {predictions[0]} does not match the count '{n_count}'.
-                    Retry count: {retry_count + 1}. Retrying ...
-                    """
+    Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
+    Retry count: {retry_count + 1}. Retrying ...
+    """
                 )
                 return self.get_random_sample(
                     mt=mt,
-                    prompt_template_idx=prompt_template_idx,
-                    option_style=option_style,
-                    category=category,
                     n_count=n_count,
                     n_distractors=n_distractors,
-                    filter_by_lm_prediction=True,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    category=category,
+                    exclude_objs=exclude_objs,
+                    exclude_distractor_categories=exclude_distractor_categories,
+                    insert_distractor=insert_distractor,
                     retry_count=retry_count + 1,
+                    **kwargs,
                 )
 
-            sample.prediction = predictions
+            sample.prediction = track_objs
 
         sample.metadata["retry_count"] = retry_count
         return sample
@@ -1317,6 +1385,190 @@ class DeductionTask(DataClassJsonMixin):
 Depths: {list(self.logic_templates.keys())}
 Topics: {list(self.topics.keys())}
         """
+
+
+@dataclass
+class YesNoTask(DataClassJsonMixin):
+    category_type: str
+    prompt_templates: list[str]
+    category_wise_examples: dict[str, list] = field(default_factory=dict)
+    task_name: str = "yes_no"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(DEFAULT_DATA_DIR, "counting/fruits.json"),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            counting_root = os.path.join(DEFAULT_DATA_DIR, "counting")
+            path = os.path.join(counting_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return YesNoTask(
+                task_name="yes_no",
+                category_type=data.get("name", category_type),
+                prompt_templates=[
+                    "Are there any <_category_> in the following options.\nOptions: <_options_>\nAnswer Yes or No.\nAnswer:",
+                    "<_options_>.\nHow many <_category_> are there in the previous options.\nAnswer Yes or No.\nAnswer:",
+                ],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer = None,
+        prompt_template_idx: int = 0,
+        yes_mode: bool = True,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        n_distractors=5,
+        filter_by_lm_prediction: bool = False,
+        retry_count: int = 0,
+    ) -> YesNoSample:
+        """
+        Get a random sample with a specified attribute.
+        """
+
+        tokenizer = unwrap_tokenizer(mt)
+
+        category_wise_examples = {}
+        for cat in self.category_wise_examples:
+            examples = copy.deepcopy(self.category_wise_examples[cat])
+            random.shuffle(examples)
+            category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
+
+        print(f"Category: {category}")
+        print(f"{category_wise_examples=}")
+
+        if category not in category_wise_examples:
+            raise ValueError(
+                f"Attribute '{category}' not found in {category_wise_examples.keys()}."
+            )
+
+        category_keys = list(category_wise_examples.keys())
+        assert (
+            category_keys[0] == category
+        ), "Main category must come first in the dataset categories"
+
+        main_category_items = category_wise_examples[category_keys[0]].values
+        generic_items = category_wise_examples[category_keys[1]].values
+
+        if yes_mode:
+            yes_item = random.choice(main_category_items)
+            distractors = random.sample(generic_items, k=n_distractors + 1)
+        else:
+            yes_item = None
+            distractors = random.sample(generic_items, k=n_distractors + 1)
+
+        if yes_item:
+            options = [yes_item] + distractors
+        else:
+            options = distractors
+
+        random.shuffle(options)
+
+        sample = YesNoSample(
+            prompt_template=self.prompt_templates[prompt_template_idx],
+            options=options,
+            yes_mode=yes_mode,
+            category=category,
+            prediction=None,
+            default_option_style=option_style,
+        )
+
+        if filter_by_lm_prediction:
+            if retry_count >= 100:
+                return
+            prompt = sample.prompt(option_style=option_style)
+            inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = inputs.data
+            correct_answer = "Yes" if yes_mode else "No"
+            incorrect_answer = "No" if yes_mode else "Yes"
+            correct_answer_token_id = get_first_token_id(
+                correct_answer, tokenizer, prefix=" "
+            )
+            incorrect_answer_token_id = get_first_token_id(
+                incorrect_answer, tokenizer, prefix=" "
+            )
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                input=inputs,
+                target=correct_answer_token_id,
+                options=[correct_answer_token_id, incorrect_answer_token_id],
+                prefix=" ",
+            )
+            # predictions = predict_next_token(
+            #     mt=mt,
+            #     inputs=inputs,
+            # )[0]
+            #
+            # print(f"{predictions[0].token=}")
+            # answer = "Yes" if yes_mode else "No"
+            # answer_token_id = get_first_token_id(answer, tokenizer, prefix=" ")
+            # print(f"{answer_token_id=}")
+            # print(f"{predictions[0].token_id=}")
+            # if predictions[0].token_id != answer_token_id:
+            if not is_correct:
+                logger.error(
+                    f"""Sample = {sample}
+                    Top prediction {predictions[0]} does not match the correct answer '{correct_answer}'.
+                    Retry count: {retry_count + 1}. Retrying ...
+                    """
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    category=category,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=True,
+                    retry_count=retry_count + 1,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
+
+    def __str__(self):
+        return f"""YesNoTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
+
+
+@dataclass
+class SelectFirstTask(SelectOneTask):
+    task_name: str = "select_first"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            selection_root = os.path.join(DEFAULT_DATA_DIR, "selection")
+            path = os.path.join(selection_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            print(data)
+            return SelectFirstTask(
+                task_name="select_first",
+                category_type=data.get("name", category_type),
+                prompt_templates=data["first_item_templates"],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+            )
+
+    def __str__(self):
+        return f"""SelectFirstTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
 
 
 #################################################################################################
@@ -1599,3 +1851,439 @@ def get_counterfactual_samples_within_task(
             sample.metadata["tokenized"] = tokenized.data
 
     return patch_sample, clean_sample
+
+
+@torch.inference_mode()
+def get_counterfactual_samples_within_counting_task(
+    task: CountingTask | YesNoTask,
+    mt: ModelandTokenizer,
+    n_options: int,
+    n_clean=None,
+    n_patch=None,
+    prompt_template_idx=1,
+    patch_prompt_template_idx: int | None = None,
+    clean_prompt_template_idx: int | None = None,
+    option_style="single_line",
+    patch_option_style: str | None = None,
+    clean_option_style: str | None = None,
+    filter_by_lm_prediction=True,
+    patch_category=None,
+    clean_category=None,
+    verbose=True,
+    retry_count=0,
+    distinct_options: bool = True,
+):
+    # Set parameter defaults
+    if patch_prompt_template_idx is None:
+        patch_prompt_template_idx = prompt_template_idx
+    if clean_prompt_template_idx is None:
+        clean_prompt_template_idx = prompt_template_idx
+
+    # Get counts
+
+    if isinstance(task, YesNoTask):
+        if random.random() < 0.5:
+            n_clean = random.randint(1, n_options)
+            n_patch = n_options - n_clean
+        else:
+            n_clean = 0
+            n_patch = n_options
+    else:
+        if n_clean and n_patch:
+            n_options = n_clean + n_patch
+        elif n_clean:
+            n_patch = n_options - n_clean
+        elif n_patch:
+            n_clean = n_options - n_patch
+        else:
+            n_clean = random.randint(1, n_options - 1)
+            n_patch = n_options - n_clean
+
+    # Get the categories
+    categories = list(task.category_wise_examples.keys())
+
+    # Set the patch category
+    if patch_category is None:
+        patch_category = random.choice(categories)
+
+    # Set the patch objects
+    patch_objects = random.sample(task.category_wise_examples[patch_category], n_patch)
+
+    # Set the clean category
+    if clean_category is None:
+        clean_category = random.choice(list(set(categories) - {patch_category}))
+
+    # Set the clean objects
+    clean_objects = random.sample(task.category_wise_examples[clean_category], n_clean)
+
+    if distinct_options is False:
+        all_objects = clean_objects + patch_objects
+        random.shuffle(all_objects)
+        clean_options = all_objects
+        patch_options = all_objects
+    else:
+        alt_clean_objects = random.sample(
+            [
+                opt
+                for opt in task.category_wise_examples[clean_category]
+                if opt not in clean_objects
+            ],
+            n_clean,
+        )
+        # print(f"{alt_clean_objects=}")
+
+        alt_patch_objects = random.sample(
+            [
+                opt
+                for opt in task.category_wise_examples[patch_category]
+                if opt not in patch_objects
+            ],
+            n_patch,
+        )
+        # print(f"{alt_patch_objects=}")
+
+        # TODO: Check that its ok that these lists are in different orders.
+        # The prediction has to do with the number of items of a given category,
+        # so I think as long as the numbers add up then its fine.
+        # It may even be preferable this way, having the orders unsynchronized.
+        clean_options = clean_objects + alt_patch_objects
+        random.shuffle(clean_options)
+        print(f"{clean_options=}")
+        patch_options = patch_objects + alt_clean_objects
+        random.shuffle(patch_options)
+        print(f"{patch_options=}")
+
+    patch_sample = CountingSample(
+        options=patch_options,
+        count=n_patch,
+        category=patch_category,
+        prompt_template=task.prompt_templates[patch_prompt_template_idx],
+        default_option_style=patch_option_style or option_style,
+    )
+
+    clean_sample = CountingSample(
+        options=clean_options,
+        count=n_clean,
+        category=clean_category,
+        prompt_template=task.prompt_templates[clean_prompt_template_idx],
+        default_option_style=clean_option_style or option_style,
+    )
+
+    if verbose:
+        print(f"{clean_category=}")
+        print(f"{patch_category=}")
+        print(f"{clean_options=}")
+        print(f"{patch_options=}")
+
+    if filter_by_lm_prediction:
+        test_samples = [patch_sample, clean_sample]
+
+        for sample in test_samples:
+            if retry_count >= 10:
+                break
+            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
+            if isinstance(task, YesNoTask):
+                if sample.count == 0:
+                    target_token_id = mt.tokenizer.encode(
+                        " No", add_special_tokens=False
+                    )[0]
+                    print("No")
+                else:
+                    target_token_id = mt.tokenizer.encode(
+                        " Yes", add_special_tokens=False
+                    )[0]
+                    print("Yes")
+            else:
+                count_str_map = {
+                    0: " zero",
+                    1: " one",
+                    2: " two",
+                    3: " three",
+                    4: " four",
+                    5: " five",
+                    6: " six",
+                    7: " seven",
+                    8: " eight",
+                    9: " nine",
+                    10: " ten",
+                }
+                target_token_id = mt.tokenizer.encode(
+                    count_str_map[sample.count], add_special_tokens=False
+                )[0]
+            # print(f"{target_token_id=}")
+            is_correct, predictions, track_options = verify_correct_option(
+                mt=mt,
+                target=target_token_id,
+                options=sample.options,
+                input=tokenized,
+                is_counting_task=True,
+            )
+            sample.metadata["tokenized"] = tokenized.data
+            sample.metadata["predictions"] = predictions
+
+            if not is_correct:
+                logger.error(f"Prediction mismatch!" f"Retry Count: {retry_count}")
+                return get_counterfactual_samples_within_counting_task(
+                    task=task,
+                    mt=mt,
+                    n_options=n_options,
+                    n_clean=n_clean,
+                    n_patch=n_patch,
+                    prompt_template_idx=prompt_template_idx,
+                    patch_prompt_template_idx=patch_prompt_template_idx,
+                    clean_prompt_template_idx=clean_prompt_template_idx,
+                    option_style=option_style,
+                    patch_option_style=patch_option_style,
+                    clean_option_style=clean_option_style,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    patch_category=patch_category,
+                    clean_category=clean_category,
+                    verbose=verbose,
+                    retry_count=retry_count + 1,
+                    distinct_options=distinct_options,
+                )
+            sample.prediction = predictions
+
+    return patch_sample, clean_sample
+
+
+@torch.inference_mode()
+def get_counterfactual_samples_within_first_task(
+    task: SelectFirstTask,
+    mt: ModelandTokenizer,
+    patch_category: str | None = None,
+    clean_category: str | None = None,
+    n_options: int = 5,
+    amt_to_sample: int = 2,
+    prompt_template_idx=2,
+    patch_prompt_template_idx: int | None = None,
+    clean_prompt_template_idx: int | None = None,
+    option_style="numbered",
+    patch_option_style: str | None = None,
+    clean_option_style: str | None = None,
+    filter_by_lm_prediction: bool = True,
+    distinct_options: bool = True,
+    n_distractors: int = 5,
+    retry_count: int = 0,
+):
+    # Set parameter defaults
+    if patch_prompt_template_idx is None:
+        patch_prompt_template_idx = prompt_template_idx
+    if clean_prompt_template_idx is None:
+        clean_prompt_template_idx = prompt_template_idx
+
+    # Get the categories
+    categories = list(task.category_wise_examples.keys())
+
+    # Set the patch category
+    if patch_category is None:
+        patch_category = random.choice(categories)
+
+    # Set the patch objects
+    patch_objects = random.sample(
+        task.category_wise_examples[patch_category], n_options
+    )
+
+    # Set the clean category
+    if clean_category is None:
+        clean_category = random.choice(list(set(categories) - {patch_category}))
+
+    # Set the clean objects
+    clean_objects = random.sample(
+        task.category_wise_examples[clean_category], n_options
+    )
+
+    # Set the other objects
+    other_objects = []
+    alt_other_objects = []
+    other_categories = random.sample(
+        list(set(categories) - {patch_category, clean_category}),
+        k=n_options,
+    )
+    ##print(f"{other_categories=}")
+    for other_category in other_categories:
+        other_examples = task.category_wise_examples[other_category]
+        rand_other_example = random.choice(other_examples)
+        other_objects.append(rand_other_example)
+        alt_other_example = random.choice(other_examples)
+        while rand_other_example == alt_other_example:
+            alt_other_example = random.choice(other_examples)
+        alt_other_objects.append(alt_other_example)
+    # print(f"{other_objects=}")
+    # print(f"{alt_other_objects=}")
+
+    # Construct the clean and patch category options
+    clean_category_options = random.sample(clean_objects, amt_to_sample)
+    # print(f"{clean_category_options=}")
+    patch_category_options = random.sample(patch_objects, amt_to_sample)
+    # print(f"{patch_category_options=}")
+
+    if distinct_options is not True:
+
+        # Combine the clean and patch options
+        combined_options = clean_category_options + patch_category_options
+
+        # Add items form the other_objects list to pad it to n_options length
+        for i in range(n_options - len(combined_options)):
+            combined_options.append(other_objects.pop())
+
+        clean_options = combined_options
+        patch_options = combined_options
+
+    else:
+        # Get alternative patch options
+        alt_patch_category_options = random.sample(
+            [obj for obj in patch_objects if obj not in patch_category_options],
+            amt_to_sample,
+        )
+        # Get alternative clean options
+        alt_clean_category_options = random.sample(
+            [obj for obj in clean_objects if obj not in clean_category_options],
+            amt_to_sample,
+        )
+        # Compose prelimiary lists
+        clean_options = clean_category_options + alt_patch_category_options
+        patch_options = alt_clean_category_options + patch_category_options
+
+        # Add the filler other objects
+        for i in range(n_options - len(clean_options)):
+            clean_options.append(other_objects.pop())
+            patch_options.append(alt_other_objects.pop())
+
+        # print(f"{clean_options=}")
+        # print(f"{patch_options=}")
+
+        # So I have these two lists and I need to make sure that their values line up by category.
+        # So I start with two lists that definitely have their values line up: clean_category_options and patch_category_options
+        # And these two lists' items align categorically as well with alt_clean_category_options and alt_patch_category_options respectively.
+        # So now how to shuffle these in a random but synchronized way while adding more items to the list?
+        # Probably makes sense to add the additional items to the list first.
+        # That way I know everything is still in sync.
+        # Ok, now I need some sort of randomized indexing process.
+        # Maybe I can make a list of numbers to the range of the options
+        # And then randomly swap these indices
+        index_list = list(range(n_options))
+        # print(f"{index_list=}")
+        random.shuffle(index_list)
+        # print(f"{index_list=}")
+
+        clean_options = [clean_options[i] for i in index_list]
+        patch_options = [patch_options[i] for i in index_list]
+
+        # print(f"{clean_options=}")
+        # print(f"{patch_options=}")
+
+    # Gather the indices of the options of interest
+    clean_options_indices = []
+    for option in clean_category_options:
+        clean_options_indices.append(clean_options.index(option))
+    clean_first_idx = min(clean_options_indices)
+
+    # Store the information about the corresponsing object from patch options
+    patch_track_type_obj = patch_options[clean_first_idx]
+    patch_track_first_token_id = get_first_token_id(
+        patch_track_type_obj, mt.tokenizer, prefix=" "
+    )
+
+    patch_options_indices = []
+    for option in patch_category_options:
+        patch_options_indices.append(patch_options.index(option))
+    patch_first_idx = min(patch_options_indices)
+
+    # Store the information about the corresponding object from clean options
+    clean_track_type_obj = clean_options[patch_first_idx]
+    clean_track_first_token_id = get_first_token_id(
+        clean_track_type_obj, mt.tokenizer, prefix=" "
+    )
+
+    patch_metadata = {
+        "track_category": clean_category,
+        "track_type_obj": patch_track_type_obj,
+        "track_type_obj_idx": clean_first_idx,
+        "track_type_obj_token_id": patch_track_first_token_id,
+    }
+    clean_obj = clean_options[clean_first_idx]
+
+    clean_metadata = {
+        "track_category": patch_category,
+        "track_type_obj": clean_track_type_obj,
+        "track_type_obj_idx": patch_first_idx,
+        "track_type_obj_token_id": clean_track_first_token_id,
+    }
+    patch_obj = patch_options[patch_first_idx]
+
+    patch_sample = SelectionSample(
+        obj=patch_obj,
+        answer=patch_obj,
+        obj_idx=patch_first_idx,
+        ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
+        options=patch_options,
+        category=patch_category,
+        metadata=patch_metadata,
+        prompt_template=task.prompt_templates[patch_prompt_template_idx],
+        default_option_style=patch_option_style or option_style,
+    )
+
+    clean_sample = SelectionSample(
+        obj=clean_obj,
+        answer=clean_obj,
+        obj_idx=clean_first_idx,
+        ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
+        options=clean_options,
+        category=clean_category,
+        metadata=clean_metadata,
+        prompt_template=task.prompt_templates[clean_prompt_template_idx],
+        default_option_style=clean_option_style or option_style,
+    )
+
+    if filter_by_lm_prediction:
+        test_samples = [patch_sample, clean_sample]
+
+        for sample in test_samples:
+            if retry_count >= 10:
+                break
+            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
+            is_correct, predictions, track_options = verify_correct_option(
+                mt=mt,
+                target=sample.ans_token_id,
+                options=sample.options,
+                input=tokenized,
+            )
+            # print(f"{is_correct=}")
+            # print(f"{predictions=}")
+            # print(f"{track_options=}")
+
+            sample.metadata["tokenized"] = tokenized.data
+            sample.metadata["predictions"] = predictions
+
+            if not is_correct:
+                logger.error(f"Prediction mismatch!\n" f"Retry Count: {retry_count+1}")
+                return get_counterfactual_samples_within_first_task(
+                    task=task,
+                    patch_category=patch_category,
+                    clean_category=clean_category,
+                    n_options=n_options,
+                    amt_to_sample=amt_to_sample,
+                    prompt_template_idx=prompt_template_idx,
+                    patch_prompt_template_idx=patch_prompt_template_idx,
+                    clean_prompt_template_idx=clean_prompt_template_idx,
+                    option_style=option_style,
+                    patch_option_style=patch_option_style,
+                    clean_option_style=clean_option_style,
+                    filter_by_lm_prediction=True,
+                    distinct_options=distinct_options,
+                    n_distractors=n_distractors,
+                    retry_count=retry_count + 1,
+                )
+            sample.prediction = predictions
+
+    return patch_sample, clean_sample
+
+
+get_counterfactual_samples_interface = {
+    "select_one": get_counterfactual_samples_within_task,
+    "select_order": get_counterfactual_samples_within_task,
+    "counting": get_counterfactual_samples_within_counting_task,
+    "yes_no": get_counterfactual_samples_within_counting_task,
+    "select_first": get_counterfactual_samples_within_first_task,
+}
