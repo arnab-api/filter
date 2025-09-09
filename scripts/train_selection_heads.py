@@ -1,25 +1,13 @@
 import argparse
-import copy
-import json
 import logging
 import os
 import random
-from dataclasses import dataclass
-from itertools import product
 from typing import Literal
 
 import numpy as np
 import torch
-from dataclasses_json import DataClassJsonMixin
 
-from src.functional import (
-    PatchSpec,
-    free_gpu_cache,
-    get_module_nnsight,
-    interpret_logits,
-    patch_with_baukit,
-    predict_next_token,
-)
+from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.selection.data import (
     SelectionSample,
@@ -28,15 +16,20 @@ from src.selection.data import (
     get_counterfactual_samples_within_task,
 )
 from src.selection.optimization import (
-    get_optimal_head_mask,
+    get_optimal_head_mask_optimized,
+    get_optimal_head_mask_prev,
     validate_q_proj_ie_on_sample_pair,
 )
-from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
-from src.tokens import prepare_input
+from src.selection.utils import get_first_token_id
 from src.utils import env_utils, experiment_utils, logging_utils
-from src.utils.typing import PathLike, PredictedToken, TokenizerOutput
+from src.utils.typing import PathLike
 
 logger = logging.getLogger(__name__)
+
+optimization_interface = {
+    "legacy": get_optimal_head_mask_prev,
+    "updated": get_optimal_head_mask_optimized,
+}
 
 
 @torch.inference_mode()
@@ -258,6 +251,7 @@ def find_optimal_masks(
     batch_size: int = 16,
     option_style: str = "single_line",
     distinct_options: bool = True,
+    optimization_interface=get_optimal_head_mask_optimized,
 ):
     train_set, validation_set = prepare_dataset(
         mt=mt,
@@ -269,7 +263,7 @@ def find_optimal_masks(
         option_style=option_style,
         distinct_options=distinct_options,
     )
-    optimal_masks, losses = get_optimal_head_mask(
+    optimal_masks, losses = optimization_interface(
         mt=mt,
         train_set=train_set,
         learning_rate=1e-2,
@@ -378,6 +372,14 @@ if __name__ == "__main__":
         help="Batch size for training",
     )
 
+    parser.add_argument(
+        "--opt_interface",
+        type=str,
+        choices=["legacy", "updated"],
+        default="updated",
+        help="Which optimization interface to use",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -418,6 +420,8 @@ if __name__ == "__main__":
         opt_config_dir[args.option_config],
         select_task.task_name,
     )
+    if args.opt_interface == "legacy":
+        save_dir = os.path.join(save_dir, "legacy")
     logger.info(f"{save_dir=}")
     os.makedirs(save_dir, exist_ok=True)
 
@@ -435,6 +439,7 @@ if __name__ == "__main__":
         option_config=args.option_config,
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
+        optimization_interface=optimization_interface[args.opt_interface],
     )
 
     logger.info("#" * 100)

@@ -18,7 +18,7 @@ from src.functional import (
 )
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
-from src.utils.typing import TokenizerOutput
+from src.utils.typing import Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -275,3 +275,27 @@ def cache_q_projections(
     if return_output:
         return q_projections, output
     return q_projections
+
+
+def find_quesmark_pos(
+    prompt: str,
+    tokenizer: Tokenizer,
+    tokenized: TokenizerOutput,
+    offset_mapping: list[tuple[int, int]] | None = None,
+    ques_mark: str = "?",
+):
+    if offset_mapping is None:
+        if tokenized is None or "offset_mapping" not in tokenized:
+            tokenized = prepare_input(
+                prompts=[prompt],
+                tokenizer=tokenizer,
+                return_offsets_mapping=True,
+            )
+        offset_mapping = tokenized.pop("offset_mapping")[0]
+
+    ques_range = find_token_range(
+        string=prompt, substring=ques_mark, occurrence=-1, offset_mapping=offset_mapping
+    )
+    ques_pos = ques_range[1] - 1
+    assert tokenizer.decode(tokenized.input_ids[0][ques_pos]).strip() == ques_mark
+    return ques_pos
