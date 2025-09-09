@@ -389,7 +389,7 @@ def validate_q_proj_ie_on_sample_pair(
     patch_predictions = interpret_logits(
         tokenizer=mt,
         logits=patch_logits,
-        k=2000,
+        k=100,
     )
     logger.info(f"patch_prediction={[str(pred) for pred in patch_predictions]}")
 
@@ -536,7 +536,7 @@ def validate_q_proj_ie_on_sample_pair(
         tokenizer=mt,
         logits=int_logits,
         interested_tokens=interested_tokens + must_track_tokens,
-        k=2000,
+        k=100,
     )
     logger.info(f"int_prediction={[str(pred) for pred in int_predictions]}")
     logger.info(f"int_track={int_track}")
