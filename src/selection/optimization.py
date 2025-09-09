@@ -755,6 +755,9 @@ def get_optimal_head_mask_optimized(
     return mask.round().detach().cpu(), losses
 
 
+from src.selection.functional import find_quesmark_pos
+
+
 @torch.inference_mode()
 def validate_q_proj_ie_on_sample_pair(
     mt: ModelandTokenizer,
@@ -762,14 +765,37 @@ def validate_q_proj_ie_on_sample_pair(
     patch_sample: SelectionSample,
     heads: list[tuple[int, int]],
     query_indices: dict[int, int] = {-1: -1},  # patch_idx -> clean_idx
+    add_ques_pos_to_query_indices: bool = False,
     verify_head_behavior_on: Optional[int] = None,
     ablate_possible_ans_info_from_options: bool = False,
     amplification_scale: float = 1.0,
     must_track_tokens: list[int] = [],
     patch_args: dict[str, Any] = {},
 ):
-    clean_tokenized = prepare_input(prompts=clean_sample.prompt(), tokenizer=mt)
-    patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
+    clean_tokenized = prepare_input(
+        prompts=clean_sample.prompt(), tokenizer=mt, return_offsets_mapping=True
+    )
+    patch_tokenized = prepare_input(
+        prompts=patch_sample.prompt(), tokenizer=mt, return_offsets_mapping=True
+    )
+    clean_offset_mapping = clean_tokenized.pop("offset_mapping")[0]
+    patch_offset_mapping = patch_tokenized.pop("offset_mapping")[0]
+    if add_ques_pos_to_query_indices:
+        clean_ques_pos = find_quesmark_pos(
+            prompt=clean_sample.prompt(),
+            tokenizer=mt.tokenizer,
+            tokenized=clean_tokenized,
+            offset_mapping=clean_offset_mapping,
+        )
+        patch_ques_pos = find_quesmark_pos(
+            prompt=patch_sample.prompt(),
+            tokenizer=mt.tokenizer,
+            tokenized=patch_tokenized,
+            offset_mapping=patch_offset_mapping,
+        )
+        query_indices[patch_ques_pos] = clean_ques_pos
+
+    patch_token_indices = [list(query_indices.keys())]
     if patch_args.get("batch_size", 1) > 1:
         patch_samples = []
         task = patch_args["task"]
@@ -797,8 +823,28 @@ def validate_q_proj_ie_on_sample_pair(
                 # random.shuffle(sample.options)
             patch_samples.append(sample)
         patch_tokenized_batch = prepare_input(
-            prompts=[sample.prompt() for sample in patch_samples], tokenizer=mt
+            prompts=[sample.prompt() for sample in patch_samples],
+            tokenizer=mt,
+            return_offsets_mapping=True,
         )
+        patch_offset_mapping_batch = patch_tokenized_batch.pop("offset_mapping")
+        patch_token_indices = []
+        for idx in range(len(patch_samples)):
+            cur_indices = {i: i for i in query_indices}
+            if add_ques_pos_to_query_indices:
+                patch_ques_pos = find_quesmark_pos(
+                    prompt=patch_samples[idx].prompt(),
+                    tokenizer=mt.tokenizer,
+                    tokenized=TokenizerOutput(
+                        data={
+                            k: v[idx : idx + 1, :]
+                            for k, v in patch_tokenized_batch.items()
+                        }
+                    ),
+                    offset_mapping=patch_offset_mapping_batch[idx],
+                )
+                cur_indices[patch_ques_pos] = clean_ques_pos
+            patch_token_indices.append(list(cur_indices.keys()))
         logger.debug(f"{patch_tokenized_batch.input_ids.shape}")
 
     if verify_head_behavior_on is not None:
@@ -840,7 +886,7 @@ def validate_q_proj_ie_on_sample_pair(
         mt=mt,
         input=patch_tokenized,
         heads=heads,
-        token_indices=list(query_indices.keys()),
+        token_indices=patch_token_indices,
         return_output=True,
     )
     if patch_args.get("batch_size", 1) > 1:
@@ -848,14 +894,19 @@ def validate_q_proj_ie_on_sample_pair(
             mt=mt,
             input=patch_tokenized_batch,
             heads=heads,
-            token_indices=list(query_indices.keys()),
+            token_indices=patch_token_indices,
             return_output=False,
         )
-        for lok in cached_q_states:
-            cached_q_states[lok] = cached_q_states[lok].mean(dim=0)
+        locations = list(cached_q_states[0].keys())
+        avg_q_states = {}
+        for loc in locations:
+            avg_q_states[loc] = torch.stack(
+                [cached_q_states[i][loc] for i in range(len(cached_q_states))]
+            ).mean(dim=0)
+        cached_q_states = [avg_q_states]
 
     q_proj_patches = []
-    for (layer_idx, head_idx, patch_query_idx), q_proj in cached_q_states.items():
+    for (layer_idx, head_idx, patch_query_idx), q_proj in cached_q_states[0].items():
         q_proj_patches.append(
             PatchSpec(
                 location=(
@@ -1257,13 +1308,20 @@ def get_optimal_head_mask_prev(
                 repr = repr.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
                 for head_idx in range(n_heads):
                     coeff = mask[layer_idx, head_idx].to(repr.dtype).to(repr.device)
-                    for query_idx in query_indices:
-                        q_clean = repr[:, head_idx, query_idx, :]
-                        layer_idx, q_patch = patch_q_states[(layer_name, head_idx)]
-                        q_patch = q_patch.clone().to(q_clean.dtype).to(q_clean.device)
-                        q_patch.requires_grad = True
-                        # head_patch = coeff * q_patch + (1 - coeff) * q_clean
-                        repr[:, head_idx, query_idx, :] += coeff * (q_patch - q_clean)
+                    # for query_idx in query_indices:
+                    #     q_clean = repr[:, head_idx, query_idx, :]
+                    #     layer_idx, q_patch = patch_q_states[(layer_name, head_idx)]
+                    #     q_patch = q_patch.clone().to(q_clean.dtype).to(q_clean.device)
+                    #     q_patch.requires_grad = True
+                    #     # head_patch = coeff * q_patch + (1 - coeff) * q_clean
+                    #     repr[:, head_idx, query_idx, :] += coeff * (q_patch - q_clean)
+                    q_clean = repr[:, head_idx, query_indices, :]
+                    layer_idx, q_patch = patch_q_states[(layer_name, head_idx)]
+                    q_patch = q_patch.clone().to(q_clean.dtype).to(q_clean.device)
+                    q_patch.requires_grad = True
+                    if q_patch.dim() == 2 and q_clean.dim() == 3:
+                        q_patch = q_patch.unsqueeze(1)  # Now [batch, 1, head_dim]
+                    repr[:, head_idx, query_indices, :] += coeff * (q_patch - q_clean)
 
                 repr = repr.transpose(1, 2).view(
                     batch_size, seq_len, n_heads * head_dim

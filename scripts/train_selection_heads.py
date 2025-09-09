@@ -104,7 +104,8 @@ def validate(
             clean_sample=clean_sample,
             patch_sample=patch_sample,
             heads=selected_heads,
-            query_indices={-3: -3, -2: -2, -1: -1},
+            query_indices={-2: -2, -1: -1},
+            add_ques_pos_to_query_indices=True,
             verify_head_behavior_on=None,
             # amplification_scale=1.5
         )
@@ -251,7 +252,7 @@ def find_optimal_masks(
     batch_size: int = 16,
     option_style: str = "single_line",
     distinct_options: bool = True,
-    optimization_interface=get_optimal_head_mask_optimized,
+    optimization_function=get_optimal_head_mask_optimized,
 ):
     train_set, validation_set = prepare_dataset(
         mt=mt,
@@ -264,20 +265,18 @@ def find_optimal_masks(
         distinct_options=distinct_options,
     )
     indices_kwargs = {"query_indices": [-2, -1]}
-    if optimization_interface == get_optimal_head_mask_optimized:
+    if optimization_function == get_optimal_head_mask_optimized:
         indices_kwargs["add_ques_pos_to_query_indices"] = True
-    elif optimization_interface == get_optimal_head_mask_prev:
+    elif optimization_function == get_optimal_head_mask_prev:
         indices_kwargs["query_indices"] = [-3, -2, -1]
 
-    optimal_masks, losses = optimization_interface(
+    optimal_masks, losses = optimization_function(
         mt=mt,
         train_set=train_set,
         learning_rate=1e-2,
         n_epochs=n_epochs,
         lamb=2e-2,
         batch_size=batch_size,
-        query_indices=[-2, -1],
-        add_ques_pos_to_query_indices=True,
         save_path=save_path,
         save_step=5,
         **indices_kwargs,
@@ -332,7 +331,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prompt_temp_idx",
         type=int,
-        default=-1,
+        # default=-1,
+        default=3,
         help="Prompt template index to use (-1 for random selection from available templates)",
     )
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
         "--opt_interface",
         type=str,
         choices=["legacy", "updated"],
-        default="updated",
+        default="legacy",  # ! when question comes after (most of the cases) "legacy" will be much (6x) faster
         help="Which optimization interface to use",
     )
 
@@ -446,7 +446,7 @@ if __name__ == "__main__":
         option_config=args.option_config,
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
-        optimization_interface=optimization_interface[args.opt_interface],
+        optimization_function=optimization_interface[args.opt_interface],
     )
 
     logger.info("#" * 100)
