@@ -18,6 +18,10 @@
         "What is the <_order_> object in the following list?\n<_options_>\nAnswer:",
         "<_options_>\nWhat is the <_order_> object from the list above?\nAnswer:"
     ],
+    "count_prompt_templates": [
+        "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer:",
+        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer:"
+    ],
     "categories": {
         "fruit": [
             "Blackberry",

@@ -234,11 +234,12 @@ class CountingSample(DataClassJsonMixin):
 class YesNoSample(DataClassJsonMixin):
     prompt_template: str
     options: Sequence[str]
-    yes_mode: bool = True
+    yes: bool
     category: str | None = None
     prediction: Optional[Sequence[PredictedToken]] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line"] = "single_line"
+    ans_token_id: int | None = None
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -250,7 +251,7 @@ class YesNoSample(DataClassJsonMixin):
             raise ValueError("There must be at least two options.")
 
     def __str__(self):
-        answer = "Yes" if self.yes_mode else "No"
+        answer = "Yes" if self.yes else "No"
         return f"{self.category} -> {self.options}: Ans: {answer}"
 
     def prompt(
@@ -1136,13 +1137,24 @@ class CountingTask(DataClassJsonMixin):
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
 
+    @property
+    def categories(self):
+        """
+        Returns the list of categories in the task.
+        """
+        return list(self.category_wise_examples.keys())
+
+    def __str__(self):
+        return f"""CountingTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}"""
+
     def get_random_sample(
         self,
         mt: ModelandTokenizer,
         prompt_template_idx: int = 0,
         option_style: Literal["single_line", "numbered"] = "single_line",
         category: str | None = None,
-        n_count: int = 2,
+        n_options: int = 2,
         n_distractors: int = 3,
         filter_by_lm_prediction: bool = False,
         exclude_objs: Sequence[str] = [],
@@ -1173,7 +1185,7 @@ class CountingTask(DataClassJsonMixin):
             )
 
         counting_items = random.sample(
-            category_wise_examples[category].values, k=n_count
+            category_wise_examples[category].values, k=n_options
         )
 
         distractors = []
@@ -1202,11 +1214,11 @@ class CountingTask(DataClassJsonMixin):
         sample = CountingSample(
             prompt_template=self.prompt_templates[prompt_template_idx],
             options=options,
-            count=n_count,
+            count=n_options,
             category=category,
             default_option_style=option_style,
             ans_token_id=get_first_token_id(
-                name=COUNT_STR_MAP[n_count], tokenizer=tokenizer, prefix=" "
+                name=COUNT_STR_MAP[n_options], tokenizer=tokenizer, prefix=" "
             ),
         )
 
@@ -1222,7 +1234,7 @@ class CountingTask(DataClassJsonMixin):
                 target=sample.ans_token_id,
                 options=[
                     get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
-                    for opt in COUNT_STR_MAP.values()
+                    for opt in get_options_for_answer(sample)
                 ],
                 prefix=" ",
             )
@@ -1231,13 +1243,12 @@ class CountingTask(DataClassJsonMixin):
             if not is_correct:
                 logger.error(
                     f"""Sample = {sample}
-    Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
-    Retry count: {retry_count + 1}. Retrying ...
-    """
+Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
+Retry count: {retry_count + 1}. Retrying ..."""
                 )
                 return self.get_random_sample(
                     mt=mt,
-                    n_count=n_count,
+                    n_options=n_options,
                     n_distractors=n_distractors,
                     filter_by_lm_prediction=filter_by_lm_prediction,
                     category=category,
@@ -1252,11 +1263,6 @@ class CountingTask(DataClassJsonMixin):
 
         sample.metadata["retry_count"] = retry_count
         return sample
-
-    def __str__(self):
-        return f"""CountingTask: ({self.category_type})
-Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
-"""
 
 
 @dataclass
@@ -1396,12 +1402,14 @@ class YesNoTask(DataClassJsonMixin):
 
     @staticmethod
     def load(
-        path: PathLike | None = os.path.join(DEFAULT_DATA_DIR, "counting/fruits.json"),
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
         category_type: str | None = None,
     ):
         if path is None:
             assert category_type is not None, "Path or category_type must be provided."
-            counting_root = os.path.join(DEFAULT_DATA_DIR, "counting")
+            counting_root = os.path.join(DEFAULT_DATA_DIR, "selection")
             path = os.path.join(counting_root, f"{category_type}.json")
 
         with open(path, "r") as f:
@@ -1409,21 +1417,29 @@ class YesNoTask(DataClassJsonMixin):
             return YesNoTask(
                 task_name="yes_no",
                 category_type=data.get("name", category_type),
-                prompt_templates=[
-                    "Are there any <_category_> in the following options.\nOptions: <_options_>\nAnswer Yes or No.\nAnswer:",
-                    "<_options_>.\nHow many <_category_> are there in the previous options.\nAnswer Yes or No.\nAnswer:",
-                ],
+                prompt_templates=data["yes_no_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
+
+    @property
+    def categories(self):
+        """
+        Returns the list of categories in the task.
+        """
+        return list(self.category_wise_examples.keys())
+
+    def __str__(self):
+        return f"""YesNoTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}"""
 
     def get_random_sample(
         self,
         mt: ModelandTokenizer = None,
         prompt_template_idx: int = 0,
-        yes_mode: bool = True,
+        yes_mode: bool | None = None,
         option_style: Literal["single_line", "numbered"] = "single_line",
         category: str | None = None,
-        n_distractors=5,
+        n_options: int = 5,
         filter_by_lm_prediction: bool = False,
         retry_count: int = 0,
     ) -> YesNoSample:
@@ -1439,104 +1455,81 @@ class YesNoTask(DataClassJsonMixin):
             random.shuffle(examples)
             category_wise_examples[cat] = KeyedSet(examples, tokenizer=tokenizer)
 
-        print(f"Category: {category}")
-        print(f"{category_wise_examples=}")
-
+        category = category or random.choice(self.categories)
         if category not in category_wise_examples:
             raise ValueError(
                 f"Attribute '{category}' not found in {category_wise_examples.keys()}."
             )
 
-        category_keys = list(category_wise_examples.keys())
-        assert (
-            category_keys[0] == category
-        ), "Main category must come first in the dataset categories"
+        yes_mode = random.choice([True, False]) if yes_mode is None else yes_mode
 
-        main_category_items = category_wise_examples[category_keys[0]].values
-        generic_items = category_wise_examples[category_keys[1]].values
-
+        options = []
         if yes_mode:
-            yes_item = random.choice(main_category_items)
-            distractors = random.sample(generic_items, k=n_distractors + 1)
-        else:
-            yes_item = None
-            distractors = random.sample(generic_items, k=n_distractors + 1)
+            valid_options = random.sample(
+                category_wise_examples[category].values,
+                k=random.choice(range(1, n_options - 1)),
+            )
+            options.extend(valid_options)
 
-        if yes_item:
-            options = [yes_item] + distractors
-        else:
-            options = distractors
+        n_distractors = n_options - len(options)
+        for _ in range(n_distractors):
+            other_category = random.choice(
+                list(set(category_wise_examples.keys()) - {category})
+            )
+            options.append(random.choice(category_wise_examples[other_category].values))
 
         random.shuffle(options)
 
         sample = YesNoSample(
             prompt_template=self.prompt_templates[prompt_template_idx],
             options=options,
-            yes_mode=yes_mode,
+            yes=yes_mode,
             category=category,
             prediction=None,
             default_option_style=option_style,
+            ans_token_id=get_first_token_id(
+                name="Yes" if yes_mode else "No", tokenizer=tokenizer, prefix=" "
+            ),
         )
 
         if filter_by_lm_prediction:
-            if retry_count >= 100:
-                return
             prompt = sample.prompt(option_style=option_style)
-            inputs = prepare_input(prompts=prompt, tokenizer=mt)
-            sample.metadata["tokenized"] = inputs.data
-            correct_answer = "Yes" if yes_mode else "No"
-            incorrect_answer = "No" if yes_mode else "Yes"
-            correct_answer_token_id = get_first_token_id(
-                correct_answer, tokenizer, prefix=" "
-            )
-            incorrect_answer_token_id = get_first_token_id(
-                incorrect_answer, tokenizer, prefix=" "
-            )
+            # logger.info(f"\nPrompt: {prompt}")
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
 
             is_correct, predictions, track_objs = verify_correct_option(
                 mt=mt,
-                input=inputs,
-                target=correct_answer_token_id,
-                options=[correct_answer_token_id, incorrect_answer_token_id],
+                input=tokenized_inputs,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in get_options_for_answer(sample)
+                ],
                 prefix=" ",
             )
-            # predictions = predict_next_token(
-            #     mt=mt,
-            #     inputs=inputs,
-            # )[0]
-            #
-            # print(f"{predictions[0].token=}")
-            # answer = "Yes" if yes_mode else "No"
-            # answer_token_id = get_first_token_id(answer, tokenizer, prefix=" ")
-            # print(f"{answer_token_id=}")
-            # print(f"{predictions[0].token_id=}")
-            # if predictions[0].token_id != answer_token_id:
+
             if not is_correct:
                 logger.error(
                     f"""Sample = {sample}
-                    Top prediction {predictions[0]} does not match the correct answer '{correct_answer}'.
-                    Retry count: {retry_count + 1}. Retrying ...
-                    """
+Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
+Retry count: {retry_count + 1}. Retrying ..."""
                 )
                 return self.get_random_sample(
                     mt=mt,
                     prompt_template_idx=prompt_template_idx,
+                    yes_mode=yes_mode,
                     option_style=option_style,
                     category=category,
-                    n_distractors=n_distractors,
-                    filter_by_lm_prediction=True,
+                    n_options=n_options,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
                     retry_count=retry_count + 1,
                 )
 
-            sample.prediction = predictions
+            sample.prediction = track_objs
 
         sample.metadata["retry_count"] = retry_count
         return sample
-
-    def __str__(self):
-        return f"""YesNoTask: ({self.category_type})
-Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
-"""
 
 
 @dataclass
@@ -1800,7 +1793,7 @@ def get_counterfactual_samples_within_task(
     )
 
     if "qwen" in mt.name.lower():
-        # for attention sink
+        #! for attention sink in qwen models
         patch_sample.prompt_template = "# " + patch_sample.prompt_template
         clean_sample.prompt_template = "# " + clean_sample.prompt_template
 
@@ -1887,30 +1880,6 @@ def get_counterfactual_samples_within_counting_task(
         patch_prompt_template_idx = prompt_template_idx
     if clean_prompt_template_idx is None:
         clean_prompt_template_idx = prompt_template_idx
-
-    # Get counts
-    # if isinstance(task, YesNoTask):
-    #     if random.random() < 0.5:
-    #         n_clean = random.randint(1, n_options)
-    #         n_patch = n_options - n_clean
-    #     else:
-    #         n_clean = 0
-    #         n_patch = n_options
-    # else:
-    #     if n_clean and n_patch:
-    #         n_options = n_clean + n_patch
-    #     elif n_clean:
-    #         n_patch = n_options - n_clean
-    #     elif n_patch:
-    #         n_clean = n_options - n_patch
-    #     else:
-    #         assert n_options > 2, "n_options must be greater than 2"
-    #         while True:
-    #             n_clean = random.randint(1, n_options - 1)
-    #             n_patch = n_options - n_clean
-    #             if n_clean != n_patch:
-    #                 break
-    # assert n_clean != n_patch, "n_clean and n_patch must be different"
 
     categories = list(task.category_wise_examples.keys())
     patch_category = patch_category or random.choice(categories)
@@ -2040,29 +2009,13 @@ def get_counterfactual_samples_within_counting_task(
             if retry_count >= 10:
                 break
             tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
-            if isinstance(task, YesNoTask):
-                if sample.count == 0:
-                    target_token_id = get_first_token_id(
-                        name="No", tokenizer=mt.tokenizer, prefix=" "
-                    )
-                    print("No")
-                else:
-                    target_token_id = get_first_token_id(
-                        name="Yes", tokenizer=mt.tokenizer, prefix=" "
-                    )
-                    print("Yes")
-                option_token_ids = [
-                    get_first_token_id(name="Yes", tokenizer=mt.tokenizer, prefix=" "),
-                    get_first_token_id(name="No", tokenizer=mt.tokenizer, prefix=" "),
-                ]
-            else:
-                target_token_id = get_first_token_id(
-                    name=COUNT_STR_MAP[sample.count], tokenizer=mt.tokenizer, prefix=" "
-                )
-                option_token_ids = [
-                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
-                    for opt in COUNT_STR_MAP.values()
-                ]
+            target_token_id = get_first_token_id(
+                name=COUNT_STR_MAP[sample.count], tokenizer=mt.tokenizer, prefix=" "
+            )
+            option_token_ids = [
+                get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                for opt in get_options_for_answer(sample)
+            ]
             print(f"{target_token_id=} | {mt.tokenizer.decode(target_token_id)=}")
             is_correct, predictions, track_options = verify_correct_option(
                 mt=mt,
@@ -2094,6 +2047,190 @@ def get_counterfactual_samples_within_counting_task(
                     verbose=verbose,
                     retry_count=retry_count + 1,
                     distinct_options=distinct_options,
+                )
+            sample.prediction = track_options
+
+    # find the "?" token position in the samples
+    for sample in [patch_sample, clean_sample]:
+        tokenized = prepare_input(
+            tokenizer=mt, prompts=sample.prompt(), return_offsets_mapping=True
+        )
+        offsets = tokenized.pop("offset_mapping")[0]
+        ques_range = find_token_range(
+            string=sample.prompt(),
+            substring="?",
+            tokenizer=mt.tokenizer,
+            offset_mapping=offsets,
+        )
+        sample.metadata["ques_pos"] = ques_range[1] - 1
+        sample.metadata["tokenized"] = tokenized.data
+
+    return patch_sample, clean_sample
+
+
+@torch.inference_mode()
+def get_counterfactual_samples_within_yes_no_task(
+    task: CountingTask | YesNoTask,
+    mt: ModelandTokenizer,
+    patch_category=None,
+    clean_category=None,
+    filter_by_lm_prediction=True,
+    n_options: int = 5,
+    clean_n_options: int | None = None,
+    patch_n_options: int | None = None,
+    prompt_template_idx=1,
+    patch_prompt_template_idx: int | None = None,
+    clean_prompt_template_idx: int | None = None,
+    option_style="single_line",
+    patch_option_style: str | None = None,
+    clean_option_style: str | None = None,
+    verbose=False,
+    retry_count=0,
+):
+    # Set parameter defaults
+    patch_prompt_template_idx = patch_prompt_template_idx or prompt_template_idx
+    clean_prompt_template_idx = clean_prompt_template_idx or prompt_template_idx
+
+    patch_option_style = patch_option_style or option_style
+    clean_option_style = clean_option_style or option_style
+
+    categories = list(task.category_wise_examples.keys())
+    patch_category = patch_category or random.choice(categories)
+    clean_category = clean_category or random.choice(
+        list(set(categories) - {patch_category})
+    )
+
+    clean_n_options = clean_n_options or n_options
+    patch_n_options = patch_n_options or n_options
+
+    patch_yes_mode = random.choice([True, False])
+
+    def get_yes_no_sample(
+        category: str,
+        n_options: int,
+        yes_mode: bool,
+        exclude_objs: list[str] = [],
+        exclude_distractor_categories: list[str] = [],
+    ):
+        options = []
+        if yes_mode:
+            valid_options = random.sample(
+                (
+                    KeyedSet(task.category_wise_examples[category], mt.tokenizer)
+                    - KeyedSet(exclude_objs, mt.tokenizer)
+                ).values,
+                k=random.choice(range(1, n_options - 1)),
+            )
+            options.extend(valid_options)
+
+        n_distractors = n_options - len(options)
+        other_categories = list(
+            set(task.category_wise_examples.keys())
+            - {category}
+            - set(exclude_distractor_categories)
+        )
+        for _ in range(n_distractors):
+            other_category = random.choice(other_categories)
+            options.append(
+                random.choice(
+                    (
+                        KeyedSet(
+                            task.category_wise_examples[other_category], mt.tokenizer
+                        )
+                        - KeyedSet(exclude_objs + options, mt.tokenizer)
+                    ).values
+                )
+            )
+
+        random.shuffle(options)
+
+        return YesNoSample(
+            prompt_template=task.prompt_templates[prompt_template_idx],
+            options=options,
+            yes=yes_mode,
+            category=category,
+            prediction=None,
+            default_option_style=option_style,
+            ans_token_id=get_first_token_id(
+                name="Yes" if yes_mode else "No", tokenizer=mt.tokenizer, prefix=" "
+            ),
+        )
+
+    patch_sample = get_yes_no_sample(
+        category=patch_category,
+        n_options=patch_n_options,
+        yes_mode=patch_yes_mode,
+        exclude_objs=[],
+        exclude_distractor_categories=[],
+    )
+
+    clean_sample = get_yes_no_sample(
+        category=clean_category,
+        n_options=clean_n_options,
+        yes_mode=patch_yes_mode,
+        exclude_objs=patch_sample.options,
+        exclude_distractor_categories=[
+            patch_category
+        ],  # ensure that patch_category items are not used as distractors in clean sample
+    )
+
+    clean_sample.metadata = {
+        "track_category": patch_category,
+        "track_yes_mode": not patch_yes_mode,  # the answer should change
+        "track_type_obj_token_id": get_first_token_id(
+            name="Yes" if not patch_yes_mode else "No",
+            tokenizer=mt.tokenizer,
+            prefix=" ",
+        ),
+    }
+
+    if filter_by_lm_prediction:
+        test_samples = [patch_sample, clean_sample]
+        gold_sample = copy.deepcopy(patch_sample)
+        gold_sample.options = clean_sample.options
+        gold_sample.yes = clean_sample.metadata["track_yes_mode"]
+        gold_sample.ans_token_id = clean_sample.metadata["track_type_obj_token_id"]
+        test_samples.append(gold_sample)
+
+        for sample in test_samples:
+            logger.info(
+                f"{sample.prompt()} >> {mt.tokenizer.decode(sample.ans_token_id)}"
+            )
+            if retry_count >= 10:
+                break
+            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
+            is_correct, predictions, track_options = verify_correct_option(
+                mt=mt,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in ["Yes", "No"]
+                ],
+                input=tokenized,
+            )
+            sample.metadata["tokenized"] = tokenized.data
+
+            if not is_correct:
+                logger.error(
+                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
+                )
+                return get_counterfactual_samples_within_yes_no_task(
+                    task=task,
+                    mt=mt,
+                    n_options=n_options,
+                    clean_n_options=clean_n_options,
+                    patch_n_options=patch_n_options,
+                    prompt_template_idx=prompt_template_idx,
+                    patch_prompt_template_idx=patch_prompt_template_idx,
+                    clean_prompt_template_idx=clean_prompt_template_idx,
+                    option_style=option_style,
+                    patch_option_style=patch_option_style,
+                    clean_option_style=clean_option_style,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    patch_category=patch_category,
+                    clean_category=clean_category,
+                    verbose=verbose,
+                    retry_count=retry_count + 1,
                 )
             sample.prediction = track_options
 
@@ -2352,6 +2489,6 @@ get_counterfactual_samples_interface = {
     "select_one": get_counterfactual_samples_within_task,
     "select_order": get_counterfactual_samples_within_task,
     "counting": get_counterfactual_samples_within_counting_task,
-    "yes_no": get_counterfactual_samples_within_counting_task,
+    "yes_no": get_counterfactual_samples_within_yes_no_task,
     "select_first": get_counterfactual_samples_within_first_task,
 }
