@@ -9,7 +9,7 @@ import random
 from ast import literal_eval
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional, Sequence
+from typing import Any, Literal, Optional, Sequence, Union
 
 import torch
 from dataclasses_json import DataClassJsonMixin
@@ -300,12 +300,41 @@ class DeductionSample(DataClassJsonMixin):
 
 @dataclass
 class CounterFactualSamplePair(DataClassJsonMixin):
-    patch_sample: SelectionSample | CountingSample | YesNoSample
-    clean_sample: SelectionSample | CountingSample | YesNoSample
+    patch_sample: Union[SelectionSample, CountingSample, YesNoSample]
+    clean_sample: Union[SelectionSample, CountingSample, YesNoSample]
+
+    @staticmethod
+    def sample_type_to_class():
+        return {
+            "selection": SelectionSample,
+            "counting": CountingSample,
+            "yes_no": YesNoSample,
+        }
 
     def detensorize(self):
+        for sample in [self.patch_sample, self.clean_sample]:
+            class_name = type(sample).__name__
+            type_to_name = {
+                "SelectionSample": "selection",
+                "CountingSample": "counting",
+                "YesNoSample": "yes_no",
+            }
+            sample.metadata["sample_type"] = type_to_name[class_name]
         self.patch_sample.detensorize()
         self.clean_sample.detensorize()
+
+    @staticmethod
+    def from_dict(d):
+        sample_type = d["patch_sample"]["metadata"].pop("sample_type")
+        sample_cls = CounterFactualSamplePair.sample_type_to_class()[sample_type]
+        patch_sample = sample_cls.from_dict(d["patch_sample"])
+        sample_type = d["clean_sample"]["metadata"].pop("sample_type")
+        sample_cls = CounterFactualSamplePair.sample_type_to_class()[sample_type]
+        clean_sample = sample_cls.from_dict(d["clean_sample"])
+        return CounterFactualSamplePair(
+            patch_sample=patch_sample,
+            clean_sample=clean_sample,
+        )
 
 
 ########################################### </Sample Data Classes> ##########################################

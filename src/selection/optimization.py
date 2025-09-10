@@ -19,7 +19,12 @@ from src.functional import (
 )
 from src.hooking.llama_attention import LlamaAttentionPatcher
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample, get_options_for_answer
+from src.selection.data import (
+    CountingSample,
+    SelectionSample,
+    YesNoSample,
+    get_options_for_answer,
+)
 from src.selection.functional import (
     cache_q_projections,
     find_quesmark_pos,
@@ -761,8 +766,8 @@ from src.selection.functional import find_quesmark_pos
 @torch.inference_mode()
 def validate_q_proj_ie_on_sample_pair(
     mt: ModelandTokenizer,
-    clean_sample: SelectionSample,
-    patch_sample: SelectionSample,
+    clean_sample: SelectionSample | CountingSample | YesNoSample,
+    patch_sample: SelectionSample | CountingSample | YesNoSample,
     heads: list[tuple[int, int]],
     query_indices: dict[int, int] = {-1: -1},  # patch_idx -> clean_idx
     add_ques_pos_to_query_indices: bool = False,
@@ -967,7 +972,6 @@ def validate_q_proj_ie_on_sample_pair(
             # options=clean_sample.options,
             options=[f"{opt}," for opt in clean_sample.options[:-1]]
             + [f"{clean_sample.options[-1]}."],
-            pivot=clean_sample.subj,
             mt=mt,
             heads=heads,
             query_patches=q_proj_patches,
