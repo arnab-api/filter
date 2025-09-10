@@ -1554,7 +1554,7 @@ class SelectFirstTask(SelectOneTask):
             return SelectFirstTask(
                 task_name="select_first",
                 category_type=data.get("name", category_type),
-                prompt_templates=data["first_item_templates"],
+                prompt_templates=data["first_item_in_cat_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
             )
 
@@ -1562,6 +1562,113 @@ class SelectFirstTask(SelectOneTask):
         return f"""SelectFirstTask: ({self.category_type})
 Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
 """
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        prompt_template_idx: int = 0,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        subj: str | None = None,
+        n_distractors: int = 5,
+        filter_by_lm_prediction: bool = False,
+        obj_idx: int | None = None,
+        exclude_objs: Sequence[str] = [],
+        exclude_distractor_categories: Sequence[str] = [],
+        insert_distractor: Sequence[tuple[str, int]] = [],
+        retry_count: int = 0,
+        output_formatting: Literal["zero_shot", "object", "lettered"] = "zero_shot",
+    ) -> SelectionSample:
+
+        sample = super().get_random_sample(
+            mt=mt,
+            prompt_template_idx=0,
+            option_style=option_style,
+            category=category,
+            subj=subj,
+            n_distractors=n_distractors,
+            filter_by_lm_prediction=False,  # disable filtering in the parent call
+            obj_idx=obj_idx,
+            exclude_objs=exclude_objs,
+            exclude_distractor_categories=exclude_distractor_categories,
+            insert_distractor=insert_distractor,
+            retry_count=retry_count,
+            output_formatting=output_formatting,
+        )
+
+        # add other items of the same category
+        category_items = copy.deepcopy(self.category_wise_examples[sample.category])
+        random.shuffle(category_items)
+        category_items = KeyedSet(category_items, mt.tokenizer)
+        num_additional_items = random.randint(1, 3)
+        additional_items = random.sample(
+            (
+                category_items - KeyedSet(sample.options + exclude_objs, mt.tokenizer)
+            ).values,
+            k=num_additional_items,
+        )
+        sample.options = sample.options + additional_items
+        random.shuffle(sample.options)
+
+        category_items = [sample.obj] + additional_items
+        obj, obj_idx = None, None
+        for idx, option in enumerate(sample.options):
+            if option in category_items:
+                if obj is None:
+                    obj = option
+                    obj_idx = idx
+                break
+
+        sample.obj = obj
+        sample.obj_idx = obj_idx
+        sample.ans_token_id = get_first_token_id(obj, mt.tokenizer, prefix=" ")
+        sample.prompt_template = self.prompt_templates[prompt_template_idx]
+        sample.default_option_style = option_style
+
+        if filter_by_lm_prediction:
+            prompt = sample.prompt(option_style=option_style)
+            # logger.info(f"\nPrompt: {prompt}")
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                input=tokenized_inputs,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in get_options_for_answer(sample)
+                ],
+                prefix=" ",
+            )
+
+            # if predictions[0].token_id != obj_token_id:
+            if not is_correct:
+                logger.error(
+                    f"""Sample = {sample}
+Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
+Retry count: {retry_count + 1}. Retrying ..."""
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    category=category,
+                    subj=subj,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    obj_idx=obj_idx,
+                    exclude_objs=exclude_objs,
+                    exclude_distractor_categories=exclude_distractor_categories,
+                    insert_distractor=insert_distractor,
+                    retry_count=retry_count + 1,
+                    output_formatting=output_formatting,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
 
 
 #################################################################################################
