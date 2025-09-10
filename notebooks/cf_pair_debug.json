@@ -1,0 +1,268 @@
+{
+  "patch_sample": {
+    "obj": "Grape",
+    "obj_idx": 2,
+    "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+    "options": [
+      "Air fryer",
+      "Tractor",
+      "Grape",
+      "Iris",
+      "Shower",
+      "Gloves"
+    ],
+    "answer": "Grape",
+    "subj": "Blueberry",
+    "category": "fruit",
+    "prediction": [
+      {
+        "token": " Grape",
+        "prob": 0.86328125,
+        "logit": 21.375,
+        "token_id": 86502,
+        "metadata": null
+      },
+      {
+        "token": " **",
+        "prob": 0.1328125,
+        "logit": 19.5,
+        "token_id": 5231,
+        "metadata": null
+      },
+      {
+        "token": "  ",
+        "prob": 0.00156402587890625,
+        "logit": 15.0625,
+        "token_id": 139,
+        "metadata": null
+      },
+      {
+        "token": "\n\n",
+        "prob": 0.001220703125,
+        "logit": 14.8125,
+        "token_id": 109,
+        "metadata": null
+      },
+      {
+        "token": "\n",
+        "prob": 0.000308990478515625,
+        "logit": 13.4375,
+        "token_id": 108,
+        "metadata": null
+      }
+    ],
+    "ans_token_id": 86502,
+    "metadata": {
+      "track_category": "vehicle",
+      "track_type_obj": "Tractor",
+      "track_type_obj_idx": 1,
+      "track_type_obj_token_id": 131409,
+      "ques_pos": 26,
+      "tokenized": {
+        "input_ids": [
+          [
+            2,
+            6928,
+            235292,
+            4252,
+            110191,
+            235269,
+            131409,
+            235269,
+            86502,
+            235269,
+            55312,
+            235269,
+            72364,
+            235269,
+            93227,
+            235265,
+            108,
+            13033,
+            3932,
+            1450,
+            9113,
+            8248,
+            3131,
+            603,
+            476,
+            9471,
+            235336,
+            108,
+            1261,
+            235292
+          ]
+        ],
+        "attention_mask": [
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      "sample_type": "selection"
+    },
+    "default_option_style": "single_line"
+  },
+  "clean_sample": {
+    "obj": "Tractor",
+    "obj_idx": 1,
+    "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+    "options": [
+      "Air fryer",
+      "Tractor",
+      "Grape",
+      "Iris",
+      "Shower",
+      "Gloves"
+    ],
+    "answer": "Tractor",
+    "subj": "Submarine",
+    "category": "vehicle",
+    "prediction": [
+      {
+        "token": " Tractor",
+        "prob": 0.8984375,
+        "logit": 21.25,
+        "token_id": 131409,
+        "metadata": null
+      },
+      {
+        "token": " **",
+        "prob": 0.0947265625,
+        "logit": 19.0,
+        "token_id": 5231,
+        "metadata": null
+      },
+      {
+        "token": "\n\n",
+        "prob": 0.0020904541015625,
+        "logit": 15.1875,
+        "token_id": 109,
+        "metadata": null
+      },
+      {
+        "token": "  ",
+        "prob": 0.0016326904296875,
+        "logit": 14.9375,
+        "token_id": 139,
+        "metadata": null
+      },
+      {
+        "token": "\n",
+        "prob": 0.0005645751953125,
+        "logit": 13.875,
+        "token_id": 108,
+        "metadata": null
+      }
+    ],
+    "ans_token_id": 131409,
+    "metadata": {
+      "track_category": "fruit",
+      "track_type_obj": "Grape",
+      "track_type_obj_idx": 2,
+      "track_type_obj_token_id": 86502,
+      "ques_pos": 26,
+      "tokenized": {
+        "input_ids": [
+          [
+            2,
+            6928,
+            235292,
+            4252,
+            110191,
+            235269,
+            131409,
+            235269,
+            86502,
+            235269,
+            55312,
+            235269,
+            72364,
+            235269,
+            93227,
+            235265,
+            108,
+            13033,
+            3932,
+            1450,
+            9113,
+            8248,
+            3131,
+            603,
+            476,
+            8692,
+            235336,
+            108,
+            1261,
+            235292
+          ]
+        ],
+        "attention_mask": [
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      "sample_type": "selection"
+    },
+    "default_option_style": "single_line"
+  }
+}

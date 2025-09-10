@@ -1,5 +1,3 @@
-import os
-import re
 import subprocess
 import sys
 import time
@@ -7,15 +5,11 @@ import time
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-# Command to run when GPU becomes available
-COMMANDS_TO_RUN = [
-    'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="counting" --prompt_temp_idx=1 -v 2>&1 | tee count_obj_llama.log',
-    'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v 2>&1 | tee select_obj_llama.log',
-]
-# COMMAND_TO_RUN = 'echo ">>> Running command because GPU memory is sufficient. <<<"'
+COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v 2>&1 | tee select_obj_llama.log'
+# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=4096 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="counting" --prompt_temp_idx=1 -v 2>&1 | tee count_obj_llama.log'
 
 # Memory threshold in GB
-MEM_THRESHOLD = 50
+MEM_THRESHOLD = 40
 CUDA_INDEX = 0
 
 # Check interval in seconds (10 minutes)
@@ -63,19 +57,18 @@ def main():
             print(
                 f"GPU has {free_memory:.2f}GB of free memory, which exceeds threshold of {MEM_THRESHOLD}GB."
             )
-            for CMD in COMMANDS_TO_RUN:
-                print("=" * 80)
-                print(f"Running command: {CMD}")
-                print("=" * 80)
+            print("=" * 80)
+            print(f"Running command: {COMMAND_TO_RUN}")
+            print("=" * 80)
 
-                try:
-                    # Run the command when memory threshold is met
-                    subprocess.run(CMD, shell=True, check=True)
-                    print("Command completed successfully. Exiting.")
-                    break
-                except subprocess.CalledProcessError as e:
-                    print(f"Error running command: {e}")
-                    sys.exit(1)
+            try:
+                # Run the command when memory threshold is met
+                subprocess.run(COMMAND_TO_RUN, shell=True, check=True)
+                print("Command completed successfully. Exiting.")
+                break
+            except subprocess.CalledProcessError as e:
+                print(f"Error running command: {e}")
+                sys.exit(1)
         else:
             print(
                 f"Not enough GPU memory available. Waiting {CHECK_INTERVAL/60} minutes before checking again..."
@@ -85,5 +78,5 @@ def main():
 
 if __name__ == "__main__":
     print(">>> Running GPU monitor <<<")
-    print(f"{COMMANDS_TO_RUN}")
+    print(f"{COMMAND_TO_RUN}")
     main()

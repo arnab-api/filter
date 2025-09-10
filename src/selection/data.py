@@ -1,3 +1,6 @@
+#! TODO(arnab):
+# The sample classes should inherit from a common base class to avoid code duplication.
+
 import copy
 import json
 import logging
@@ -48,16 +51,17 @@ COUNT_STR_MAP = {
 }
 
 
+########################################## <Sample Data Classes> ##########################################
 @dataclass
 class SelectionSample(DataClassJsonMixin):
     obj: str
     obj_idx: int
     prompt_template: str
-    options: Sequence[str]
+    options: list[str]
     answer: str | None = None  # if obj != answer
     subj: str | None = None
     category: str | None = None
-    prediction: Optional[Sequence[PredictedToken]] = None
+    prediction: Optional[list[PredictedToken]] = None
     ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line", "numbered", "bullet"] = "single_line"
@@ -68,7 +72,7 @@ class SelectionSample(DataClassJsonMixin):
             assert self.subj is not None
         if "<_category_>" in self.prompt_template:
             assert self.category is not None
-        if not isinstance(self.options, Sequence):
+        if not isinstance(self.options, list):
             raise TypeError("Options must be a Sequence.")
         if len(self.options) < 2:
             raise ValueError("There must be at least two options.")
@@ -186,10 +190,10 @@ class SelectAllSample(DataClassJsonMixin):
 @dataclass
 class CountingSample(DataClassJsonMixin):
     prompt_template: str
-    options: Sequence[str]
+    options: list[str]
     count: int
     category: str | None = None
-    prediction: Optional[Sequence[PredictedToken]] = None
+    prediction: Optional[list[PredictedToken]] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line"] = "single_line"
     ans_token_id: int | None = None
@@ -198,7 +202,7 @@ class CountingSample(DataClassJsonMixin):
         assert "<_options_>" in self.prompt_template
         if "<_category_>" in self.prompt_template:
             assert self.category is not None
-        if not isinstance(self.options, Sequence):
+        if not isinstance(self.options, list):
             raise TypeError("Options must be a Sequence.")
         if len(self.options) < 2:
             raise ValueError("There must be at least two options.")
@@ -233,10 +237,10 @@ class CountingSample(DataClassJsonMixin):
 @dataclass
 class YesNoSample(DataClassJsonMixin):
     prompt_template: str
-    options: Sequence[str]
+    options: list[str]
     yes: bool
     category: str | None = None
-    prediction: Optional[Sequence[PredictedToken]] = None
+    prediction: Optional[list[PredictedToken]] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line"] = "single_line"
     ans_token_id: int | None = None
@@ -245,7 +249,7 @@ class YesNoSample(DataClassJsonMixin):
         assert "<_options_>" in self.prompt_template
         if "<_category_>" in self.prompt_template:
             assert self.category is not None
-        if not isinstance(self.options, Sequence):
+        if not isinstance(self.options, list):
             raise TypeError("Options must be a Sequence.")
         if len(self.options) < 2:
             raise ValueError("There must be at least two options.")
@@ -253,6 +257,9 @@ class YesNoSample(DataClassJsonMixin):
     def __str__(self):
         answer = "Yes" if self.yes else "No"
         return f"{self.category} -> {self.options}: Ans: {answer}"
+
+    def detensorize(self):
+        self.metadata = detensorize(self.metadata)
 
     def prompt(
         self, option_style: Literal["single_line", "numbered"] | None = None
@@ -292,6 +299,20 @@ class DeductionSample(DataClassJsonMixin):
 
 
 @dataclass
+class CounterFactualSamplePair(DataClassJsonMixin):
+    patch_sample: SelectionSample | CountingSample | YesNoSample
+    clean_sample: SelectionSample | CountingSample | YesNoSample
+
+    def detensorize(self):
+        self.patch_sample.detensorize()
+        self.clean_sample.detensorize()
+
+
+########################################### </Sample Data Classes> ##########################################
+
+
+########################################### <Result Data Classes> ##########################################
+@dataclass
 class ObjectwiseResult:
     rank: int
     pred: PredictedToken
@@ -323,6 +344,10 @@ class SelectionPatchingResult_Multi(DataClassJsonMixin):
     results: dict[str, LayerwiseResult]
 
 
+################################################### </Result Data Classes> ##########################################
+
+
+########################################### <Task Data Classes> ##########################################
 @dataclass
 class SelectOneTask(DataClassJsonMixin):
     category_type: str
@@ -1259,7 +1284,7 @@ Retry count: {retry_count + 1}. Retrying ..."""
                     **kwargs,
                 )
 
-            sample.prediction = track_objs
+            sample.prediction = [pred for token_id, (rank, pred) in track_objs.items()]
 
         sample.metadata["retry_count"] = retry_count
         return sample
@@ -1526,7 +1551,7 @@ Retry count: {retry_count + 1}. Retrying ..."""
                     retry_count=retry_count + 1,
                 )
 
-            sample.prediction = track_objs
+            sample.prediction = [pred for token_id, (rank, pred) in track_objs.items()]
 
         sample.metadata["retry_count"] = retry_count
         return sample
@@ -1669,6 +1694,9 @@ Retry count: {retry_count + 1}. Retrying ..."""
 
         sample.metadata["retry_count"] = retry_count
         return sample
+
+
+########################################### </Task Data Classes> ##########################################
 
 
 #################################################################################################
@@ -2155,7 +2183,9 @@ def get_counterfactual_samples_within_counting_task(
                     retry_count=retry_count + 1,
                     distinct_options=distinct_options,
                 )
-            sample.prediction = track_options
+            sample.prediction = [
+                pred for token_id, (rank, pred) in track_options.items()
+            ]
 
     # find the "?" token position in the samples
     for sample in [patch_sample, clean_sample]:
@@ -2339,7 +2369,9 @@ def get_counterfactual_samples_within_yes_no_task(
                     verbose=verbose,
                     retry_count=retry_count + 1,
                 )
-            sample.prediction = track_options
+            sample.prediction = [
+                pred for token_id, (rank, pred) in track_options.items()
+            ]
 
     # find the "?" token position in the samples
     for sample in [patch_sample, clean_sample]:
@@ -2554,6 +2586,10 @@ def get_counterfactual_samples_within_first_task(
         for sample in test_samples:
             if retry_count >= 10:
                 break
+
+            logger.debug(
+                f"{sample.prompt()} >> {mt.tokenizer.decode(sample.ans_token_id)}"
+            )
             tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
             is_correct, predictions, track_options = verify_correct_option(
                 mt=mt,
@@ -2572,6 +2608,7 @@ def get_counterfactual_samples_within_first_task(
                 logger.error(f"Prediction mismatch!\n" f"Retry Count: {retry_count+1}")
                 return get_counterfactual_samples_within_first_task(
                     task=task,
+                    mt=mt,
                     patch_category=patch_category,
                     clean_category=clean_category,
                     n_options=n_options,
