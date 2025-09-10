@@ -10,10 +10,12 @@ import torch
 from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.selection.data import (
+    CountingSample,
+    CountingTask,
     SelectionSample,
     SelectOneTask,
     SelectOrderTask,
-    get_counterfactual_samples_within_task,
+    get_counterfactual_samples_interface,
 )
 from src.selection.optimization import (
     get_optimal_head_mask_optimized,
@@ -35,7 +37,7 @@ optimization_interface = {
 @torch.inference_mode()
 def prepare_dataset(
     mt: ModelandTokenizer,
-    select_task: SelectOneTask | SelectOrderTask,
+    select_task: SelectOneTask | CountingTask,
     option_config: Literal["distinct", "same", "position"],
     train_limit: int = 512,
     validation_limit: int = 256,
@@ -46,37 +48,42 @@ def prepare_dataset(
     """
     Prepare the dataset for training and validation.
     """
+    counterfactual_sampler = get_counterfactual_samples_interface[select_task.task_name]
     limit = train_limit + validation_limit
     dataset = []
     while len(dataset) < limit:
         logger.debug(f"sample {len(dataset)+1} / {limit}")
-        if option_config == "position":
-            n_distractors = random.choice(range(3, 7))
-            patch_n_distractors = n_distractors
-            clean_n_distractors = n_distractors
-        else:
-            patch_n_distractors = random.choice(range(2, 7))
-            clean_n_distractors = random.choice(range(2, 7))
-        if prompt_template_idx == -1:
-            patch_prompt_template_idx = random.choice(
-                range(len(select_task.prompt_templates))
-            )
-            clean_prompt_template_idx = random.choice(
-                range(len(select_task.prompt_templates))
-            )
-        else:
-            patch_prompt_template_idx = prompt_template_idx
-            clean_prompt_template_idx = prompt_template_idx
-        patch_sample, clean_sample = get_counterfactual_samples_within_task(
+        kwargs = {}
+        if isinstance(select_task, CountingTask):
+            kwargs["clean_n_options"] = random.choice(range(4, 7))
+            kwargs["patch_n_options"] = random.choice(range(4, 7))
+        elif isinstance(select_task, SelectOneTask):
+            if option_config == "position":
+                n_distractors = random.choice(range(3, 7))
+                kwargs["patch_n_distractors"] = n_distractors
+                kwargs["clean_n_distractors"] = n_distractors
+            else:
+                kwargs["patch_n_distractors"] = random.choice(range(2, 7))
+                kwargs["clean_n_distractors"] = random.choice(range(2, 7))
+            if prompt_template_idx == -1:
+                kwargs["patch_prompt_template_idx"] = random.choice(
+                    range(len(select_task.prompt_templates))
+                )
+                kwargs["clean_prompt_template_idx"] = random.choice(
+                    range(len(select_task.prompt_templates))
+                )
+            else:
+                kwargs["patch_prompt_template_idx"] = prompt_template_idx
+                kwargs["clean_prompt_template_idx"] = prompt_template_idx
+
+        patch_sample, clean_sample = counterfactual_sampler(
             task=select_task,
             mt=mt,
-            patch_n_distractors=patch_n_distractors,
-            clean_n_distractors=clean_n_distractors,
-            patch_prompt_template_idx=patch_prompt_template_idx,
-            clean_prompt_template_idx=clean_prompt_template_idx,
             option_style=option_style,
             distinct_options=distinct_options,
+            prompt_template_idx=prompt_template_idx,
             filter_by_lm_prediction=True,
+            **kwargs,
         )
         if option_config == "position":
             clean_sample.metadata = {
@@ -279,14 +286,17 @@ def find_optimal_masks(
     if optimization_function == get_optimal_head_mask_optimized:
         indices_kwargs["add_ques_pos_to_query_indices"] = True
     elif optimization_function == get_optimal_head_mask_prev:
-        indices_kwargs["query_indices"] = [-3, -2, -1]
+        # indices_kwargs["query_indices"] = [-3, -2, -1]
+        indices_kwargs["query_indices"] = [
+            -1
+        ]  #! faster and getting better results with only the last token
 
     optimal_masks, losses = optimization_function(
         mt=mt,
         train_set=train_set,
         learning_rate=1e-2,
         n_epochs=n_epochs,
-        lamb=1e-1,
+        lamb=2e-2,  #! optimized for llama-70b
         batch_size=batch_size,
         save_path=save_path,
         save_step=5,
@@ -296,7 +306,7 @@ def find_optimal_masks(
         torch.nonzero(optimal_masks > 0.5, as_tuple=False).to(dtype=torch.int).tolist()
     )
     selected_heads = [(layer_idx, head_idx) for layer_idx, head_idx in selected_heads]
-    logger.info(f"Selected heads: {selected_heads}")
+    logger.info(f"Selected heads ({len(selected_heads)}): {selected_heads}")
 
     validate(mt=mt, validation_set=validation_set, selected_heads=selected_heads)
 
@@ -359,7 +369,7 @@ if __name__ == "__main__":
         "--option_config",
         choices=["distinct", "same", "position"],
         help="Configuration for option selection",
-        default="distinct",
+        default="distinct",  #! we almost always want distinct options
     )
 
     parser.add_argument(
@@ -398,6 +408,14 @@ if __name__ == "__main__":
         help="Which optimization interface to use",
     )
 
+    parser.add_argument(
+        "--task",
+        type=str,
+        choices=["select_one", "counting"],
+        default="select_one",
+        help="Which task to optimize"
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -416,13 +434,18 @@ if __name__ == "__main__":
         attn_implementation="eager",
     )
 
+    TASK_NAME_TO_CLASS = {
+        "select_one": SelectOneTask,
+        "counting": CountingTask,
+    }
+
     # load the selection class
-    select_task = SelectOneTask.load(
+    select_task = TASK_NAME_TO_CLASS[args.task].load(
         path=os.path.join(
             env_utils.DEFAULT_DATA_DIR, "selection", f"{args.category}.json"
         )
     )
-    select_task.filter_single_token(mt.tokenizer, prefix=" ")
+    # select_task.filter_single_token(mt.tokenizer, prefix=" ")
     logger.info(f"{select_task=}")
 
     # Setup cache directory

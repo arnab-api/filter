@@ -204,7 +204,7 @@ class CountingSample(DataClassJsonMixin):
             raise ValueError("There must be at least two options.")
 
     def __str__(self):
-        return f"{self.count} {self.category} -> {self.options}: Ans: {self.prediction}"
+        return f"{self.category} -> {self.options}: Ans: {self.count}"
 
     def detensorize(self):
         self.metadata = detensorize(self.metadata)
@@ -1574,6 +1574,15 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
 #################################################################################################
 # Counterfactual Sample Generation for patching experiments
 #################################################################################################
+def get_options_for_answer(sample: SelectionSample | CountingSample | YesNoSample):
+    if isinstance(sample, SelectionSample):
+        return sample.options
+    elif isinstance(sample, CountingSample):
+        return list(COUNT_STR_MAP.values())
+    elif isinstance(sample, YesNoSample):
+        return ["Yes", "No"]
+    else:
+        raise ValueError(f"Unsupported sample type: {type(sample)}")
 
 
 @torch.inference_mode()
@@ -1835,20 +1844,20 @@ def get_counterfactual_samples_within_task(
                 )
             sample.prediction = predictions
 
-        # find the "?" token position in the samples
-        for sample in [patch_sample, clean_sample]:
-            tokenized = prepare_input(
-                tokenizer=mt, prompts=sample.prompt(), return_offsets_mapping=True
-            )
-            offsets = tokenized.pop("offset_mapping")[0]
-            ques_range = find_token_range(
-                string=sample.prompt(),
-                substring="?",
-                tokenizer=mt.tokenizer,
-                offset_mapping=offsets,
-            )
-            sample.metadata["ques_pos"] = ques_range[1] - 1
-            sample.metadata["tokenized"] = tokenized.data
+    # find the "?" token position in the samples
+    for sample in [patch_sample, clean_sample]:
+        tokenized = prepare_input(
+            tokenizer=mt, prompts=sample.prompt(), return_offsets_mapping=True
+        )
+        offsets = tokenized.pop("offset_mapping")[0]
+        ques_range = find_token_range(
+            string=sample.prompt(),
+            substring="?",
+            tokenizer=mt.tokenizer,
+            offset_mapping=offsets,
+        )
+        sample.metadata["ques_pos"] = ques_range[1] - 1
+        sample.metadata["tokenized"] = tokenized.data
 
     return patch_sample, clean_sample
 
@@ -1857,21 +1866,21 @@ def get_counterfactual_samples_within_task(
 def get_counterfactual_samples_within_counting_task(
     task: CountingTask | YesNoTask,
     mt: ModelandTokenizer,
-    n_options: int,
-    n_clean=None,
-    n_patch=None,
+    patch_category=None,
+    clean_category=None,
+    filter_by_lm_prediction=True,
+    distinct_options: bool = True,
+    n_options: int = 5,
+    clean_n_options: int | None = None,
+    patch_n_options: int | None = None,
     prompt_template_idx=1,
     patch_prompt_template_idx: int | None = None,
     clean_prompt_template_idx: int | None = None,
     option_style="single_line",
     patch_option_style: str | None = None,
     clean_option_style: str | None = None,
-    filter_by_lm_prediction=True,
-    patch_category=None,
-    clean_category=None,
-    verbose=True,
+    verbose=False,
     retry_count=0,
-    distinct_options: bool = True,
 ):
     # Set parameter defaults
     if patch_prompt_template_idx is None:
@@ -1880,155 +1889,199 @@ def get_counterfactual_samples_within_counting_task(
         clean_prompt_template_idx = prompt_template_idx
 
     # Get counts
+    # if isinstance(task, YesNoTask):
+    #     if random.random() < 0.5:
+    #         n_clean = random.randint(1, n_options)
+    #         n_patch = n_options - n_clean
+    #     else:
+    #         n_clean = 0
+    #         n_patch = n_options
+    # else:
+    #     if n_clean and n_patch:
+    #         n_options = n_clean + n_patch
+    #     elif n_clean:
+    #         n_patch = n_options - n_clean
+    #     elif n_patch:
+    #         n_clean = n_options - n_patch
+    #     else:
+    #         assert n_options > 2, "n_options must be greater than 2"
+    #         while True:
+    #             n_clean = random.randint(1, n_options - 1)
+    #             n_patch = n_options - n_clean
+    #             if n_clean != n_patch:
+    #                 break
+    # assert n_clean != n_patch, "n_clean and n_patch must be different"
 
-    if isinstance(task, YesNoTask):
-        if random.random() < 0.5:
-            n_clean = random.randint(1, n_options)
-            n_patch = n_options - n_clean
-        else:
-            n_clean = 0
-            n_patch = n_options
-    else:
-        if n_clean and n_patch:
-            n_options = n_clean + n_patch
-        elif n_clean:
-            n_patch = n_options - n_clean
-        elif n_patch:
-            n_clean = n_options - n_patch
-        else:
-            n_clean = random.randint(1, n_options - 1)
-            n_patch = n_options - n_clean
-
-    # Get the categories
     categories = list(task.category_wise_examples.keys())
+    patch_category = patch_category or random.choice(categories)
+    clean_category = clean_category or random.choice(
+        list(set(categories) - {patch_category})
+    )
 
-    # Set the patch category
-    if patch_category is None:
-        patch_category = random.choice(categories)
+    clean_n_options = clean_n_options or n_options
+    patch_n_options = patch_n_options or n_options
 
-    # Set the patch objects
-    patch_objects = random.sample(task.category_wise_examples[patch_category], n_patch)
+    def divide_cat_vs_distractors(total: int) -> tuple[int, int]:
+        assert total > 2, "total must be greater than 2"
+        while True:
+            n_cat = random.randint(1, total - 1)
+            n_distractors = total - n_cat
+            if n_cat != n_distractors:
+                break
+        return n_cat, n_distractors
 
-    # Set the clean category
-    if clean_category is None:
-        clean_category = random.choice(list(set(categories) - {patch_category}))
-
-    # Set the clean objects
-    clean_objects = random.sample(task.category_wise_examples[clean_category], n_clean)
+    def get_counting_sample(
+        n_cat_clean: int,
+        n_cat_patch: int,
+        clean_cat: str = clean_category,
+        patch_cat: str = patch_category,
+        exclude_objs: list[str] = [],
+    ) -> CountingSample:
+        clean_objs = random.sample(
+            (
+                KeyedSet(task.category_wise_examples[clean_cat], mt.tokenizer)
+                - KeyedSet(exclude_objs, mt.tokenizer)
+            ).values,
+            n_cat_clean,
+        )
+        patch_objs = random.sample(
+            (
+                KeyedSet(task.category_wise_examples[patch_cat], mt.tokenizer)
+                - KeyedSet(exclude_objs + clean_objs, mt.tokenizer)
+            ).values,
+            n_cat_patch,
+        )
+        options = clean_objs + patch_objs
+        random.shuffle(options)
+        return CountingSample(
+            options=options,
+            count=len(clean_objs),
+            category=clean_cat,
+            prompt_template=task.prompt_templates[clean_prompt_template_idx],
+            default_option_style=clean_option_style or option_style,
+            ans_token_id=get_first_token_id(
+                name=COUNT_STR_MAP[n_cat_clean], tokenizer=mt.tokenizer, prefix=" "
+            ),
+        )
 
     if distinct_options is False:
-        all_objects = clean_objects + patch_objects
-        random.shuffle(all_objects)
-        clean_options = all_objects
-        patch_options = all_objects
+        assert clean_n_options == patch_n_options
+        n_cat_clean, n_cat_patch = divide_cat_vs_distractors(clean_n_options)
+        clean_sample = get_counting_sample(n_cat_clean, n_cat_patch)
+
+        patch_sample = copy.deepcopy(clean_sample)
+        patch_sample.count = n_cat_patch
+        patch_sample.category = patch_category
+        patch_sample.prompt_template = task.prompt_templates[patch_prompt_template_idx]
+        patch_sample.ans_token_id = get_first_token_id(
+            name=COUNT_STR_MAP[n_cat_patch], tokenizer=mt.tokenizer, prefix=" "
+        )
+
+        clean_sample.metadata = {
+            "track_category": patch_category,
+            "track_count": n_cat_patch,
+            "track_type_obj_token_id": get_first_token_id(
+                name=COUNT_STR_MAP[n_cat_patch], tokenizer=mt.tokenizer, prefix=" "
+            ),
+        }
     else:
-        alt_clean_objects = random.sample(
-            [
-                opt
-                for opt in task.category_wise_examples[clean_category]
-                if opt not in clean_objects
-            ],
-            n_clean,
+        while True:
+            n_clean_cat_clean, n_clean_cat_patch = divide_cat_vs_distractors(
+                clean_n_options
+            )
+            n_patch_cat_patch, n_patch_cat_clean = divide_cat_vs_distractors(
+                patch_n_options
+            )
+            if (
+                n_clean_cat_patch != n_patch_cat_patch
+            ):  #! ensures different counts of patch category
+                break
+
+        clean_sample = get_counting_sample(
+            n_cat_clean=n_clean_cat_clean,
+            n_cat_patch=n_clean_cat_patch,
+            clean_cat=clean_category,
+            patch_cat=patch_category,
         )
-        # print(f"{alt_clean_objects=}")
-
-        alt_patch_objects = random.sample(
-            [
-                opt
-                for opt in task.category_wise_examples[patch_category]
-                if opt not in patch_objects
-            ],
-            n_patch,
+        patch_sample = get_counting_sample(
+            n_cat_clean=n_patch_cat_patch,
+            n_cat_patch=n_patch_cat_clean,
+            clean_cat=patch_category,
+            patch_cat=clean_category,
+            exclude_objs=clean_sample.options,
         )
-        # print(f"{alt_patch_objects=}")
 
-        # TODO: Check that its ok that these lists are in different orders.
-        # The prediction has to do with the number of items of a given category,
-        # so I think as long as the numbers add up then its fine.
-        # It may even be preferable this way, having the orders unsynchronized.
-        clean_options = clean_objects + alt_patch_objects
-        random.shuffle(clean_options)
-        print(f"{clean_options=}")
-        patch_options = patch_objects + alt_clean_objects
-        random.shuffle(patch_options)
-        print(f"{patch_options=}")
+        clean_sample.metadata = {
+            "track_category": patch_category,
+            "track_count": n_clean_cat_patch,
+            "track_type_obj_token_id": get_first_token_id(
+                name=COUNT_STR_MAP[n_clean_cat_patch],
+                tokenizer=mt.tokenizer,
+                prefix=" ",
+            ),
+        }
 
-    patch_sample = CountingSample(
-        options=patch_options,
-        count=n_patch,
-        category=patch_category,
-        prompt_template=task.prompt_templates[patch_prompt_template_idx],
-        default_option_style=patch_option_style or option_style,
-    )
-
-    clean_sample = CountingSample(
-        options=clean_options,
-        count=n_clean,
-        category=clean_category,
-        prompt_template=task.prompt_templates[clean_prompt_template_idx],
-        default_option_style=clean_option_style or option_style,
-    )
-
-    if verbose:
-        print(f"{clean_category=}")
-        print(f"{patch_category=}")
-        print(f"{clean_options=}")
-        print(f"{patch_options=}")
+    logger.debug(f"{clean_category=} | {clean_sample.options=}")
+    logger.debug(f"{patch_category=} | {patch_sample.options=}")
 
     if filter_by_lm_prediction:
         test_samples = [patch_sample, clean_sample]
+        if distinct_options is True:
+            gold_sample = copy.deepcopy(patch_sample)
+            gold_sample.options = clean_sample.options
+            gold_sample.ans_token_id = clean_sample.metadata["track_type_obj_token_id"]
+            gold_sample.count = clean_sample.metadata["track_count"]
+            test_samples.append(gold_sample)
 
         for sample in test_samples:
+            logger.info(
+                f"{sample.prompt()} >> {mt.tokenizer.decode(sample.ans_token_id)}"
+            )
             if retry_count >= 10:
                 break
             tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
             if isinstance(task, YesNoTask):
                 if sample.count == 0:
-                    target_token_id = mt.tokenizer.encode(
-                        " No", add_special_tokens=False
-                    )[0]
+                    target_token_id = get_first_token_id(
+                        name="No", tokenizer=mt.tokenizer, prefix=" "
+                    )
                     print("No")
                 else:
-                    target_token_id = mt.tokenizer.encode(
-                        " Yes", add_special_tokens=False
-                    )[0]
+                    target_token_id = get_first_token_id(
+                        name="Yes", tokenizer=mt.tokenizer, prefix=" "
+                    )
                     print("Yes")
+                option_token_ids = [
+                    get_first_token_id(name="Yes", tokenizer=mt.tokenizer, prefix=" "),
+                    get_first_token_id(name="No", tokenizer=mt.tokenizer, prefix=" "),
+                ]
             else:
-                count_str_map = {
-                    0: " zero",
-                    1: " one",
-                    2: " two",
-                    3: " three",
-                    4: " four",
-                    5: " five",
-                    6: " six",
-                    7: " seven",
-                    8: " eight",
-                    9: " nine",
-                    10: " ten",
-                }
-                target_token_id = mt.tokenizer.encode(
-                    count_str_map[sample.count], add_special_tokens=False
-                )[0]
-            # print(f"{target_token_id=}")
+                target_token_id = get_first_token_id(
+                    name=COUNT_STR_MAP[sample.count], tokenizer=mt.tokenizer, prefix=" "
+                )
+                option_token_ids = [
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in COUNT_STR_MAP.values()
+                ]
+            print(f"{target_token_id=} | {mt.tokenizer.decode(target_token_id)=}")
             is_correct, predictions, track_options = verify_correct_option(
                 mt=mt,
                 target=target_token_id,
-                options=sample.options,
+                options=option_token_ids,
                 input=tokenized,
-                is_counting_task=True,
             )
             sample.metadata["tokenized"] = tokenized.data
-            sample.metadata["predictions"] = predictions
 
             if not is_correct:
-                logger.error(f"Prediction mismatch!" f"Retry Count: {retry_count}")
+                logger.error(
+                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
+                )
                 return get_counterfactual_samples_within_counting_task(
                     task=task,
                     mt=mt,
                     n_options=n_options,
-                    n_clean=n_clean,
-                    n_patch=n_patch,
+                    clean_n_options=clean_n_options,
+                    patch_n_options=patch_n_options,
                     prompt_template_idx=prompt_template_idx,
                     patch_prompt_template_idx=patch_prompt_template_idx,
                     clean_prompt_template_idx=clean_prompt_template_idx,
@@ -2042,7 +2095,22 @@ def get_counterfactual_samples_within_counting_task(
                     retry_count=retry_count + 1,
                     distinct_options=distinct_options,
                 )
-            sample.prediction = predictions
+            sample.prediction = track_options
+
+    # find the "?" token position in the samples
+    for sample in [patch_sample, clean_sample]:
+        tokenized = prepare_input(
+            tokenizer=mt, prompts=sample.prompt(), return_offsets_mapping=True
+        )
+        offsets = tokenized.pop("offset_mapping")[0]
+        ques_range = find_token_range(
+            string=sample.prompt(),
+            substring="?",
+            tokenizer=mt.tokenizer,
+            offset_mapping=offsets,
+        )
+        sample.metadata["ques_pos"] = ques_range[1] - 1
+        sample.metadata["tokenized"] = tokenized.data
 
     return patch_sample, clean_sample
 

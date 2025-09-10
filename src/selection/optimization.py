@@ -19,7 +19,7 @@ from src.functional import (
 )
 from src.hooking.llama_attention import LlamaAttentionPatcher
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample
+from src.selection.data import SelectionSample, get_options_for_answer
 from src.selection.functional import (
     cache_q_projections,
     find_quesmark_pos,
@@ -767,6 +767,7 @@ def validate_q_proj_ie_on_sample_pair(
     query_indices: dict[int, int] = {-1: -1},  # patch_idx -> clean_idx
     add_ques_pos_to_query_indices: bool = False,
     verify_head_behavior_on: Optional[int] = None,
+    generate_full_ans_for_verify: bool = True,
     ablate_possible_ans_info_from_options: bool = False,
     amplification_scale: float = 1.0,
     must_track_tokens: list[int] = [],
@@ -800,6 +801,8 @@ def validate_q_proj_ie_on_sample_pair(
         patch_samples = []
         task = patch_args["task"]
         logger.debug(f"Sampling {patch_args.get('batch_size', 1)} patch samples...")
+        #! Will only work for the SelectOne Task
+        # TODO (arnab): fix it
         while len(patch_samples) < patch_args.get("batch_size", 1):
             obj_idx = len(patch_samples) % len(patch_sample.options)
             if patch_args["distinct_options"] is True:
@@ -850,32 +853,34 @@ def validate_q_proj_ie_on_sample_pair(
     if verify_head_behavior_on is not None:
         logger.info("Verifying head behavior...")
 
-        logger.info(f"Clean Sample >> Ans: {clean_sample.obj}")
+        logger.info(
+            f"Clean Sample >> Ans: {mt.tokenizer.decode(clean_sample.ans_token_id)}"
+        )
         clean_attn_pattern = verify_head_patterns(  # noqa
             prompt=clean_sample.prompt(),
             tokenized_prompt=clean_tokenized,
             # options=clean_sample.options,
             options=[f"{opt}," for opt in clean_sample.options[:-1]]
             + [f"{clean_sample.options[-1]}."],
-            pivot=clean_sample.subj,
             mt=mt,
             heads=heads,
-            generate_full_answer=True,
+            generate_full_answer=generate_full_ans_for_verify,
             query_index=verify_head_behavior_on,
             ablate_possible_ans_info_from_options=ablate_possible_ans_info_from_options,
         )
 
-        logger.info(f"Patch Sample >> Ans: {patch_sample.obj}")
+        logger.info(
+            f"Patch Sample >> Ans: {mt.tokenizer.decode(patch_sample.ans_token_id)}"
+        )
         patch_attn_pattern = verify_head_patterns(  # noqa
             prompt=patch_sample.prompt(),
             tokenized_prompt=patch_tokenized,
             # options=patch_sample.options,
             options=[f"{opt}," for opt in patch_sample.options[:-1]]
             + [f"{patch_sample.options[-1]}."],
-            pivot=patch_sample.subj,
             mt=mt,
             heads=heads,
-            generate_full_answer=True,
+            generate_full_answer=generate_full_ans_for_verify,
             query_index=verify_head_behavior_on,
             ablate_possible_ans_info_from_options=ablate_possible_ans_info_from_options,
         )
@@ -930,7 +935,7 @@ def validate_q_proj_ie_on_sample_pair(
     #     clean_sample.ans_token_id,
     #     clean_sample.metadata["track_type_obj_token_id"],
     # ]
-    interested_tokens = clean_sample.options
+    interested_tokens = get_options_for_answer(clean_sample)
     interested_tokens = [
         get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
         for opt in interested_tokens
@@ -1273,9 +1278,10 @@ def get_optimal_head_mask_prev(
             ]
             batch_distractor_tokens = [
                 [
-                    get_first_token_id(tokenizer=mt.tokenizer, name=option, prefix=" ")
-                    for idx, option in enumerate(clean_sample.options)
-                    if idx != clean_sample.metadata["track_type_obj_idx"]
+                    get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+                    for opt in get_options_for_answer(clean_sample)
+                    if get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+                    != clean_sample.metadata["track_type_obj_token_id"]
                 ]
                 for clean_sample in clean_samples
             ]
