@@ -1750,7 +1750,7 @@ def get_counterfactual_samples_within_task(
     clean_category: str | None = None,
     shuffle_clean_options: bool = False,
     filter_by_lm_prediction: bool = True,
-    distinct_options: bool = False,
+    distinct_options: bool = True,
     n_distractors: int = 5,
     patch_n_distractors: int | None = None,
     clean_n_distractors: int | None = None,
@@ -2251,6 +2251,7 @@ def get_counterfactual_samples_within_yes_no_task(
     patch_option_style: str | None = None,
     clean_option_style: str | None = None,
     verbose=False,
+    patch_yes_mode: bool | None = None,
     retry_count=0,
 ):
     # Set parameter defaults
@@ -2269,7 +2270,9 @@ def get_counterfactual_samples_within_yes_no_task(
     clean_n_options = clean_n_options or n_options
     patch_n_options = patch_n_options or n_options
 
-    patch_yes_mode = random.choice([True, False])
+    patch_yes_mode = (
+        patch_yes_mode if patch_yes_mode is not None else random.choice([True, False])
+    )
 
     def get_yes_no_sample(
         category: str,
@@ -2277,6 +2280,7 @@ def get_counterfactual_samples_within_yes_no_task(
         yes_mode: bool,
         exclude_objs: list[str] = [],
         exclude_distractor_categories: list[str] = [],
+        must_have_distractor_category: str | None = None,
     ):
         options = []
         if yes_mode:
@@ -2290,6 +2294,20 @@ def get_counterfactual_samples_within_yes_no_task(
             options.extend(valid_options)
 
         n_distractors = n_options - len(options)
+        if must_have_distractor_category is not None:
+            assert n_distractors >= 1
+            other_category = must_have_distractor_category
+            options.append(
+                random.choice(
+                    (
+                        KeyedSet(
+                            task.category_wise_examples[other_category], mt.tokenizer
+                        )
+                        - KeyedSet(exclude_objs + options, mt.tokenizer)
+                    ).values
+                )
+            )
+            n_distractors -= 1
         other_categories = list(
             set(task.category_wise_examples.keys())
             - {category}
@@ -2330,14 +2348,23 @@ def get_counterfactual_samples_within_yes_no_task(
         exclude_distractor_categories=[],
     )
 
+    # to include or not to include a patch category item
+    patch_cat_kwargs = {
+        "must_have_distractor_category": None,
+        "exclude_distractor_categories": [],
+    }
+    if not patch_yes_mode:
+        # patch ans is No, so intervention answer should be yes
+        patch_cat_kwargs["must_have_distractor_category"] = patch_category
+    else:
+        # patch ans is Yes, so intervention answer should be no
+        patch_cat_kwargs["exclude_distractor_categories"] = [patch_category]
     clean_sample = get_yes_no_sample(
         category=clean_category,
         n_options=clean_n_options,
         yes_mode=patch_yes_mode,
         exclude_objs=patch_sample.options,
-        exclude_distractor_categories=[
-            patch_category
-        ],  # ensure that patch_category items are not used as distractors in clean sample
+        **patch_cat_kwargs,
     )
 
     clean_sample.metadata = {
@@ -2431,7 +2458,7 @@ def get_counterfactual_samples_within_first_task(
     prompt_template_idx=2,
     patch_prompt_template_idx: int | None = None,
     clean_prompt_template_idx: int | None = None,
-    option_style="numbered",
+    option_style="single_line",
     patch_option_style: str | None = None,
     clean_option_style: str | None = None,
     filter_by_lm_prediction: bool = True,
@@ -2543,8 +2570,29 @@ def get_counterfactual_samples_within_first_task(
         clean_options = [clean_options[i] for i in index_list]
         patch_options = [patch_options[i] for i in index_list]
 
-        # print(f"{clean_options=}")
-        # print(f"{patch_options=}")
+    patch_options_indices = []
+    for option in patch_category_options:
+        patch_options_indices.append(patch_options.index(option))
+    patch_first_idx = min(patch_options_indices)
+
+    # while True:
+    #     # Gather the indices of the options of interest
+    #     random.shuffle(clean_options)
+    #     clean_options_indices = []
+    #     for option in clean_category_options:
+    #         clean_options_indices.append(clean_options.index(option))
+    #     clean_first_idx = min(clean_options_indices)
+
+    #     alt_patch_category_options_indices = []
+    #     for option in alt_patch_category_options:
+    #         alt_patch_category_options_indices.append(clean_options.index(option))
+    #     alt_patch_first_idx = min(alt_patch_category_options_indices)
+    #     if patch_first_idx != alt_patch_first_idx:
+    #         break
+
+    #############################################################
+    # Shuffle clean_options once
+    random.shuffle(clean_options)
 
     # Gather the indices of the options of interest
     clean_options_indices = []
@@ -2552,29 +2600,46 @@ def get_counterfactual_samples_within_first_task(
         clean_options_indices.append(clean_options.index(option))
     clean_first_idx = min(clean_options_indices)
 
-    # Store the information about the corresponsing object from patch options
-    patch_track_type_obj = patch_options[clean_first_idx]
-    patch_track_first_token_id = get_first_token_id(
-        patch_track_type_obj, mt.tokenizer, prefix=" "
-    )
+    alt_patch_category_options_indices = []
+    for option in alt_patch_category_options:
+        alt_patch_category_options_indices.append(clean_options.index(option))
+    alt_patch_first_idx = min(alt_patch_category_options_indices)
 
-    patch_options_indices = []
-    for option in patch_category_options:
-        patch_options_indices.append(patch_options.index(option))
-    patch_first_idx = min(patch_options_indices)
+    # If indices are the same, swap to make them different
+    if patch_first_idx == alt_patch_first_idx:
+        # Find a safe swap position (not in clean_category_options or alt_patch_category_options)
+        swap_idx = patch_first_idx
+        for i in range(n_options):
+            if (
+                i not in clean_options_indices
+                and i not in alt_patch_category_options_indices
+            ):
+                swap_idx = i
+                break
+
+        # Swap the element at alt_patch_first_idx with the safe position
+        clean_options[alt_patch_first_idx], clean_options[swap_idx] = (
+            clean_options[swap_idx],
+            clean_options[alt_patch_first_idx],
+        )
+
+        # Recalculate alt_patch_first_idx
+        alt_patch_category_options_indices = []
+        for option in alt_patch_category_options:
+            alt_patch_category_options_indices.append(clean_options.index(option))
+        alt_patch_first_idx = min(alt_patch_category_options_indices)
+
+    #############################################################
+
+    # print(f"{patch_first_idx=} | {patch_options_indices=}")
+    # print(f"{clean_first_idx=} | {clean_options_indices=}")
 
     # Store the information about the corresponding object from clean options
-    clean_track_type_obj = clean_options[patch_first_idx]
+    clean_track_type_obj = clean_options[alt_patch_first_idx]
     clean_track_first_token_id = get_first_token_id(
         clean_track_type_obj, mt.tokenizer, prefix=" "
     )
 
-    patch_metadata = {
-        "track_category": clean_category,
-        "track_type_obj": patch_track_type_obj,
-        "track_type_obj_idx": clean_first_idx,
-        "track_type_obj_token_id": patch_track_first_token_id,
-    }
     clean_obj = clean_options[clean_first_idx]
 
     clean_metadata = {
@@ -2592,7 +2657,6 @@ def get_counterfactual_samples_within_first_task(
         ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
         options=patch_options,
         category=patch_category,
-        metadata=patch_metadata,
         prompt_template=task.prompt_templates[patch_prompt_template_idx],
         default_option_style=patch_option_style or option_style,
     )
@@ -2611,6 +2675,13 @@ def get_counterfactual_samples_within_first_task(
 
     if filter_by_lm_prediction:
         test_samples = [patch_sample, clean_sample]
+        if distinct_options is True:
+            gold_sample = copy.deepcopy(patch_sample)
+            gold_sample.options = clean_sample.options
+            gold_sample.obj = clean_sample.metadata["track_type_obj"]
+            gold_sample.obj_idx = clean_sample.metadata["track_type_obj_idx"]
+            gold_sample.ans_token_id = clean_sample.metadata["track_type_obj_token_id"]
+            test_samples.append(gold_sample)
 
         for sample in test_samples:
             if retry_count >= 10:
@@ -2634,7 +2705,9 @@ def get_counterfactual_samples_within_first_task(
             sample.metadata["predictions"] = predictions
 
             if not is_correct:
-                logger.error(f"Prediction mismatch!\n" f"Retry Count: {retry_count+1}")
+                logger.error(
+                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
+                )
                 return get_counterfactual_samples_within_first_task(
                     task=task,
                     mt=mt,

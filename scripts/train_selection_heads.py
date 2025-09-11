@@ -12,9 +12,12 @@ from src.models import ModelandTokenizer
 from src.selection.data import (
     CountingSample,
     CountingTask,
+    SelectFirstTask,
     SelectionSample,
     SelectOneTask,
     SelectOrderTask,
+    YesNoSample,
+    YesNoTask,
     get_counterfactual_samples_interface,
 )
 from src.selection.optimization import (
@@ -37,7 +40,7 @@ optimization_interface = {
 @torch.inference_mode()
 def prepare_dataset(
     mt: ModelandTokenizer,
-    select_task: SelectOneTask | CountingTask,
+    select_task: SelectOneTask | CountingTask | YesNoTask | SelectFirstTask,
     option_config: Literal["distinct", "same", "position"],
     train_limit: int = 512,
     validation_limit: int = 256,
@@ -57,7 +60,15 @@ def prepare_dataset(
         if isinstance(select_task, CountingTask):
             kwargs["clean_n_options"] = random.choice(range(4, 7))
             kwargs["patch_n_options"] = random.choice(range(4, 7))
+            kwargs["distinct_options"] = distinct_options
+        elif isinstance(select_task, YesNoTask):
+            kwargs["clean_n_options"] = random.choice(range(3, 6))
+            kwargs["patch_n_options"] = random.choice(range(3, 6))
+            # No distinct options for yes/no task
+        elif isinstance(select_task, SelectFirstTask):
+            kwargs["distinct_options"] = distinct_options
         elif isinstance(select_task, SelectOneTask):
+            kwargs["distinct_options"] = distinct_options
             if option_config == "position":
                 n_distractors = random.choice(range(3, 7))
                 kwargs["patch_n_distractors"] = n_distractors
@@ -65,22 +76,24 @@ def prepare_dataset(
             else:
                 kwargs["patch_n_distractors"] = random.choice(range(2, 7))
                 kwargs["clean_n_distractors"] = random.choice(range(2, 7))
-            if prompt_template_idx == -1:
-                kwargs["patch_prompt_template_idx"] = random.choice(
-                    range(len(select_task.prompt_templates))
-                )
-                kwargs["clean_prompt_template_idx"] = random.choice(
-                    range(len(select_task.prompt_templates))
-                )
-            else:
-                kwargs["patch_prompt_template_idx"] = prompt_template_idx
-                kwargs["clean_prompt_template_idx"] = prompt_template_idx
+        else:
+            raise ValueError(f"Unknown task type: {type(select_task)}")
+
+        if prompt_template_idx == -1:
+            kwargs["patch_prompt_template_idx"] = random.choice(
+                range(len(select_task.prompt_templates))
+            )
+            kwargs["clean_prompt_template_idx"] = random.choice(
+                range(len(select_task.prompt_templates))
+            )
+        else:
+            kwargs["patch_prompt_template_idx"] = prompt_template_idx
+            kwargs["clean_prompt_template_idx"] = prompt_template_idx
 
         patch_sample, clean_sample = counterfactual_sampler(
             task=select_task,
             mt=mt,
             option_style=option_style,
-            distinct_options=distinct_options,
             prompt_template_idx=prompt_template_idx,
             filter_by_lm_prediction=True,
             **kwargs,
@@ -411,9 +424,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--task",
         type=str,
-        choices=["select_one", "counting"],
+        choices=["select_one", "counting", "yes_no", "select_first"],
         default="select_one",
-        help="Which task to optimize"
+        help="Which task to optimize",
     )
 
     args = parser.parse_args()
@@ -437,6 +450,8 @@ if __name__ == "__main__":
     TASK_NAME_TO_CLASS = {
         "select_one": SelectOneTask,
         "counting": CountingTask,
+        "yes_no": YesNoTask,
+        "select_first": SelectFirstTask,
     }
 
     # load the selection class
