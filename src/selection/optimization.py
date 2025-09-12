@@ -804,13 +804,13 @@ def validate_q_proj_ie_on_sample_pair(
     patch_token_indices = [list(query_indices.keys())]
     if patch_args.get("batch_size", 1) > 1:
         patch_samples = []
-        task = patch_args["task"]
         logger.debug(f"Sampling {patch_args.get('batch_size', 1)} patch samples...")
         #! Will only work for the SelectOne Task
         # TODO (arnab): fix it
         while len(patch_samples) < patch_args.get("batch_size", 1):
             obj_idx = len(patch_samples) % len(patch_sample.options)
             if patch_args["distinct_options"] is True:
+                task = patch_args["task"]
                 sample = task.get_random_sample(
                     mt=mt,
                     category=patch_sample.category,
@@ -896,7 +896,7 @@ def validate_q_proj_ie_on_sample_pair(
         mt=mt,
         input=patch_tokenized,
         heads=heads,
-        token_indices=patch_token_indices,
+        token_indices=[list(query_indices.keys())],
         return_output=True,
     )
     if patch_args.get("batch_size", 1) > 1:

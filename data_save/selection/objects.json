@@ -292,5 +292,16 @@
             "Bangle",
             "Pin"
         ]
+    },
+    "exclude_obj_categories": {
+        "fruit": [
+            "tree",
+            "vegetable"
+        ],
+        "electronics": [
+            "office supply",
+            "kitchen appliance"
+        ],
+        "vehicle": []
     }
 }
