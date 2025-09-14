@@ -366,5 +366,41 @@
             "Josh Hawley",
             "Nikki Haley"
         ]
+    },
+    "exclude_categories": {
+        "actor": [
+            "comedian",
+            "director"
+        ],
+        "comedian": [
+            "actor"
+        ],
+        "director": [
+            "actor"
+        ],
+        "journalist": [
+            "news anchor",
+            "author"
+        ],
+        "news anchor": [
+            "journalist",
+            "author"
+        ],
+        "author": [
+            "journalist",
+            "news anchor"
+        ],
+        "entrepreneur": [
+            "fashion designer",
+            "politician"
+        ],
+        "fashion designer": [
+            "entrepreneur",
+            "politician"
+        ],
+        "politician": [
+            "entrepreneur",
+            "fashion designer"
+        ]
     }
 }

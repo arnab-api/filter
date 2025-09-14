@@ -20,22 +20,37 @@
     ],
     "count_prompt_templates": [
         "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer:",
-        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer:"
+        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer:",
+        "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer: ",
+        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer: "
+    ],
+    "yes_no_prompt_templates": [
+        "Answer 'Yes' or 'No': Is there a <_category_> in the following list?\n<_options_>\nAnswer:",
+        "Items: <_options_>\nAnswer 'Yes' or 'No': Is there a <_category_> in the list above?\nAnswer:",
+        "Do you see a <_category_> in this list?\n<_options_>\nAnswer:",
+        "Items: <_options_>\nDo you see a <_category_> in the list above?\nAnswer:"
+    ],
+    "first_item_in_cat_prompt_templates": [
+        "Identify the first <_category_> in this list:\n<_options_>\nAnswer:",
+        "<_options_>\nIdentify the first <_category_> from the list above:\nAnswer:",
+        "What is the first <_category_> in the following list?\n<_options_>\nAnswer:",
+        "<_options_>\nWhat is the first <_category_> from the list above?\nAnswer:"
     ],
     "categories": {
         "fruit": [
-            "Blackberry",
-            "Cranberry",
+            "Apple",
+            "Banana",
+            "Orange",
             "Grape",
-            "Boysenberry",
+            "Pear",
             "Strawberry",
             "Watermelon",
-            "Cantaloupe",
+            "Mango",
             "Pineapple",
-            "Banana",
-            "Honeydew",
-            "Tomato",
-            "Elderberry",
+            "Kiwi",
+            "Peach",
+            "Plum",
+            "Cherry",
             "Blueberry",
             "Raspberry"
         ],
@@ -136,8 +151,8 @@
             "Router",
             "Speaker",
             "Monitor",
-            "Game console",
-            "Drone",
+            "Keyboard",
+            "Mouse",
             "Microphone",
             "Projector"
         ],
@@ -148,13 +163,13 @@
             "Baseball",
             "Golf ball",
             "Racket",
-            "Wrestling mat",
+            "Bat",
             "Helmet",
-            "Javelin",
-            "Fencing foil",
-            "Shot put",
+            "Skateboard",
+            "Surfboard",
+            "Skis",
             "Hockey stick",
-            "Lacrosse stick",
+            "Boxing gloves",
             "Dumbbell",
             "Yoga mat"
         ],
@@ -179,17 +194,17 @@
             "Carrot",
             "Broccoli",
             "Spinach",
-            "Beet",
+            "Tomato",
             "Potato",
             "Onion",
-            "Radish",
+            "Cucumber",
             "Lettuce",
-            "Turnip",
+            "Pepper",
             "Cauliflower",
             "Celery",
             "Mushroom",
             "Asparagus",
-            "Cabbage"
+            "Zucchini"
         ],
         "building": [
             "House",
@@ -271,7 +286,7 @@
             "Redwood",
             "Bamboo",
             "Eucalyptus",
-            "Sycamore",
+            "Magnolia",
             "Palm",
             "Ash",
             "Hickory"
@@ -281,6 +296,7 @@
             "Necklace",
             "Bracelet",
             "Earring",
+            "Watch",
             "Pendant",
             "Brooch",
             "Anklet",
@@ -293,15 +309,28 @@
             "Pin"
         ]
     },
-    "exclude_obj_categories": {
+    "exclude_categories": {
         "fruit": [
+            "flower",
             "tree",
             "vegetable"
         ],
-        "electronics": [
-            "office supply",
-            "kitchen appliance"
+        "flower": [
+            "fruit",
+            "tree",
+            "vegetable"
         ],
-        "vehicle": []
+        "tree": [
+            "fruit",
+            "flower"
+        ],
+        "vegetable": [
+            "fruit",
+            "flower"
+        ],
+        "electronics": [
+            "kitchen appliance",
+            "office supply"
+        ]
     }
 }
