@@ -17,7 +17,12 @@ from src.functional import (
     patch_with_baukit,
 )
 from src.models import ModelandTokenizer
-from src.selection.data import SelectionSample, SelectOneTask, SelectOrderTask
+from src.selection.data import (
+    SelectionSample,
+    SelectOneTask,
+    SelectOrderTask,
+    get_counterfactual_samples_within_task,
+)
 from src.selection.functional import cache_q_projections
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import prepare_input
@@ -96,258 +101,6 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
 
 
 @torch.inference_mode()
-def get_counterfactual_samples_within_task(
-    task: SelectOneTask | SelectOrderTask,
-    mt: ModelandTokenizer,
-    patch_category: str | None = None,
-    clean_category: str | None = None,
-    shuffle_clean_options: bool = False,
-    prompt_template_idx=3,
-    option_style="single_line",
-    filter_by_lm_prediction: bool = True,
-    distinct_options: bool = False,
-    n_distractors: int = 5,
-    patch_n_distractors: int | None = None,
-    clean_n_distractors: int | None = None,
-):
-    categories = list(task.category_wise_examples.keys())
-    if patch_category is None:
-        patch_category = random.choice(categories)
-
-    if patch_n_distractors is None:
-        patch_n_distractors = n_distractors
-
-    patch_subj, patch_obj = random.sample(
-        task.category_wise_examples[patch_category], 2
-    )
-    logger.info(
-        f"Patch category: {patch_category}, subject: {patch_subj}, object: {patch_obj}"
-    )
-
-    if clean_category is None:
-        clean_category = random.choice(list(set(categories) - {patch_category}))
-
-    clean_options = task.category_wise_examples[clean_category]
-    random.shuffle(clean_options)
-
-    clean_subj, clean_obj = random.sample(
-        (
-            KeyedSet(clean_options, mt.tokenizer) - KeyedSet([patch_obj], mt.tokenizer)
-        ).values,
-        2,
-    )
-    logger.info(
-        f"Clean category: {clean_category}, subject: {clean_subj}, object: {clean_obj}"
-    )
-
-    if distinct_options is False:
-        patch_type_obj = patch_obj
-        clean_type_obj = clean_obj
-    else:
-        patch_type_obj = random.choice(
-            (
-                KeyedSet(task.category_wise_examples[patch_category], mt.tokenizer)
-                - KeyedSet([patch_obj], mt.tokenizer)
-            ).values
-        )
-        clean_type_obj = random.choice(
-            (
-                KeyedSet(task.category_wise_examples[clean_category], mt.tokenizer)
-                - KeyedSet([clean_obj], mt.tokenizer)
-            ).values
-        )
-
-    patch_must_have_options = [patch_obj, clean_type_obj]
-    clean_must_have_options = [clean_obj, patch_type_obj]
-
-    logger.info(f"{patch_must_have_options=}")
-    logger.info(f"{clean_must_have_options=}")
-    logger.info(f"{clean_type_obj=}")
-    logger.info(f"{patch_type_obj=}")
-
-    patch_distractors = []
-    other_categories = random.sample(
-        list(set(categories) - {patch_category, clean_category}),
-        k=patch_n_distractors - (len(patch_must_have_options)) + 1,
-    )
-
-    for other_category in other_categories:
-        other_examples = task.category_wise_examples[other_category]
-        random.shuffle(other_examples)
-        other_examples = KeyedSet(other_examples, mt.tokenizer)
-        patch_distractors.append(
-            random.choice(
-                (
-                    other_examples
-                    - KeyedSet(
-                        patch_must_have_options + patch_distractors,
-                        tokenizer=mt.tokenizer,
-                    )
-                ).values
-            )
-        )
-
-    patch_options = patch_must_have_options + patch_distractors
-    random.shuffle(patch_options)
-    patch_obj_idx = patch_options.index(patch_obj)
-    logger.info(f"{patch_obj_idx=} | {patch_options}")
-
-    if distinct_options is not True:
-        if clean_n_distractors is not None:
-            logger.warning(
-                f"Passed {clean_n_distractors=}. But distinct_options is False, so clean options will be same as patch options."
-            )
-        clean_options = copy.deepcopy(patch_options)
-        if shuffle_clean_options:
-            # Useful for the pointer experiments
-            while (
-                clean_options.index(clean_obj) == patch_obj_idx
-                or clean_options.index(patch_type_obj) == patch_obj_idx
-            ):
-                random.shuffle(clean_options)
-        clean_obj_idx = clean_options.index(clean_obj)
-
-    else:
-        if clean_n_distractors is None:
-            clean_n_distractors = n_distractors
-        other_categories = random.sample(
-            list(set(categories) - {patch_category, clean_category}),
-            k=clean_n_distractors - (len(clean_must_have_options)) + 1,
-        )
-        clean_distractors = []
-        for other_category in other_categories:
-            other_examples = task.category_wise_examples[other_category]
-            random.shuffle(other_examples)
-            other_examples = KeyedSet(other_examples, mt.tokenizer)
-            clean_distractors.append(
-                random.choice(
-                    (
-                        other_examples
-                        - KeyedSet(
-                            clean_must_have_options + clean_distractors,
-                            tokenizer=mt.tokenizer,
-                        )
-                    ).values
-                )
-            )
-        clean_options = clean_must_have_options + clean_distractors
-        random.shuffle(clean_options)
-        while (
-            clean_options.index(clean_obj) == patch_obj_idx
-            or clean_options.index(patch_type_obj) == patch_obj_idx
-        ):
-            random.shuffle(clean_options)
-        clean_obj_idx = clean_options.index(clean_obj)
-
-    logger.info(f"{clean_obj_idx=} | {clean_options}")
-
-    kwargs = dict(
-        prompt_template=task.prompt_templates[prompt_template_idx],
-        default_option_style=option_style,
-    )
-    print(f"{type(task)=}")
-    if isinstance(task, SelectOrderTask):
-        patch_metadata = {
-            "track_type_obj_idx": clean_obj_idx,
-            "track_type_obj": patch_options[clean_obj_idx],
-            "track_type_obj_token_id": get_first_token_id(
-                patch_options[clean_obj_idx], mt.tokenizer, prefix=" "
-            ),
-        }
-        clean_metadata = {
-            "track_type_obj_idx": patch_obj_idx,
-            "track_type_obj": clean_options[patch_obj_idx],
-            "track_type_obj_token_id": get_first_token_id(
-                clean_options[patch_obj_idx], mt.tokenizer, prefix=" "
-            ),
-        }
-    elif isinstance(task, SelectOneTask):
-        patch_metadata = {
-            "track_category": clean_category,
-            "track_type_obj": clean_type_obj,
-            "track_type_obj_idx": patch_options.index(clean_type_obj),
-            "track_type_obj_token_id": get_first_token_id(
-                clean_type_obj, mt.tokenizer, prefix=" "
-            ),
-        }
-        clean_metadata = {
-            "track_category": patch_category,
-            "track_type_obj": patch_type_obj,
-            "track_type_obj_idx": clean_options.index(patch_type_obj),
-            "track_type_obj_token_id": get_first_token_id(
-                patch_type_obj, mt.tokenizer, prefix=" "
-            ),
-        }
-    else:
-        raise NotImplementedError(f"Unsupported task type: {type(task)}")
-
-    patch_sample = SelectionSample(
-        subj=patch_subj,
-        obj=patch_obj,
-        answer=patch_obj,
-        obj_idx=patch_obj_idx,
-        ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
-        options=patch_options,
-        category=patch_category,
-        metadata=patch_metadata,
-        **kwargs,
-    )
-    clean_sample = SelectionSample(
-        subj=clean_subj,
-        obj=clean_obj,
-        answer=clean_obj,
-        obj_idx=clean_obj_idx,
-        ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
-        options=clean_options,
-        category=clean_category,
-        metadata=clean_metadata,
-        **kwargs,
-    )
-
-    if filter_by_lm_prediction:
-        test_samples = [patch_sample, clean_sample]
-        if distinct_options is True:
-            clean_sample_2 = copy.deepcopy(patch_sample)
-            clean_sample_2.options = clean_options
-            clean_sample_2.obj = clean_sample.metadata["track_type_obj"]
-            clean_sample_2.obj_idx = clean_sample.metadata["track_type_obj_idx"]
-            clean_sample_2.ans_token_id = clean_sample.metadata[
-                "track_type_obj_token_id"
-            ]
-            test_samples.append(clean_sample_2)
-
-        for sample in test_samples:
-            tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
-            is_correct, predictions, track_options = verify_correct_option(
-                mt=mt, target=sample.obj, options=sample.options, input=tokenized
-            )
-            # sample.metadata["tokenized"] = tokenized.data
-            logger.info(sample.prompt())
-            logger.info(
-                f"{sample.subj} | {sample.category} -> {sample.obj} | pred={[str(p) for p in predictions]}"
-            )
-            if not is_correct:
-                logger.error(
-                    f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
-                )
-                return get_counterfactual_samples_within_task(
-                    mt=mt,
-                    task=task,
-                    patch_category=patch_category,
-                    clean_category=clean_category,
-                    shuffle_clean_options=shuffle_clean_options,
-                    prompt_template_idx=prompt_template_idx,
-                    option_style=option_style,
-                    filter_by_lm_prediction=filter_by_lm_prediction,
-                    distinct_options=distinct_options,
-                    n_distractors=n_distractors,
-                )
-            sample.prediction = predictions
-
-    return patch_sample, clean_sample
-
-
-@torch.inference_mode()
 def calculate_query_patching_results_for_sample_pair(
     mt: ModelandTokenizer,
     clean_sample: SelectionSample,
@@ -364,17 +117,19 @@ def calculate_query_patching_results_for_sample_pair(
     patch_tokenized = prepare_input(prompts=patch_sample.prompt(), tokenizer=mt)
 
     # cache the query states + gold results with the patch sample
-    query_locations = [
-        (layer_idx, head_idx, query_idx)
-        for layer_idx, head_idx in heads
-        for query_idx in query_indices
-    ]
+    # query_locations = [
+    #     (layer_idx, head_idx, query_idx)
+    #     for layer_idx, head_idx in heads
+    #     for query_idx in query_indices
+    # ]
     all_q_projections, patch_out = cache_q_projections(
         mt=mt,
         input=patch_tokenized,
-        query_locations=query_locations,
+        heads=heads,
+        token_indices=[query_indices],
         return_output=True,
     )
+    all_q_projections = all_q_projections[0]
     logger.debug(len(all_q_projections))
 
     patch_logits = patch_out.logits[:, -1, :].squeeze()
@@ -430,7 +185,7 @@ def calculate_query_patching_results_for_sample_pair(
         head_wise_patching_effects[(layer_idx, head_idx)] = track
         counter += 1
 
-        if counter % 100 == 0:
+        if counter % 128 == 0:
             logger.debug(
                 f"Got patching results for {counter}/{len(heads)} ({counter/len(heads):.2%})"
             )
@@ -542,7 +297,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--category",
         type=str,
-        default="profession",
+        default="objects",
         help="Category Type",
     )
 

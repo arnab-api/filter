@@ -56,6 +56,7 @@ class SelectionSampleAttn(DataClassJsonMixin):
         query_idx: int = -1,
         value_weighted: bool = False,
         token_idx: Literal["last", "first", "all"] = "all",
+        include_delim: bool = False,
     ):
         """Get the attention score for a specific layer and head."""
         attn_row = (
@@ -73,6 +74,8 @@ class SelectionSampleAttn(DataClassJsonMixin):
         scores = []
         if token_idx == "all":
             option_ranges = self.option_ranges
+            if include_delim:
+                option_ranges = [(start, end + 1) for start, end in option_ranges]
         elif token_idx == "last":
             option_ranges = [(end - 1, end) for start, end in self.option_ranges]
         elif token_idx == "first":
@@ -94,11 +97,13 @@ class SelectionSampleAttn(DataClassJsonMixin):
         query_idx: int = -1,
         value_weighted: bool = False,
         token_idx: Literal["last", "first", "all"] = "all",
+        include_delim: bool = False,
     ):
         """See if the head prefers the answer over other options."""
         score_per_option = self.score_per_option(
             layer_idx=layer_idx,
             head_idx=head_idx,
+            include_delim=include_delim,
             query_idx=query_idx,
             value_weighted=value_weighted,
             token_idx=token_idx,
