@@ -125,6 +125,7 @@ def verify_head_patterns(
     query_index: int = -1,
     query_patches: list[PatchSpec] = [],
     start_from: int = 1,
+    vis_args: dict = {},
 ):
     if tokenized_prompt is None:
         tokenized_prompt = prepare_input(
@@ -210,6 +211,7 @@ def verify_head_patterns(
             tokens=attn_matrices.tokenized_prompt,
             q_index=query_index,
             start_from=start_from,
+            vis_args=vis_args,
         )
 
     return ret_dict

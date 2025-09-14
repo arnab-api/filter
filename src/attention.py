@@ -144,11 +144,12 @@ def visualize_attn_matrix(
     tokens: list[str],
     q_index: int = -1,
     start_from: int = 1,
+    vis_args: dict = {},
 ):
     assert len(tokens) == attn_matrix.shape[-1]
     attn_matrix = attn_matrix.squeeze()[q_index][start_from:]
     tokens = tokens[start_from:]
-    display(colored_tokens(tokens=tokens, values=attn_matrix))
+    display(colored_tokens(tokens=tokens, values=attn_matrix, **vis_args))
 
 
 def visualize_average_attn_matrix(

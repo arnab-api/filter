@@ -7,96 +7,202 @@
         "<_options_>\nWhich of these landmarks is in <_category_>?\nAnswer:"
     ],
     "categories": {
-        "France": [
-            "Eiffel Tower",
-            "Louvre Museum",
-            "Arc de Triomphe",
-            "Palace of Versailles",
-            "Mont-Saint-Michel"
-        ],
-        "Italy": [
-            "Colosseum",
-            "Leaning Tower of Pisa",
-            "Venice Grand Canal",
-            "Sistine Chapel",
-            "Pompeii"
-        ],
         "United States": [
             "Statue of Liberty",
             "Grand Canyon",
             "Mount Rushmore",
             "Golden Gate Bridge",
-            "Empire State Building"
+            "Empire State Building",
+            "Yellowstone National Park",
+            "Times Square",
+            "Niagara Falls",
+            "Hollywood Sign",
+            "White House",
+            "Las Vegas Strip",
+            "Disney World",
+            "Central Park",
+            "Brooklyn Bridge",
+            "Space Needle"
         ],
-        "China": [
-            "Great Wall of China",
-            "Forbidden City",
-            "Terracotta Army",
-            "Potala Palace",
-            "Temple of Heaven"
+        "France": [
+            "Eiffel Tower",
+            "Louvre Museum",
+            "Arc de Triomphe",
+            "Notre-Dame Cathedral",
+            "Palace of Versailles",
+            "Mont Saint-Michel",
+            "Sacré-Cœur",
+            "Champs-Élysées",
+            "Château de Chambord",
+            "French Riviera",
+            "Pont du Gard",
+            "Carcassonne"
+        ],
+        "Italy": [
+            "Colosseum",
+            "Leaning Tower of Pisa",
+            "Venice Canals",
+            "Vatican City/Sistine Chapel",
+            "Trevi Fountain",
+            "Florence Cathedral",
+            "Pompeii",
+            "Amalfi Coast",
+            "Pantheon",
+            "Rialto Bridge",
+            "St. Mark's Basilica",
+            "Roman Forum",
+            "Cinque Terre"
+        ],
+        "United Kingdom": [
+            "Big Ben",
+            "Tower Bridge",
+            "Buckingham Palace",
+            "Stonehenge",
+            "Tower of London",
+            "Westminster Abbey",
+            "Edinburgh Castle",
+            "London Eye",
+            "Windsor Castle",
+            "St. Paul's Cathedral",
+            "Trafalgar Square",
+            "British Museum"
+        ],
+        "Egypt": [
+            "Great Pyramids of Giza",
+            "Great Sphinx",
+            "Valley of the Kings",
+            "Abu Simbel Temples",
+            "Karnak Temple",
+            "Luxor Temple",
+            "Egyptian Museum",
+            "Khan el-Khalili Bazaar",
+            "Temple of Philae",
+            "Saqqara",
+            "White Desert"
         ],
         "India": [
             "Taj Mahal",
             "Red Fort",
             "Gateway of India",
+            "Amber Fort",
+            "Qutub Minar",
+            "India Gate",
+            "Golden Temple",
             "Hawa Mahal",
-            "Golden Temple"
+            "Mysore Palace",
+            "Khajuraho Temples",
+            "Victoria Memorial",
+            "Varanasi Ghats"
         ],
-        "Egypt": [
-            "Great Pyramid of Giza",
-            "Sphinx",
-            "Valley of the Kings",
-            "Abu Simbel",
-            "Karnak Temple"
+        "China": [
+            "Great Wall of China",
+            "Forbidden City",
+            "Terracotta Army",
+            "Temple of Heaven",
+            "Summer Palace",
+            "Potala Palace",
+            "Li River/Guilin",
+            "Tiananmen Square",
+            "Shanghai Skyline/The Bund",
+            "Yellow Mountains",
+            "Giant Buddha of Leshan",
+            "Zhangjiajie National Forest"
         ],
-        "United Kingdom": [
-            "Stonehenge",
-            "Big Ben",
-            "Tower of London",
-            "Buckingham Palace",
-            "London Eye"
+        "Australia": [
+            "Sydney Opera House",
+            "Great Barrier Reef",
+            "Uluru (Ayers Rock)",
+            "Sydney Harbour Bridge",
+            "Twelve Apostles",
+            "Bondi Beach",
+            "Blue Mountains",
+            "Kakadu National Park",
+            "Great Ocean Road",
+            "Daintree Rainforest",
+            "Fraser Island",
+            "Whitsunday Islands"
+        ],
+        "Brazil": [
+            "Christ the Redeemer",
+            "Sugarloaf Mountain",
+            "Copacabana Beach",
+            "Iguazu Falls",
+            "Amazon Rainforest",
+            "Ipanema Beach",
+            "Escadaria Selarón",
+            "Fernando de Noronha",
+            "Pantanal",
+            "Lençóis Maranhenses",
+            "Pelourinho",
+            "Teatro Amazonas"
         ],
         "Japan": [
             "Mount Fuji",
             "Fushimi Inari Shrine",
             "Tokyo Tower",
-            "Kinkaku-ji (Golden Pavilion)",
-            "Himeji Castle"
+            "Sensoji Temple",
+            "Golden Pavilion (Kinkaku-ji)",
+            "Hiroshima Peace Memorial",
+            "Tokyo Skytree",
+            "Arashiyama Bamboo Grove",
+            "Osaka Castle",
+            "Shibuya Crossing",
+            "Meiji Shrine",
+            "Mount Koya"
         ],
-        "Brazil": [
-            "Christ the Redeemer",
-            "Sugarloaf Mountain",
-            "Iguazu Falls",
-            "Amazon Rainforest",
-            "Copacabana Beach"
+        "Greece": [
+            "Acropolis/Parthenon",
+            "Santorini",
+            "Mykonos",
+            "Delphi",
+            "Meteora Monasteries",
+            "Palace of Knossos",
+            "Temple of Olympian Zeus",
+            "Rhodes Old Town",
+            "Epidaurus Theatre",
+            "Mount Olympus",
+            "Samaria Gorge"
         ],
-        "Australia": [
-            "Sydney Opera House",
-            "Uluru (Ayers Rock)",
-            "Great Barrier Reef",
-            "Sydney Harbour Bridge",
-            "The Twelve Apostles"
+        "Mexico": [
+            "Chichen Itza",
+            "Teotihuacan Pyramids",
+            "Tulum Ruins",
+            "Cancun Beaches",
+            "Palenque",
+            "Cabo San Lucas Arch",
+            "Cenotes of Yucatan",
+            "Monte Albán",
+            "Copper Canyon",
+            "Guanajuato City",
+            "Xcaret Park",
+            "Cozumel"
         ],
         "Peru": [
             "Machu Picchu",
             "Nazca Lines",
-            "Rainbow Mountain",
             "Lake Titicaca",
-            "Sacsayhuamán"
-        ],
-        "Greece": [
-            "Acropolis of Athens",
-            "Parthenon",
-            "Santorini",
-            "Meteora Monasteries",
-            "Sanctuary of Delphi"
+            "Colca Canyon",
+            "Sacred Valley",
+            "Rainbow Mountain",
+            "Sacsayhuamán",
+            "Chan Chan",
+            "Huacachina Oasis",
+            "Plaza de Armas Cusco",
+            "Manu National Park"
         ],
         "Spain": [
             "Sagrada Familia",
-            "Alhambra Palace",
+            "Alhambra",
             "Park Güell",
-            "Aqueduct of Segovia",
-            "Royal Palace of Madrid"
+            "Running of the Bulls/Pamplona",
+            "Santiago de Compostela Cathedral",
+            "Royal Palace Madrid",
+            "La Rambla Barcelona",
+            "Seville Cathedral",
+            "Guggenheim Museum Bilbao",
+            "Camino de Santiago",
+            "Plaza Mayor Madrid",
+            "Ibiza"
         ]
     }
 }
