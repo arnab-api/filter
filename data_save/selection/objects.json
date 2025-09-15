@@ -36,6 +36,12 @@
         "What is the first <_category_> in the following list?\n<_options_>\nAnswer:",
         "<_options_>\nWhat is the first <_category_> from the list above?\nAnswer:"
     ],
+    "last_item_in_cat_prompt_templates": [
+        "Identify the last <_category_> in this list:\n<_options_>\nAnswer:",
+        "<_options_>\nIdentify the last <_category_> from the list above:\nAnswer:",
+        "What is the last <_category_> in the following list?\n<_options_>\nAnswer:",
+        "<_options_>\nWhat is the last <_category_> in this list above?\nAnswer:"
+    ],
     "categories": {
         "fruit": [
             "Apple",

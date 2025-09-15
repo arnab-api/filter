@@ -64,7 +64,7 @@ class SelectionSample(DataClassJsonMixin):
     prediction: Optional[list[PredictedToken]] = None
     ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
-    default_option_style: Literal["single_line", "numbered", "bullet"] = "single_line"
+    default_option_style: Literal["single_line", "numbered", "bulleted"] = "single_line"
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -87,7 +87,7 @@ class SelectionSample(DataClassJsonMixin):
         self.metadata = detensorize(self.metadata)
 
     def prompt(
-        self, option_style: Literal["single_line", "numbered"] | None = None
+        self, option_style: Literal["single_line", "numbered", "bulleted"] | None = None
     ) -> str:
         prompt = self.prompt_template
         if "<_pivot_entity_>" in prompt:
@@ -110,7 +110,7 @@ class SelectionSample(DataClassJsonMixin):
             options_str = "\n".join(
                 f"{chr(ord('a') + i)}. {opt}" for i, opt in enumerate(self.options)
             )
-        elif option_style == "bullet":
+        elif option_style == "bulleted":
             options_str = "\n".join(f"* {opt}" for opt in self.options)
         else:
             raise ValueError(f"Invalid option_style: {option_style}.")
@@ -118,6 +118,17 @@ class SelectionSample(DataClassJsonMixin):
         prompt = prompt.replace("<_options_>", options_str)
 
         return prompt
+
+
+def MCQify_sample(mt: ModelandTokenizer, sample: SelectionSample) -> SelectionSample:
+    sample = copy.deepcopy(sample)
+    sample.default_option_style = "numbered"
+    correct_option = chr(ord("a") + sample.obj_idx)
+    sample.ans_token_id = get_first_token_id(
+        name=correct_option, tokenizer=mt.tokenizer, prefix=" "
+    )
+    sample.metadata["question_type"] = "MCQ"
+    return sample
 
 
 @dataclass
@@ -383,6 +394,7 @@ class SelectOneTask(DataClassJsonMixin):
     prompt_templates: list[str]
     category_wise_examples: dict[str, list] = field(default_factory=dict)
     task_name: str = "select_one"
+    exclude_categories: dict[str, list] = field(default_factory=dict)
 
     @staticmethod
     def load(
@@ -398,11 +410,13 @@ class SelectOneTask(DataClassJsonMixin):
 
         with open(path, "r") as f:
             data = json.load(f)
+            print(list(data.keys()))
             return SelectOneTask(
                 task_name="select_one",
                 category_type=data.get("name", category_type),
                 prompt_templates=data["prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
+                exclude_categories=data.get("exclude_categories", {}),
             )
 
     def filter_single_token(self, tokenizer, prefix=" "):
@@ -419,6 +433,12 @@ class SelectOneTask(DataClassJsonMixin):
                 if len(tokenized["input_ids"][0]) == 1:
                     filtered[cat].append(example)
         self.category_wise_examples = filtered
+
+    def exclude_for_category(self, category):
+        if category in self.exclude_categories:
+            return self.exclude_categories[category]
+        else:
+            return []
 
     @property
     def categories(self):
@@ -478,6 +498,11 @@ class SelectOneTask(DataClassJsonMixin):
             raise ValueError(
                 f"Attribute '{category}' not found in {category_wise_examples.keys()}."
             )
+
+        exclude_distractor_categories = list(
+            set(exclude_distractor_categories + self.exclude_for_category(category))
+        )
+
         subj = (
             random.choice(list(category_wise_examples[category].values))
             if subj is None
@@ -1604,12 +1629,12 @@ class SelectFirstTask(SelectOneTask):
 
         with open(path, "r") as f:
             data = json.load(f)
-            print(data)
             return SelectFirstTask(
                 task_name="select_first",
                 category_type=data.get("name", category_type),
                 prompt_templates=data["first_item_in_cat_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
+                exclude_categories=data.get("exclude_categories", {}),
             )
 
     def __str__(self):
@@ -1672,6 +1697,148 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
                     obj = option
                     obj_idx = idx
                 break
+
+        sample.obj = obj
+        sample.obj_idx = obj_idx
+        sample.ans_token_id = get_first_token_id(obj, mt.tokenizer, prefix=" ")
+        sample.prompt_template = self.prompt_templates[prompt_template_idx]
+        sample.default_option_style = option_style
+
+        if filter_by_lm_prediction:
+            prompt = sample.prompt(option_style=option_style)
+            # logger.info(f"\nPrompt: {prompt}")
+            tokenized_inputs = prepare_input(prompts=prompt, tokenizer=mt)
+            sample.metadata["tokenized"] = tokenized_inputs.data
+
+            is_correct, predictions, track_objs = verify_correct_option(
+                mt=mt,
+                input=tokenized_inputs,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                    for opt in get_options_for_answer(sample)
+                ],
+                prefix=" ",
+            )
+
+            # if predictions[0].token_id != obj_token_id:
+            if not is_correct:
+                logger.error(
+                    f"""Sample = {sample}
+Top prediction {track_objs[list(track_objs.keys())[0]]} does not match the object {sample.ans_token_id}, "{mt.tokenizer.decode(sample.ans_token_id)}".
+Retry count: {retry_count + 1}. Retrying ..."""
+                )
+                return self.get_random_sample(
+                    mt=mt,
+                    prompt_template_idx=prompt_template_idx,
+                    option_style=option_style,
+                    category=category,
+                    subj=subj,
+                    n_distractors=n_distractors,
+                    filter_by_lm_prediction=filter_by_lm_prediction,
+                    obj_idx=obj_idx,
+                    exclude_objs=exclude_objs,
+                    exclude_distractor_categories=exclude_distractor_categories,
+                    insert_distractor=insert_distractor,
+                    retry_count=retry_count + 1,
+                    output_formatting=output_formatting,
+                )
+
+            sample.prediction = predictions
+
+        sample.metadata["retry_count"] = retry_count
+        return sample
+
+
+@dataclass
+class SelectLastTask(SelectOneTask):
+    task_name: str = "select_last"
+
+    @staticmethod
+    def load(
+        path: PathLike | None = os.path.join(
+            DEFAULT_DATA_DIR, "selection/objects.json"
+        ),
+        category_type: str | None = None,
+    ):
+        if path is None:
+            assert category_type is not None, "Path or category_type must be provided."
+            selection_root = os.path.join(DEFAULT_DATA_DIR, "selection")
+            path = os.path.join(selection_root, f"{category_type}.json")
+
+        with open(path, "r") as f:
+            data = json.load(f)
+            return SelectLastTask(
+                task_name="select_last",
+                category_type=data.get("name", category_type),
+                prompt_templates=data["last_item_in_cat_prompt_templates"],
+                category_wise_examples={k: v for k, v in data["categories"].items()},
+                exclude_categories=data.get("exclude_categories", {}),
+            )
+
+    def __str__(self):
+        return f"""SelectLastTask: ({self.category_type})
+Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.category_wise_examples.items())}
+"""
+
+    def get_random_sample(
+        self,
+        mt: ModelandTokenizer,
+        prompt_template_idx: int = 0,
+        option_style: Literal["single_line", "numbered"] = "single_line",
+        category: str | None = None,
+        subj: str | None = None,
+        n_distractors: int = 5,
+        filter_by_lm_prediction: bool = False,
+        obj_idx: int | None = None,
+        exclude_objs: Sequence[str] = [],
+        exclude_distractor_categories: Sequence[str] = [],
+        insert_distractor: Sequence[tuple[str, int]] = [],
+        retry_count: int = 0,
+        output_formatting: Literal["zero_shot", "object", "lettered"] = "zero_shot",
+    ) -> SelectionSample:
+
+        sample = super().get_random_sample(
+            mt=mt,
+            prompt_template_idx=0,
+            option_style=option_style,
+            category=category,
+            subj=subj,
+            n_distractors=n_distractors,
+            filter_by_lm_prediction=False,  # disable filtering in the parent call
+            obj_idx=obj_idx,
+            exclude_objs=exclude_objs,
+            exclude_distractor_categories=exclude_distractor_categories,
+            insert_distractor=insert_distractor,
+            retry_count=retry_count,
+            output_formatting=output_formatting,
+        )
+
+        # add other items of the same category
+        category_items = copy.deepcopy(self.category_wise_examples[sample.category])
+        random.shuffle(category_items)
+        category_items = KeyedSet(category_items, mt.tokenizer)
+        num_additional_items = random.randint(1, 3)
+        additional_items = random.sample(
+            (
+                category_items - KeyedSet(sample.options + exclude_objs, mt.tokenizer)
+            ).values,
+            k=num_additional_items,
+        )
+        sample.options = sample.options + additional_items
+        random.shuffle(sample.options)
+
+        category_items = [sample.obj] + additional_items
+        obj, obj_idx = None, None
+        for idx, option in enumerate(sample.options):
+            if option in category_items:
+                obj = option
+                obj_idx = idx
+                # break # just removing break to get the last item
+
+        assert (
+            obj is not None and obj_idx is not None
+        ), "Failed to find the last item in the options."
 
         sample.obj = obj
         sample.obj_idx = obj_idx
@@ -1823,7 +1990,13 @@ def get_counterfactual_samples_within_task(
 
     patch_distractors = []
     other_categories = random.sample(
-        list(set(categories) - {patch_category, clean_category}),
+        list(
+            set(categories)
+            - (
+                {patch_category, clean_category}
+                | set(task.exclude_for_category(clean_category))
+            )
+        ),
         k=patch_n_distractors - (len(patch_must_have_options)) + 1,
     )
 
@@ -1867,7 +2040,13 @@ def get_counterfactual_samples_within_task(
         if clean_n_distractors is None:
             clean_n_distractors = n_distractors
         other_categories = random.sample(
-            list(set(categories) - {patch_category, clean_category}),
+            list(
+                set(categories)
+                - (
+                    {patch_category, clean_category}
+                    | set(task.exclude_for_category(clean_category))
+                )
+            ),
             k=clean_n_distractors - (len(clean_must_have_options)) + 1,
         )
         clean_distractors = []
@@ -2451,7 +2630,7 @@ def get_counterfactual_samples_within_yes_no_task(
 
 @torch.inference_mode()
 def get_counterfactual_samples_within_first_task(
-    task: SelectFirstTask,
+    task: SelectFirstTask | SelectLastTask,
     mt: ModelandTokenizer,
     patch_category: str | None = None,
     clean_category: str | None = None,
@@ -2499,7 +2678,13 @@ def get_counterfactual_samples_within_first_task(
     other_objects = []
     alt_other_objects = []
     other_categories = random.sample(
-        list(set(categories) - {patch_category, clean_category}),
+        list(
+            set(categories)
+            - (
+                {patch_category, clean_category}
+                | set(task.exclude_for_category(clean_category))
+            )
+        ),
         k=n_options,
     )
     ##print(f"{other_categories=}")
@@ -2575,7 +2760,11 @@ def get_counterfactual_samples_within_first_task(
     patch_options_indices = []
     for option in patch_category_options:
         patch_options_indices.append(patch_options.index(option))
-    patch_first_idx = min(patch_options_indices)
+    patch_obj_idx = (
+        min(patch_options_indices)
+        if task.task_name == "select_first"
+        else max(patch_options_indices)
+    )
 
     # while True:
     #     # Gather the indices of the options of interest
@@ -2600,17 +2789,25 @@ def get_counterfactual_samples_within_first_task(
     clean_options_indices = []
     for option in clean_category_options:
         clean_options_indices.append(clean_options.index(option))
-    clean_first_idx = min(clean_options_indices)
+    clean_obj_idx = (
+        min(clean_options_indices)
+        if task.task_name == "select_first"
+        else max(clean_options_indices)
+    )
 
     alt_patch_category_options_indices = []
     for option in alt_patch_category_options:
         alt_patch_category_options_indices.append(clean_options.index(option))
-    alt_patch_first_idx = min(alt_patch_category_options_indices)
+    alt_patch_obj_idx = (
+        min(alt_patch_category_options_indices)
+        if task.task_name == "select_first"
+        else max(alt_patch_category_options_indices)
+    )
 
     # If indices are the same, swap to make them different
-    if patch_first_idx == alt_patch_first_idx:
+    if patch_obj_idx == alt_patch_obj_idx:
         # Find a safe swap position (not in clean_category_options or alt_patch_category_options)
-        swap_idx = patch_first_idx
+        swap_idx = patch_obj_idx
         for i in range(n_options):
             if (
                 i not in clean_options_indices
@@ -2620,16 +2817,20 @@ def get_counterfactual_samples_within_first_task(
                 break
 
         # Swap the element at alt_patch_first_idx with the safe position
-        clean_options[alt_patch_first_idx], clean_options[swap_idx] = (
+        clean_options[alt_patch_obj_idx], clean_options[swap_idx] = (
             clean_options[swap_idx],
-            clean_options[alt_patch_first_idx],
+            clean_options[alt_patch_obj_idx],
         )
 
         # Recalculate alt_patch_first_idx
         alt_patch_category_options_indices = []
         for option in alt_patch_category_options:
             alt_patch_category_options_indices.append(clean_options.index(option))
-        alt_patch_first_idx = min(alt_patch_category_options_indices)
+        alt_patch_obj_idx = (
+            min(alt_patch_category_options_indices)
+            if task.task_name == "select_first"
+            else max(alt_patch_category_options_indices)
+        )
 
     #############################################################
 
@@ -2637,25 +2838,25 @@ def get_counterfactual_samples_within_first_task(
     # print(f"{clean_first_idx=} | {clean_options_indices=}")
 
     # Store the information about the corresponding object from clean options
-    clean_track_type_obj = clean_options[alt_patch_first_idx]
+    clean_track_type_obj = clean_options[alt_patch_obj_idx]
     clean_track_first_token_id = get_first_token_id(
         clean_track_type_obj, mt.tokenizer, prefix=" "
     )
 
-    clean_obj = clean_options[clean_first_idx]
+    clean_obj = clean_options[clean_obj_idx]
 
     clean_metadata = {
         "track_category": patch_category,
         "track_type_obj": clean_track_type_obj,
-        "track_type_obj_idx": patch_first_idx,
+        "track_type_obj_idx": patch_obj_idx,
         "track_type_obj_token_id": clean_track_first_token_id,
     }
-    patch_obj = patch_options[patch_first_idx]
+    patch_obj = patch_options[patch_obj_idx]
 
     patch_sample = SelectionSample(
         obj=patch_obj,
         answer=patch_obj,
-        obj_idx=patch_first_idx,
+        obj_idx=patch_obj_idx,
         ans_token_id=get_first_token_id(patch_obj, mt.tokenizer, prefix=" "),
         options=patch_options,
         category=patch_category,
@@ -2666,7 +2867,7 @@ def get_counterfactual_samples_within_first_task(
     clean_sample = SelectionSample(
         obj=clean_obj,
         answer=clean_obj,
-        obj_idx=clean_first_idx,
+        obj_idx=clean_obj_idx,
         ans_token_id=get_first_token_id(clean_obj, mt.tokenizer, prefix=" "),
         options=clean_options,
         category=clean_category,
@@ -2739,4 +2940,5 @@ get_counterfactual_samples_interface = {
     "counting": get_counterfactual_samples_within_counting_task,
     "yes_no": get_counterfactual_samples_within_yes_no_task,
     "select_first": get_counterfactual_samples_within_first_task,
+    "select_last": get_counterfactual_samples_within_first_task,
 }
