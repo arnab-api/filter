@@ -14,6 +14,7 @@ from src.selection.data import (
     CountingTask,
     SelectFirstTask,
     SelectionSample,
+    SelectLastTask,
     SelectOneTask,
     SelectOrderTask,
     YesNoSample,
@@ -40,7 +41,9 @@ optimization_interface = {
 @torch.inference_mode()
 def prepare_dataset(
     mt: ModelandTokenizer,
-    select_task: SelectOneTask | CountingTask | YesNoTask | SelectFirstTask,
+    select_task: (
+        SelectOneTask | CountingTask | YesNoTask | SelectFirstTask | SelectLastTask
+    ),
     option_config: Literal["distinct", "same", "position"],
     train_limit: int = 512,
     validation_limit: int = 256,
@@ -65,7 +68,8 @@ def prepare_dataset(
             kwargs["clean_n_options"] = random.choice(range(3, 6))
             kwargs["patch_n_options"] = random.choice(range(3, 6))
             # No distinct options for yes/no task
-        elif isinstance(select_task, SelectFirstTask):
+        elif isinstance(select_task, SelectFirstTask | SelectLastTask):
+            #! this has to come before SelectOneTask since SelectFirstTask is a subclass of SelectOneTask
             kwargs["distinct_options"] = distinct_options
         elif isinstance(select_task, SelectOneTask):
             kwargs["distinct_options"] = distinct_options
@@ -424,7 +428,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--task",
         type=str,
-        choices=["select_one", "counting", "yes_no", "select_first"],
+        choices=["select_one", "counting", "yes_no", "select_first", "select_last"],
         default="select_one",
         help="Which task to optimize",
     )
@@ -452,6 +456,7 @@ if __name__ == "__main__":
         "counting": CountingTask,
         "yes_no": YesNoTask,
         "select_first": SelectFirstTask,
+        "select_last": SelectLastTask,
     }
 
     # load the selection class
