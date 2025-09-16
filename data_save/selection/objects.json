@@ -19,10 +19,10 @@
         "<_options_>\nWhat is the <_order_> object from the list above?\nAnswer:"
     ],
     "count_prompt_templates": [
-        "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer:",
-        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer:",
         "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer: ",
-        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer: "
+        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer: ",
+        "How many objects are there in the following are <_category_>?\nItems: <_options_>\nAnswer:",
+        "Items: <_options_>\nHow many <_category_>s are in this list?\nAnswer:"
     ],
     "yes_no_prompt_templates": [
         "Answer 'Yes' or 'No': Is there a <_category_> in the following list?\n<_options_>\nAnswer:",
@@ -337,6 +337,14 @@
         "electronics": [
             "kitchen appliance",
             "office supply"
+        ],
+        "kitchen appliance": [
+            "electronics",
+            "office supply"
+        ],
+        "office supply": [
+            "electronics",
+            "kitchen appliance"
         ]
     }
 }

@@ -1194,6 +1194,7 @@ class CountingTask(DataClassJsonMixin):
     prompt_templates: list[str]
     category_wise_examples: dict[str, list] = field(default_factory=dict)
     task_name: str = "counting"
+    exclude_categories: dict[str, list] = field(default_factory=dict)
 
     @staticmethod
     def load(
@@ -1214,6 +1215,7 @@ class CountingTask(DataClassJsonMixin):
                 category_type=data.get("name", category_type),
                 prompt_templates=data["count_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
+                exclude_categories=data.get("exclude_categories", {}),
             )
 
     @property
@@ -1222,6 +1224,12 @@ class CountingTask(DataClassJsonMixin):
         Returns the list of categories in the task.
         """
         return list(self.category_wise_examples.keys())
+
+    def exclude_for_category(self, category):
+        if category in self.exclude_categories:
+            return self.exclude_categories[category]
+        else:
+            return []
 
     def __str__(self):
         return f"""CountingTask: ({self.category_type})
@@ -1478,6 +1486,7 @@ class YesNoTask(DataClassJsonMixin):
     prompt_templates: list[str]
     category_wise_examples: dict[str, list] = field(default_factory=dict)
     task_name: str = "yes_no"
+    exclude_categories: dict[str, list] = field(default_factory=dict)
 
     @staticmethod
     def load(
@@ -1498,7 +1507,14 @@ class YesNoTask(DataClassJsonMixin):
                 category_type=data.get("name", category_type),
                 prompt_templates=data["yes_no_prompt_templates"],
                 category_wise_examples={k: v for k, v in data["categories"].items()},
+                exclude_categories=data.get("exclude_categories", {}),
             )
+
+    def exclude_for_category(self, category):
+        if category in self.exclude_categories:
+            return self.exclude_categories[category]
+        else:
+            return []
 
     @property
     def categories(self):
@@ -1553,7 +1569,10 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
         n_distractors = n_options - len(options)
         for _ in range(n_distractors):
             other_category = random.choice(
-                list(set(category_wise_examples.keys()) - {category})
+                list(
+                    set(category_wise_examples.keys())
+                    - set([category] + self.exclude_for_category(category))
+                )
             )
             options.append(random.choice(category_wise_examples[other_category].values))
 
@@ -2202,7 +2221,7 @@ def get_counterfactual_samples_within_task(
 
 @torch.inference_mode()
 def get_counterfactual_samples_within_counting_task(
-    task: CountingTask | YesNoTask,
+    task: CountingTask,
     mt: ModelandTokenizer,
     patch_category=None,
     clean_category=None,
@@ -2229,7 +2248,10 @@ def get_counterfactual_samples_within_counting_task(
     categories = list(task.category_wise_examples.keys())
     patch_category = patch_category or random.choice(categories)
     clean_category = clean_category or random.choice(
-        list(set(categories) - {patch_category})
+        list(
+            set(categories)
+            - set([patch_category] + task.exclude_for_category(patch_category))
+        )
     )
 
     clean_n_options = clean_n_options or n_options
@@ -2417,7 +2439,7 @@ def get_counterfactual_samples_within_counting_task(
 
 @torch.inference_mode()
 def get_counterfactual_samples_within_yes_no_task(
-    task: CountingTask | YesNoTask,
+    task: YesNoTask,
     mt: ModelandTokenizer,
     patch_category=None,
     clean_category=None,
@@ -2445,7 +2467,10 @@ def get_counterfactual_samples_within_yes_no_task(
     categories = list(task.category_wise_examples.keys())
     patch_category = patch_category or random.choice(categories)
     clean_category = clean_category or random.choice(
-        list(set(categories) - {patch_category})
+        list(
+            set(categories)
+            - set([patch_category] + task.exclude_for_category(patch_category))
+        )
     )
 
     clean_n_options = clean_n_options or n_options
