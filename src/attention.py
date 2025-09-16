@@ -144,10 +144,21 @@ def visualize_attn_matrix(
     tokens: list[str],
     q_index: int = -1,
     start_from: int = 1,
+    end_at: Optional[int] = None,
     vis_args: dict = {},
 ):
     assert len(tokens) == attn_matrix.shape[-1]
-    attn_matrix = attn_matrix.squeeze()[q_index][start_from:]
+    if "start_from" in vis_args:
+        start_from = vis_args.pop("start_from")
+    if "end_at" in vis_args:
+        end_at = vis_args.pop("end_at")
+    if "q_index" in vis_args:
+        q_index = vis_args.pop("q_index")
+    attn_matrix = (
+        attn_matrix.squeeze()[q_index][start_from:]
+        if end_at is None
+        else attn_matrix.squeeze()[q_index][start_from:end_at]
+    )
     tokens = tokens[start_from:]
     display(colored_tokens(tokens=tokens, values=attn_matrix, **vis_args))
 
