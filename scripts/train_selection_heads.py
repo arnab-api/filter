@@ -12,6 +12,7 @@ from src.models import ModelandTokenizer
 from src.selection.data import (
     CountingSample,
     CountingTask,
+    MCQify_sample,
     SelectFirstTask,
     SelectionSample,
     SelectLastTask,
@@ -50,6 +51,7 @@ def prepare_dataset(
     prompt_template_idx: int = 3,
     option_style: str = "single_line",
     distinct_options: bool = True,
+    mcqify: bool = False,
 ):
     """
     Prepare the dataset for training and validation.
@@ -73,6 +75,7 @@ def prepare_dataset(
             kwargs["distinct_options"] = distinct_options
         elif isinstance(select_task, SelectOneTask):
             kwargs["distinct_options"] = distinct_options
+            kwargs["mcqify"] = mcqify
             if option_config == "position":
                 n_distractors = random.choice(range(3, 7))
                 kwargs["patch_n_distractors"] = n_distractors
@@ -102,6 +105,7 @@ def prepare_dataset(
             filter_by_lm_prediction=True,
             **kwargs,
         )
+
         if option_config == "position":
             clean_sample.metadata = {
                 "track_category": "position",
@@ -288,11 +292,13 @@ def find_optimal_masks(
     option_style: str = "single_line",
     distinct_options: bool = True,
     optimization_function=get_optimal_head_mask_optimized,
+    mcqify: bool = False,
 ):
     train_set, validation_set = prepare_dataset(
         mt=mt,
         select_task=select_task,
         option_config=option_config,
+        mcqify=mcqify,
         train_limit=train_limit,
         validation_limit=validation_limit,
         prompt_template_idx=prompt_template_idx,
@@ -433,6 +439,13 @@ if __name__ == "__main__":
         help="Which task to optimize",
     )
 
+    # to mcqify the samples (for select_one task)
+    parser.add_argument(
+        "--mcqify",
+        action="store_true",
+        help="Whether to convert the samples to multiple-choice questions",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -479,7 +492,7 @@ if __name__ == "__main__":
         args.save_dir,
         mt.name.split("/")[-1],
         opt_config_dir[args.option_config],
-        select_task.task_name,
+        select_task.task_name + ("_mcq" if args.mcqify else ""),
     )
     if args.opt_interface == "legacy":
         save_dir = os.path.join(save_dir, "legacy")
@@ -501,6 +514,7 @@ if __name__ == "__main__":
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
         optimization_function=optimization_interface[args.opt_interface],
+        mcqify=args.mcqify,
     )
 
     logger.info("#" * 100)

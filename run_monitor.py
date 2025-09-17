@@ -6,9 +6,10 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v 2>&1 | tee select_obj_llama.log'
+COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --mcqify -v 2>&1 | tee select_obj_llama_mcq.log'
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="counting" --prompt_temp_idx=1 -v 2>&1 | tee count_obj_llama.log'
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="yes_no" --prompt_temp_idx=3 -v 2>&1 | tee yes_no_obj_llama.log'
-COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 -v 2>&1 | tee select_first_obj_llama.log'
+# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 -v 2>&1 | tee select_first_obj_llama.log'
 
 
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --save_dir="selection/ques_mixed" --prompt_temp_idx=-1 -v 2>&1 | tee ques_mixed.log'

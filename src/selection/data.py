@@ -120,12 +120,15 @@ class SelectionSample(DataClassJsonMixin):
         return prompt
 
 
-def MCQify_sample(mt: ModelandTokenizer, sample: SelectionSample) -> SelectionSample:
+def MCQify_sample(
+    tokenizer: ModelandTokenizer, sample: SelectionSample
+) -> SelectionSample:
+    tokenizer = unwrap_tokenizer(tokenizer)
     sample = copy.deepcopy(sample)
     sample.default_option_style = "numbered"
     correct_option = chr(ord("a") + sample.obj_idx)
     sample.ans_token_id = get_first_token_id(
-        name=correct_option, tokenizer=mt.tokenizer, prefix=" "
+        name=correct_option, tokenizer=tokenizer, prefix=" "
     )
     sample.metadata["question_type"] = "MCQ"
     return sample
@@ -1948,6 +1951,7 @@ def get_counterfactual_samples_within_task(
     option_style="single_line",
     patch_option_style: str | None = None,
     clean_option_style: str | None = None,
+    mcqify: bool = False,
 ):
     categories = list(task.category_wise_examples.keys())
     if patch_category is None:
@@ -2156,6 +2160,15 @@ def get_counterfactual_samples_within_task(
         default_option_style=clean_option_style or option_style,
     )
 
+    if mcqify:
+        patch_sample = MCQify_sample(tokenizer=mt.tokenizer, sample=patch_sample)
+        clean_sample = MCQify_sample(tokenizer=mt.tokenizer, sample=clean_sample)
+
+        target_obj_idx = clean_sample.metadata["track_type_obj_idx"]
+        clean_sample.metadata["track_type_obj_token_id"] = get_first_token_id(
+            name=chr(ord("a") + target_obj_idx), tokenizer=mt.tokenizer, prefix=" "
+        )
+
     if "qwen" in mt.name.lower():
         #! for attention sink in qwen models
         patch_sample.prompt_template = "# " + patch_sample.prompt_template
@@ -2176,7 +2189,13 @@ def get_counterfactual_samples_within_task(
         for sample in test_samples:
             tokenized = prepare_input(tokenizer=mt, prompts=sample.prompt())
             is_correct, predictions, track_options = verify_correct_option(
-                mt=mt, target=sample.obj, options=sample.options, input=tokenized
+                mt=mt,
+                target=sample.ans_token_id,
+                options=[
+                    get_first_token_id(opt, mt.tokenizer, prefix=" ")
+                    for opt in get_options_for_answer(sample)
+                ],
+                input=tokenized,
             )
             # sample.metadata["tokenized"] = tokenized.data
             logger.info(sample.prompt())
