@@ -2018,6 +2018,9 @@ def get_counterfactual_samples_within_task(
             - (
                 {patch_category, clean_category}
                 | set(task.exclude_for_category(clean_category))
+                | set(
+                    task.exclude_for_category(patch_category)
+                )  # TODO (arnab): actually do this for all sampling
             )
         ),
         k=patch_n_distractors - (len(patch_must_have_options)) + 1,
@@ -2068,6 +2071,7 @@ def get_counterfactual_samples_within_task(
                 - (
                     {patch_category, clean_category}
                     | set(task.exclude_for_category(clean_category))
+                    | set(task.exclude_for_category(patch_category))
                 )
             ),
             k=clean_n_distractors - (len(clean_must_have_options)) + 1,

@@ -54,7 +54,11 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
             raise AssertionError("Set `track_obj_token_id` in metadata of clean sample")
 
     def head_effect(
-        self, layer_idx, head_idx, metric: Literal["prob", "logit"] = "logit"
+        self,
+        layer_idx,
+        head_idx,
+        metric: Literal["prob", "logit"] = "logit",
+        normalize=True,
     ):
         if isinstance(self.base_results, dict):
             low_score = getattr(self.base_results[self.track_obj_token_id][1], metric)
@@ -69,7 +73,7 @@ class SelectionQprojPatchResult(DataClassJsonMixin):
         )
 
         # logger.debug(f"{low_score=}, {high_score=}, {patch_score=}")
-        if self.gold_results is not None:
+        if normalize and self.gold_results is not None:
             high_score = getattr(
                 self.gold_results[self.patch_sample.ans_token_id][1], metric
             )
