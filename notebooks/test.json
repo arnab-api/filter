@@ -1,0 +1,370 @@
+{
+  "unit_samples": [
+    {
+      "obj": "Trombone",
+      "obj_idx": 2,
+      "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+      "options": [
+        "Sweater",
+        "Razor",
+        "Trombone",
+        "Tractor"
+      ],
+      "answer": "Trombone",
+      "subj": "Harp",
+      "category": "music instrument",
+      "prediction": [
+        {
+          "token": " Trom",
+          "prob": 0.671875,
+          "logit": 21.0,
+          "token_id": 94467,
+          "metadata": null
+        },
+        {
+          "token": " The",
+          "prob": 0.169921875,
+          "logit": 19.625,
+          "token_id": 578,
+          "metadata": null
+        },
+        {
+          "token": " Among",
+          "prob": 0.05517578125,
+          "logit": 18.5,
+          "token_id": 22395,
+          "metadata": null
+        },
+        {
+          "token": " A",
+          "prob": 0.04296875,
+          "logit": 18.25,
+          "token_id": 362,
+          "metadata": null
+        },
+        {
+          "token": " It",
+          "prob": 0.015869140625,
+          "logit": 17.25,
+          "token_id": 1102,
+          "metadata": null
+        }
+      ],
+      "ans_token_id": 94467,
+      "metadata": {
+        "tokenized": {
+          "input_ids": [
+            [
+              128000,
+              3883,
+              25,
+              37326,
+              977,
+              11,
+              74968,
+              11,
+              94467,
+              20337,
+              11,
+              1183,
+              5739,
+              627,
+              23956,
+              4315,
+              1521,
+              6302,
+              9932,
+              3485,
+              374,
+              264,
+              4731,
+              14473,
+              5380,
+              16533,
+              25
+            ]
+          ],
+          "attention_mask": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "retry_count": 0,
+        "sample_type": "selection"
+      },
+      "default_option_style": "single_line"
+    },
+    {
+      "obj": "Dumbbell",
+      "obj_idx": 3,
+      "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+      "options": [
+        "Mixer",
+        "Tractor",
+        "Laptop",
+        "Dumbbell"
+      ],
+      "answer": "Dumbbell",
+      "subj": "Golf ball",
+      "category": "sport equipment",
+      "prediction": [
+        {
+          "token": " D",
+          "prob": 0.8359375,
+          "logit": 21.375,
+          "token_id": 423,
+          "metadata": null
+        },
+        {
+          "token": " The",
+          "prob": 0.07763671875,
+          "logit": 19.0,
+          "token_id": 578,
+          "metadata": null
+        },
+        {
+          "token": " A",
+          "prob": 0.028564453125,
+          "logit": 18.0,
+          "token_id": 362,
+          "metadata": null
+        },
+        {
+          "token": " Among",
+          "prob": 0.017333984375,
+          "logit": 17.5,
+          "token_id": 22395,
+          "metadata": null
+        },
+        {
+          "token": " Option",
+          "prob": 0.007232666015625,
+          "logit": 16.625,
+          "token_id": 7104,
+          "metadata": null
+        }
+      ],
+      "ans_token_id": 423,
+      "metadata": {
+        "tokenized": {
+          "input_ids": [
+            [
+              128000,
+              3883,
+              25,
+              72392,
+              11,
+              1183,
+              5739,
+              11,
+              57225,
+              11,
+              423,
+              3635,
+              17696,
+              627,
+              23956,
+              4315,
+              1521,
+              6302,
+              9932,
+              3485,
+              374,
+              264,
+              10775,
+              7241,
+              5380,
+              16533,
+              25
+            ]
+          ],
+          "attention_mask": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "retry_count": 0,
+        "sample_type": "selection"
+      },
+      "default_option_style": "single_line"
+    }
+  ],
+  "comp_sample": {
+    "obj": "Trumpet",
+    "obj_idx": 3,
+    "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+    "options": [
+      "Highlighter",
+      "Mall",
+      "Submarine",
+      "Trumpet"
+    ],
+    "answer": "Mall",
+    "subj": "Stadium",
+    "category": "music instrument or sport equipment",
+    "prediction": [
+      {
+        "token": " Trump",
+        "prob": 0.8515625,
+        "logit": 21.75,
+        "token_id": 3420,
+        "metadata": null
+      },
+      {
+        "token": " The",
+        "prob": 0.06982421875,
+        "logit": 19.25,
+        "token_id": 578,
+        "metadata": null
+      },
+      {
+        "token": " A",
+        "prob": 0.02001953125,
+        "logit": 18.0,
+        "token_id": 362,
+        "metadata": null
+      },
+      {
+        "token": " Among",
+        "prob": 0.0177001953125,
+        "logit": 17.875,
+        "token_id": 22395,
+        "metadata": null
+      },
+      {
+        "token": " Highlight",
+        "prob": 0.006500244140625,
+        "logit": 16.875,
+        "token_id": 57094,
+        "metadata": null
+      }
+    ],
+    "ans_token_id": 32498,
+    "metadata": {
+      "tokenized": {
+        "data": {
+          "input_ids": [
+            [
+              128000,
+              3883,
+              25,
+              57094,
+              261,
+              11,
+              32498,
+              11,
+              3804,
+              85543,
+              11,
+              3420,
+              295,
+              627,
+              23956,
+              4315,
+              1521,
+              6302,
+              9932,
+              3485,
+              374,
+              264,
+              4731,
+              14473,
+              477,
+              10775,
+              7241,
+              5380,
+              16533,
+              25
+            ]
+          ],
+          "attention_mask": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ]
+        },
+        "_encodings": [
+          

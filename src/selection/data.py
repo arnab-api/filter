@@ -563,7 +563,14 @@ class SelectOneTask(DataClassJsonMixin):
 
         distractors = []
         obj_set = KeyedSet(obj_arr + exclude_objs, tokenizer=tokenizer)
-        other_categories = random.sample(
+        # other_categories = random.sample(
+        #     list(
+        #         set(category_wise_examples.keys())
+        #         - set([category] + exclude_distractor_categories)
+        #     ),
+        #     k=n_distractors,
+        # )
+        other_categories = random.choices(
             list(
                 set(category_wise_examples.keys())
                 - set([category] + exclude_distractor_categories)

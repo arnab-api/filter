@@ -195,7 +195,7 @@ def forward_pass_to_vocab(
     )
 
 
-@torch.inference_mode()
+@torch.no_grad()
 def patchscope(
     mt: ModelandTokenizer,
     h: torch.Tensor,
