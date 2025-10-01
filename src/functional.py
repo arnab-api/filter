@@ -15,13 +15,7 @@ from nltk.corpus import stopwords
 from src.dataset import Relation
 from src.models import ModelandTokenizer
 from src.tokens import find_token_range, insert_padding_before_pos, prepare_input
-from src.utils.typing import (
-    SVD,
-    ArrayLike,
-    PredictedToken,
-    Tokenizer,
-    TokenizerOutput,
-)
+from src.utils.typing import SVD, ArrayLike, PredictedToken, Tokenizer, TokenizerOutput
 
 logger = logging.getLogger(__name__)
 
@@ -992,6 +986,89 @@ def guess_subject(prompt):
     return re.search(r"(?!Wh(o|at|ere|en|ich|y) )([A-Z]\S*)(\s[A-Z][a-z']*)*", prompt)[
         0
     ].strip()
+
+
+def patch_linear_subspaces(
+    mt: ModelandTokenizer,
+    base_input: TokenizerOutput,
+    rotator: dict[str, torch.nn.Module],
+    patches: list[PatchSpec],
+    rotate_dimensions: int = 100,
+    with_grad=False,
+):
+    module_to_tok_indices = {}
+    for patch in patches:
+        module_name, token_index = patch.location
+        if module_name not in module_to_tok_indices:
+            module_to_tok_indices[module_name] = []
+        module_to_tok_indices[module_name].append(patch)
+    for module_name in module_to_tok_indices:
+        if module_name not in rotator:
+            raise ValueError(
+                f"Rotator for module {module_name} not found in rotator dict"
+            )
+        if rotator[module_name] is None:
+            raise ValueError(f"Rotator for module {module_name} is None")
+
+    grad_env = torch.enable_grad if with_grad else torch.no_grad
+    with grad_env():
+        with mt.trace(base_input) as tracer:
+            for module_name in module_to_tok_indices:
+                module = get_module_nnsight(mt, module_name)
+
+                # get the base representation
+                base_state = (
+                    module.output
+                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    else module.output[0]
+                )
+                if next(rotator[module_name].parameters()).device != base_state.device:
+                    rotator[module_name] = rotator[module_name].to(base_state.device)
+
+                #! takes too long
+                # try:
+                #     device = rotator[module_name].weight.device
+                #     dtype = rotator[module_name].weight.dtype
+                #     rotator_inverse = torch.linalg.pinv(
+                #         rotator[module_name].weight.float()
+                #     ).to(device=device, dtype=dtype)
+                # except:
+                #     print("exception")
+                #     rotator_inverse = rotator[module_name].weight.T
+
+                #! becase the rotator should be kept orthogonal
+                #! there will be some precision error with bfloat16
+                rotator_inverse = rotator[module_name].weight.T
+                for patch in module_to_tok_indices[module_name]:
+                    _, token_idx = patch.location
+                    base_token_state = base_state[:, token_idx, :].clone()
+                    # rotate the base representation
+                    rotated_base = rotator[module_name](base_token_state)
+
+                    # rotate the source representation
+                    source_state = patch.patch
+                    if source_state.ndim == 1:
+                        source_state = source_state.unsqueeze(0)
+                    rotated_source = rotator[module_name](source_state)
+                    # print(f"{rotated_base.shape=}, {rotated_source.shape=}")
+
+                    # patch the first `rotate_dimensions` dimensions of the source representation
+                    rotated_patch = torch.cat(
+                        [
+                            rotated_source[:, :rotate_dimensions],
+                            rotated_base[:, rotate_dimensions:],
+                        ],
+                        dim=1,
+                    )
+
+                    # inverse rotate the patched representation
+                    patch = torch.matmul(rotated_patch, rotator_inverse.T)
+
+                    # replace the base representation with the patched representation
+                    base_state[:, token_idx, :] = patch
+
+            output = mt.output.save()
+    return output
 
 
 #! Obsolete code related to the Bridge dataset. Should be moved to their own file if required in the future.

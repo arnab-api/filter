@@ -1,370 +1,465 @@
 {
-  "unit_samples": [
-    {
-      "obj": "Trombone",
-      "obj_idx": 2,
-      "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
-      "options": [
-        "Sweater",
-        "Razor",
-        "Trombone",
-        "Tractor"
-      ],
-      "answer": "Trombone",
-      "subj": "Harp",
-      "category": "music instrument",
-      "prediction": [
-        {
-          "token": " Trom",
-          "prob": 0.671875,
-          "logit": 21.0,
-          "token_id": 94467,
-          "metadata": null
+    "source": {
+        "obj": "Bracelet",
+        "obj_idx": 2,
+        "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+        "options": [
+            "Oak",
+            "Tomato",
+            "Bracelet",
+            "Coat",
+            "Warehouse",
+            "Pressure cooker"
+        ],
+        "answer": "Bracelet",
+        "subj": "Anklet",
+        "category": "jewelry",
+        "prediction": [
+            {
+                "token": " Bracelet",
+                "prob": 0.94921875,
+                "logit": 22.625,
+                "token_id": 110810,
+                "metadata": null
+            },
+            {
+                "token": " **",
+                "prob": 0.04736328125,
+                "logit": 19.625,
+                "token_id": 5231,
+                "metadata": null
+            },
+            {
+                "token": "  ",
+                "prob": 0.0005950927734375,
+                "logit": 15.25,
+                "token_id": 139,
+                "metadata": null
+            },
+            {
+                "token": "\n\n",
+                "prob": 0.000560760498046875,
+                "logit": 15.1875,
+                "token_id": 109,
+                "metadata": null
+            },
+            {
+                "token": "\n",
+                "prob": 0.00016021728515625,
+                "logit": 13.9375,
+                "token_id": 108,
+                "metadata": null
+            }
+        ],
+        "ans_token_id": 110810,
+        "metadata": {
+            "track_category": "vegetable",
+            "track_type_obj": "Tomato",
+            "track_type_obj_idx": 1,
+            "track_type_obj_token_id": 87613,
+            "ques_pos": 26,
+            "tokenized": {
+                "input_ids": [
+                    [
+                        2,
+                        6928,
+                        235292,
+                        19132,
+                        235269,
+                        87613,
+                        235269,
+                        110810,
+                        235269,
+                        56200,
+                        235269,
+                        69484,
+                        235269,
+                        27011,
+                        65931,
+                        235265,
+                        108,
+                        13033,
+                        3932,
+                        1450,
+                        9113,
+                        8248,
+                        3131,
+                        603,
+                        476,
+                        25362,
+                        235336,
+                        108,
+                        1261,
+                        235292
+                    ]
+                ],
+                "attention_mask": [
+                    [
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1
+                    ]
+                ]
+            }
         },
-        {
-          "token": " The",
-          "prob": 0.169921875,
-          "logit": 19.625,
-          "token_id": 578,
-          "metadata": null
-        },
-        {
-          "token": " Among",
-          "prob": 0.05517578125,
-          "logit": 18.5,
-          "token_id": 22395,
-          "metadata": null
-        },
-        {
-          "token": " A",
-          "prob": 0.04296875,
-          "logit": 18.25,
-          "token_id": 362,
-          "metadata": null
-        },
-        {
-          "token": " It",
-          "prob": 0.015869140625,
-          "logit": 17.25,
-          "token_id": 1102,
-          "metadata": null
-        }
-      ],
-      "ans_token_id": 94467,
-      "metadata": {
-        "tokenized": {
-          "input_ids": [
-            [
-              128000,
-              3883,
-              25,
-              37326,
-              977,
-              11,
-              74968,
-              11,
-              94467,
-              20337,
-              11,
-              1183,
-              5739,
-              627,
-              23956,
-              4315,
-              1521,
-              6302,
-              9932,
-              3485,
-              374,
-              264,
-              4731,
-              14473,
-              5380,
-              16533,
-              25
-            ]
-          ],
-          "attention_mask": [
-            [
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1
-            ]
-          ]
-        },
-        "retry_count": 0,
-        "sample_type": "selection"
-      },
-      "default_option_style": "single_line"
+        "default_option_style": "single_line"
     },
-    {
-      "obj": "Dumbbell",
-      "obj_idx": 3,
-      "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
-      "options": [
-        "Mixer",
-        "Tractor",
-        "Laptop",
-        "Dumbbell"
-      ],
-      "answer": "Dumbbell",
-      "subj": "Golf ball",
-      "category": "sport equipment",
-      "prediction": [
+    "destination": {
+        "obj": "Spinach",
+        "obj_idx": 0,
+        "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
+        "options": [
+            "Spinach",
+            "Bike",
+            "Zebra",
+            "Pin",
+            "Monitor",
+            "Surfboard"
+        ],
+        "answer": "Spinach",
+        "subj": "Zucchini",
+        "category": "vegetable",
+        "prediction": [
+            {
+                "token": " Spinach",
+                "prob": 0.96875,
+                "logit": 22.0,
+                "token_id": 143377,
+                "metadata": null
+            },
+            {
+                "token": " **",
+                "prob": 0.029296875,
+                "logit": 18.5,
+                "token_id": 5231,
+                "metadata": null
+            },
+            {
+                "token": "  ",
+                "prob": 0.0007781982421875,
+                "logit": 14.875,
+                "token_id": 139,
+                "metadata": null
+            },
+            {
+                "token": "\n\n",
+                "prob": 0.0004444122314453125,
+                "logit": 14.3125,
+                "token_id": 109,
+                "metadata": null
+            },
+            {
+                "token": " spinach",
+                "prob": 0.00011968612670898438,
+                "logit": 13.0,
+                "token_id": 65757,
+                "metadata": null
+            }
+        ],
+        "ans_token_id": 143377,
+        "metadata": {
+            "track_category": "jewelry",
+            "track_type_obj": "Pin",
+            "track_type_obj_idx": 3,
+            "track_type_obj_token_id": 14829,
+            "ques_pos": 26,
+            "tokenized": {
+                "input_ids": [
+                    [
+                        2,
+                        6928,
+                        235292,
+                        143377,
+                        235269,
+                        36343,
+                        235269,
+                        131247,
+                        235269,
+                        14829,
+                        235269,
+                        18915,
+                        235269,
+                        60735,
+                        3334,
+                        235265,
+                        108,
+                        13033,
+                        3932,
+                        1450,
+                        9113,
+                        8248,
+                        3131,
+                        603,
+                        476,
+                        26771,
+                        235336,
+                        108,
+                        1261,
+                        235292
+                    ]
+                ],
+                "attention_mask": [
+                    [
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1,
+                        1
+                    ]
+                ]
+            }
+        },
+        "default_option_style": "single_line"
+    },
+    "patched_predictions": [
         {
-          "token": " D",
-          "prob": 0.8359375,
-          "logit": 21.375,
-          "token_id": 423,
-          "metadata": null
+            "token": " Pin",
+            "prob": 0.5625,
+            "logit": 24.5,
+            "token_id": 14829,
+            "metadata": null
         },
         {
-          "token": " The",
-          "prob": 0.07763671875,
-          "logit": 19.0,
-          "token_id": 578,
-          "metadata": null
+            "token": " **",
+            "prob": 0.341796875,
+            "logit": 24.0,
+            "token_id": 5231,
+            "metadata": null
         },
         {
-          "token": " A",
-          "prob": 0.028564453125,
-          "logit": 18.0,
-          "token_id": 362,
-          "metadata": null
+            "token": "  ",
+            "prob": 0.028076171875,
+            "logit": 21.5,
+            "token_id": 139,
+            "metadata": null
         },
         {
-          "token": " Among",
-          "prob": 0.017333984375,
-          "logit": 17.5,
-          "token_id": 22395,
-          "metadata": null
+            "token": "\n",
+            "prob": 0.019287109375,
+            "logit": 21.125,
+            "token_id": 108,
+            "metadata": null
         },
         {
-          "token": " Option",
-          "prob": 0.007232666015625,
-          "logit": 16.625,
-          "token_id": 7104,
-          "metadata": null
+            "token": "\n\n",
+            "prob": 0.0169677734375,
+            "logit": 21.0,
+            "token_id": 109,
+            "metadata": null
         }
-      ],
-      "ans_token_id": 423,
-      "metadata": {
-        "tokenized": {
-          "input_ids": [
-            [
-              128000,
-              3883,
-              25,
-              72392,
-              11,
-              1183,
-              5739,
-              11,
-              57225,
-              11,
-              423,
-              3635,
-              17696,
-              627,
-              23956,
-              4315,
-              1521,
-              6302,
-              9932,
-              3485,
-              374,
-              264,
-              10775,
-              7241,
-              5380,
-              16533,
-              25
-            ]
-          ],
-          "attention_mask": [
-            [
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1
-            ]
-          ]
-        },
-        "retry_count": 0,
-        "sample_type": "selection"
-      },
-      "default_option_style": "single_line"
-    }
-  ],
-  "comp_sample": {
-    "obj": "Trumpet",
-    "obj_idx": 3,
-    "prompt_template": "<_options_>\nWhich among these objects mentioned above is a <_category_>?\nAnswer:",
-    "options": [
-      "Highlighter",
-      "Mall",
-      "Submarine",
-      "Trumpet"
     ],
-    "answer": "Mall",
-    "subj": "Stadium",
-    "category": "music instrument or sport equipment",
-    "prediction": [
-      {
-        "token": " Trump",
-        "prob": 0.8515625,
-        "logit": 21.75,
-        "token_id": 3420,
-        "metadata": null
-      },
-      {
-        "token": " The",
-        "prob": 0.06982421875,
-        "logit": 19.25,
-        "token_id": 578,
-        "metadata": null
-      },
-      {
-        "token": " A",
-        "prob": 0.02001953125,
-        "logit": 18.0,
-        "token_id": 362,
-        "metadata": null
-      },
-      {
-        "token": " Among",
-        "prob": 0.0177001953125,
-        "logit": 17.875,
-        "token_id": 22395,
-        "metadata": null
-      },
-      {
-        "token": " Highlight",
-        "prob": 0.006500244140625,
-        "logit": 16.875,
-        "token_id": 57094,
-        "metadata": null
-      }
-    ],
-    "ans_token_id": 32498,
-    "metadata": {
-      "tokenized": {
-        "data": {
-          "input_ids": [
-            [
-              128000,
-              3883,
-              25,
-              57094,
-              261,
-              11,
-              32498,
-              11,
-              3804,
-              85543,
-              11,
-              3420,
-              295,
-              627,
-              23956,
-              4315,
-              1521,
-              6302,
-              9932,
-              3485,
-              374,
-              264,
-              4731,
-              14473,
-              477,
-              10775,
-              7241,
-              5380,
-              16533,
-              25
-            ]
-          ],
-          "attention_mask": [
-            [
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1,
-              1
-            ]
-          ]
+    "patched_track": {
+        "14829": [
+            1,
+            {
+                "token": " Pin",
+                "prob": 0.5625,
+                "logit": 24.5,
+                "token_id": 14829,
+                "metadata": null
+            }
+        ],
+        "18915": [
+            23,
+            {
+                "token": " Monitor",
+                "prob": 0.00024318695068359375,
+                "logit": 16.75,
+                "token_id": 18915,
+                "metadata": null
+            }
+        ],
+        "60735": [
+            66,
+            {
+                "token": " Surf",
+                "prob": 2.4080276489257812e-05,
+                "logit": 14.4375,
+                "token_id": 60735,
+                "metadata": null
+            }
+        ],
+        "143377": [
+            94,
+            {
+                "token": " Spinach",
+                "prob": 1.3709068298339844e-05,
+                "logit": 13.875,
+                "token_id": 143377,
+                "metadata": null
+            }
+        ],
+        "131247": [
+            118,
+            {
+                "token": " Zebra",
+                "prob": 7.808208465576172e-06,
+                "logit": 13.3125,
+                "token_id": 131247,
+                "metadata": null
+            }
+        ],
+        "36343": [
+            286,
+            {
+                "token": " Bike",
+                "prob": 1.5348196029663086e-06,
+                "logit": 11.6875,
+                "token_id": 36343,
+                "metadata": null
+            }
+        ]
+    },
+    "clean_predictions": [
+        {
+            "token": " Spinach",
+            "prob": 0.96875,
+            "logit": 22.0,
+            "token_id": 143377,
+            "metadata": null
         },
-        "_encodings": [
-          
+        {
+            "token": " **",
+            "prob": 0.029296875,
+            "logit": 18.5,
+            "token_id": 5231,
+            "metadata": null
+        },
+        {
+            "token": "  ",
+            "prob": 0.0007781982421875,
+            "logit": 14.875,
+            "token_id": 139,
+            "metadata": null
+        },
+        {
+            "token": "\n\n",
+            "prob": 0.0004444122314453125,
+            "logit": 14.3125,
+            "token_id": 109,
+            "metadata": null
+        },
+        {
+            "token": " spinach",
+            "prob": 0.00011968612670898438,
+            "logit": 13.0,
+            "token_id": 65757,
+            "metadata": null
+        }
+    ],
+    "clean_track": {
+        "143377": [
+            1,
+            {
+                "token": " Spinach",
+                "prob": 0.96875,
+                "logit": 22.0,
+                "token_id": 143377,
+                "metadata": null
+            }
+        ],
+        "14829": [
+            92,
+            {
+                "token": " Pin",
+                "prob": 2.384185791015625e-07,
+                "logit": 6.78125,
+                "token_id": 14829,
+                "metadata": null
+            }
+        ],
+        "18915": [
+            385,
+            {
+                "token": " Monitor",
+                "prob": 4.260800778865814e-08,
+                "logit": 5.0625,
+                "token_id": 18915,
+                "metadata": null
+            }
+        ],
+        "131247": [
+            493,
+            {
+                "token": " Zebra",
+                "prob": 3.329478204250336e-08,
+                "logit": 4.8125,
+                "token_id": 131247,
+                "metadata": null
+            }
+        ],
+        "36343": [
+            512,
+            {
+                "token": " Bike",
+                "prob": 3.119930624961853e-08,
+                "logit": 4.75,
+                "token_id": 36343,
+                "metadata": null
+            }
+        ],
+        "60735": [
+            8440,
+            {
+                "token": " Surf",
+                "prob": 1.949956640601158e-09,
+                "logit": 1.9765625,
+                "token_id": 60735,
+                "metadata": null
+            }
+        ]
+    },
+    "track_tokens": null
+}

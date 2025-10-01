@@ -1,8 +1,9 @@
 import copy
+import json
 import logging
 import os
-import random
 import types
+from itertools import product
 from typing import Any, Optional
 
 import baukit
@@ -13,8 +14,10 @@ from torch.optim import AdamW
 from src.functional import (
     PatchSpec,
     free_gpu_cache,
+    get_hs,
     get_module_nnsight,
     interpret_logits,
+    patch_linear_subspaces,
     patch_with_baukit,
 )
 from src.hooking.llama_attention import LlamaAttentionPatcher
@@ -33,7 +36,7 @@ from src.selection.functional import (
     visualize_attn_matrix,
 )
 from src.selection.utils import get_first_token_id
-from src.tokens import find_token_range, prepare_input
+from src.tokens import prepare_input
 from src.utils.typing import PathLike, TokenizerOutput
 
 logger = logging.getLogger(__name__)
@@ -1405,3 +1408,367 @@ def get_optimal_head_mask_prev(
 
     free_gpu_cache()
     return mask.round().detach().cpu(), losses
+
+
+# for DAS
+def get_optimal_rotation(
+    mt: ModelandTokenizer,
+    train_set: list[tuple[SelectionSample, SelectionSample]],
+    layers: list[str],
+    token_mapping: dict[int, int] = {-1: -1},  # source_idx -> destination_idx
+    rotation_n_dim: int = 128,
+    learning_rate: float = 1e-3,
+    ortho_reg: float = 0.1,
+    n_epochs: int = 5,
+    batch_size: int = 4,
+    save_path: PathLike | None = None,
+    save_step: int = 17,
+):
+    hparams = {
+        "model": mt.name,
+        "learning_rate": learning_rate,
+        "n_epochs": n_epochs,
+        "batch_size": batch_size,
+        "layers": layers,
+        "token_mapping": token_mapping,
+    }
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        with open(os.path.join(save_path, "hparams.json"), "w") as f:
+            json.dump(hparams, f, indent=2)
+    logger.debug(f"Training with hparams: {hparams}")
+
+    patch_locations = list(product(layers, token_mapping.keys()))
+    rotator = {}
+    for layer_name in layers:
+        module = baukit.get_module(mt._model, layer_name)
+        module_device = next(module.parameters()).device
+        linear = torch.nn.Linear(mt.n_embd, mt.n_embd, bias=False).to(
+            device=module_device
+        )
+        # initialize as orthogonal
+        torch.nn.init.orthogonal_(linear.weight)
+        rotator[layer_name] = linear.to(device=module_device, dtype=mt.dtype)
+
+    optimizer = AdamW(
+        params=[linear.weight for linear in rotator.values()],
+        lr=learning_rate,
+        weight_decay=0.0,
+    )
+
+    batches = []
+    for batch_start in range(0, len(train_set), batch_size):
+        batches.append(train_set[batch_start : batch_start + batch_size])
+
+    losses = []
+    for epoch in range(n_epochs):
+        epoch_loss = 0
+        for batch_idx, batch in enumerate(batches):
+            optimizer.zero_grad()
+
+            batch_size_actual = len(batch)
+
+            destination_samples, source_samples = zip(*batch)
+            prompts = []
+            prompts.extend([sample.prompt() for sample in destination_samples])
+            prompts.extend([sample.prompt() for sample in source_samples])
+            tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+            destination_tokenized = TokenizerOutput(
+                data={k: v[: len(destination_samples), :] for k, v in tokenized.items()}
+            )
+            source_tokenized = TokenizerOutput(
+                data={k: v[len(destination_samples) :, :] for k, v in tokenized.items()}
+            )
+            # batch_target_tokens = [
+            #     clean_sample.metadata["track_type_obj_token_id"]
+            #     for clean_sample in destination_samples
+            # ]
+            # batch_distractor_tokens = [
+            #     [
+            #         get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+            #         for opt in get_options_for_answer(destination_sample)
+            #         if get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+            #         != destination_sample.metadata["track_type_obj_token_id"]
+            #     ]
+            #     for destination_sample in destination_samples
+            # ]
+
+            gold_prompts = []
+            for source_sample, destination_sample in zip(
+                source_samples, destination_samples
+            ):
+                gold_sample = copy.deepcopy(destination_sample)
+                gold_sample.category = source_sample.category
+                gold_prompts.append(gold_sample.prompt())
+            gold_tokenized = prepare_input(prompts=gold_prompts, tokenizer=mt)
+
+            debug = True
+            if debug and batch_idx == 0 and epoch == 0:
+                print(
+                    "source prompt:",
+                    source_samples[0].prompt(),
+                    ">>",
+                    source_samples[0].obj,
+                )
+                print(
+                    "destination prompt:",
+                    destination_samples[0].prompt(),
+                    ">>",
+                    destination_samples[0].obj,
+                )
+                print("gold prompt:", gold_prompts[0])
+
+            source_hidden_states = get_hs(
+                mt=mt,
+                input=source_tokenized,
+                locations=patch_locations,
+                return_dict=True,
+            )
+
+            patches = []
+            for layer_name, source_idx in patch_locations:
+                destination_idx = token_mapping[source_idx]
+                source_hs = source_hidden_states[(layer_name, source_idx)]
+                patches.append(
+                    PatchSpec(
+                        location=(layer_name, destination_idx),
+                        patch=source_hs,
+                    )
+                )
+
+            das_patched_output = patch_linear_subspaces(
+                mt=mt,
+                base_input=destination_tokenized,
+                rotator=rotator,
+                patches=patches,
+                rotate_dimensions=rotation_n_dim,
+                with_grad=True,
+            )
+            logits = das_patched_output.logits[:, -1, :]
+
+            # # calculate target loss
+            # target_logits = [
+            #     logit[tok] for logit, tok in zip(logits, batch_target_tokens)
+            # ]
+            # target_loss = -torch.stack(target_logits).mean()  # need this to go up
+
+            # # calculate distractor loss
+            # distractor_logits = [
+            #     logit[distractor_tokens].mean()
+            #     for logit, distractor_tokens in zip(logits, batch_distractor_tokens)
+            # ]
+            # distractor_loss = torch.stack(distractor_logits).mean()
+
+            # calculate target loss
+            with torch.no_grad():
+                gold_output = patch_with_baukit(
+                    mt=mt, inputs=gold_tokenized, patches=[]
+                )
+                gold_logits = gold_output.logits[:, -1, :]
+
+            kldiv_loss = torch.nn.functional.kl_div(
+                input=logits.log_softmax(dim=-1),
+                target=gold_logits.softmax(dim=-1),
+                reduction="batchmean",
+            )
+
+            # rotator orthogonality loss
+            orthogonality_losses = []
+            for layer_name in layers:
+                identity = torch.eye(mt.n_embd).to(rotator[layer_name].weight.device)
+                wt_w = torch.matmul(
+                    rotator[layer_name].weight.T, rotator[layer_name].weight
+                )
+                orthogonality_loss = ((wt_w - identity) ** 2).mean()
+                orthogonality_losses.append(orthogonality_loss)
+            # ortho_loss = torch.stack(orthogonality_losses).mean().to(target_loss.device)
+            ortho_loss = torch.stack(orthogonality_losses).mean().to(kldiv_loss.device)
+
+            # total loss
+            # loss = target_loss + distractor_loss + ortho_reg * ortho_loss
+            # logger.debug(
+            #     f"Epoch={epoch+1} | {batch_idx=} |>> {target_loss.item():.4f} + {distractor_loss.item():.4f} + {ortho_loss.item():.4f} = {loss.item():.4f}"
+            # )
+
+            loss = kldiv_loss + ortho_reg * ortho_loss
+            logger.debug(
+                f"Epoch={epoch+1} | {batch_idx=} |>> {kldiv_loss.item():.4f} + {ortho_loss.item():.4f} = {loss.item():.4f}"
+            )
+
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item() * batch_size_actual
+            losses.append(loss.item())
+
+        epoch_loss = epoch_loss / len(train_set)
+        logger.info(f"Epoch {epoch+1} completed. Avg Loss: {epoch_loss:.4f}")
+        mt._model.zero_grad()
+        free_gpu_cache()
+
+        # TODO: save intermediate rotator
+        if save_path is not None and (
+            (epoch + 1) % save_step == 0 or (epoch + 1) == n_epochs
+        ):
+            os.makedirs(save_path, exist_ok=True)
+            rotator_save_path = os.path.join(save_path, f"epoch_{epoch+1:03d}.pt")
+            torch.save(rotator, rotator_save_path)
+            logger.info(f"Saved rotator at {rotator_save_path}")
+
+    mt._model.zero_grad()
+    for module_name, proj in rotator.items():
+        rotator[module_name].requires_grad_(False)
+
+    free_gpu_cache()
+    return rotator, losses
+
+
+@torch.no_grad()
+def validate_projections_on_sample_pair(
+    mt: ModelandTokenizer,
+    destination_sample: SelectionSample | CountingSample | YesNoSample,
+    source_sample: SelectionSample | CountingSample | YesNoSample,
+    rotators: dict[str, torch.nn.Linear],
+    rotate_dimensions: int,
+    token_mapping: dict[int, int] = {-1: -1},  # source_idx -> destination_idx
+    consider_ques_pos: bool = False,
+    must_track_tokens: list[int] = [],
+    return_clean_predictions: bool = False,
+    debug=False,
+):
+
+    destination_tokenized = prepare_input(
+        prompts=destination_sample.prompt(), tokenizer=mt, return_offsets_mapping=True
+    )
+    source_tokenized = prepare_input(
+        prompts=source_sample.prompt(), tokenizer=mt, return_offsets_mapping=True
+    )
+
+    destination_offset_mapping = destination_tokenized.pop("offset_mapping")[0]
+    source_offset_mapping = source_tokenized.pop("offset_mapping")[0]
+    if consider_ques_pos:
+        destination_ques_pos = find_quesmark_pos(
+            prompt=destination_sample.prompt(),
+            tokenizer=mt.tokenizer,
+            tokenized=destination_tokenized,
+            offset_mapping=destination_offset_mapping,
+        )
+        source_ques_pos = find_quesmark_pos(
+            prompt=source_sample.prompt(),
+            tokenizer=mt.tokenizer,
+            tokenized=source_tokenized,
+            offset_mapping=source_offset_mapping,
+        )
+        token_mapping[source_ques_pos] = destination_ques_pos
+
+    ret_dict = {
+        "source_sample": source_sample,
+        "destination_sample": destination_sample,
+    }
+    patch_locations = list(product(token_mapping.keys(), rotators.keys()))
+    logit_location = (mt.lm_head_name, -1)
+    source_hidden_states = get_hs(
+        mt=mt,
+        input=source_tokenized,
+        locations=[(layer_name, token_idx) for token_idx, layer_name in patch_locations]
+        + [logit_location],
+        return_dict=True,
+    )
+    if return_clean_predictions or debug:
+        source_pred, interested_tokens = interpret_logits(
+            tokenizer=mt,
+            logits=source_hidden_states[logit_location].squeeze(),
+            interested_tokens=[
+                get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                for opt in get_options_for_answer(source_sample)
+            ]
+            + must_track_tokens,
+        )
+        if return_clean_predictions:
+            ret_dict["source_predictions"] = source_pred
+            ret_dict["source_track"] = interested_tokens
+        if debug:
+            logger.debug(
+                f"{source_sample.prompt()} >> {mt.tokenizer.decode(source_sample.ans_token_id)}"
+            )
+            logger.debug(f"Source pred : {[str(pred) for pred in source_pred]}")
+            logger.debug(
+                f"Source track: {[str(pred) for tok_id, (rank, pred) in interested_tokens.items()]}"
+            )
+
+        destination_logit = get_hs(
+            mt=mt,
+            input=destination_tokenized,
+            locations=[logit_location],
+            return_dict=False,
+        ).squeeze()
+        destination_pred, interested_tokens = interpret_logits(
+            tokenizer=mt,
+            logits=destination_logit,
+            interested_tokens=[
+                get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                for opt in get_options_for_answer(destination_sample)
+            ]
+            + must_track_tokens,
+        )
+        if return_clean_predictions:
+            ret_dict["destination_predictions"] = destination_pred
+            ret_dict["destination_track"] = interested_tokens
+        if debug:
+            logger.debug(
+                f"{destination_sample.prompt()} >> {mt.tokenizer.decode(destination_sample.ans_token_id)}"
+            )
+            logger.debug(
+                f"Destination pred : {[str(pred) for pred in destination_pred]}"
+            )
+            logger.debug(
+                f"Destination track: {[str(pred) for tok_id, (rank, pred) in interested_tokens.items()]}"
+            )
+
+    patches = []
+    for source_idx, layer_name in patch_locations:
+        destination_idx = token_mapping[source_idx]
+        source_hs = source_hidden_states[(layer_name, source_idx)]
+        patches.append(
+            PatchSpec(
+                location=(layer_name, destination_idx),
+                patch=source_hs,
+            )
+        )
+
+    patched_output = patch_linear_subspaces(
+        mt=mt,
+        base_input=destination_tokenized,
+        rotator=rotators,
+        patches=patches,
+        rotate_dimensions=rotate_dimensions,
+        with_grad=False,
+    )
+
+    logits = patched_output.logits[:, -1, :]
+    track_tokens = get_options_for_answer(destination_sample)
+    track_token_ids = [
+        get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+        for opt in track_tokens
+    ]
+    patched_pred, patched_track = interpret_logits(
+        tokenizer=mt,
+        logits=logits.squeeze(),
+        interested_tokens=track_token_ids + must_track_tokens,
+    )
+
+    ret_dict["patched_predictions"] = patched_pred
+    ret_dict["patched_track"] = patched_track
+
+    if debug:
+        logger.debug("-" * 100)
+        logger.debug(
+            f"target: {destination_sample.metadata['track_type_obj']} | \"{mt.tokenizer.decode(destination_sample.metadata['track_type_obj_token_id'])}\""
+        )
+        logger.debug(f"Patched pred : {[str(pred) for pred in patched_pred]}")
+        logger.debug(
+            f"Patched track: {[str(pred) for tok_id, (rank, pred) in patched_track.items()]}"
+        )
+        logger.debug("-" * 100)
+
+    return ret_dict
