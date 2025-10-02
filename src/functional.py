@@ -879,9 +879,13 @@ def get_hs(
                 module = get_module_nnsight(mt, module_name)
                 current_state = (
                     module.output.save()
-                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    if (
+                        "qwen" in mt.name.lower()
+                        or ("mlp" in module_name or module_name == mt.embedder_name)
+                    )
                     else module.output[0].save()
                 )
+                # print(current_state.shape)
                 if current_state.ndim == 2:
                     current_state = current_state.unsqueeze(0)
                 if cur_patch.strategy == "replace":
@@ -1010,6 +1014,7 @@ def patch_linear_subspaces(
         if rotator[module_name] is None:
             raise ValueError(f"Rotator for module {module_name} is None")
 
+    # print(f">>> {base_input.input_ids.shape=}")
     grad_env = torch.enable_grad if with_grad else torch.no_grad
     with grad_env():
         with mt.trace(base_input) as tracer:
@@ -1019,9 +1024,18 @@ def patch_linear_subspaces(
                 # get the base representation
                 base_state = (
                     module.output
-                    if ("mlp" in module_name or module_name == mt.embedder_name)
+                    if (
+                        "qwen" in mt.name.lower()
+                        or ("mlp" in module_name or module_name == mt.embedder_name)
+                    )
                     else module.output[0]
                 )
+
+                # logger.debug(f"{module_name} | {base_state.shape=}")
+
+                if base_state.ndim == 2:
+                    base_state = base_state.unsqueeze(0)
+
                 if next(rotator[module_name].parameters()).device != base_state.device:
                     rotator[module_name] = rotator[module_name].to(base_state.device)
 
@@ -1041,6 +1055,10 @@ def patch_linear_subspaces(
                 rotator_inverse = rotator[module_name].weight.T
                 for patch in module_to_tok_indices[module_name]:
                     _, token_idx = patch.location
+
+                    # print(f"{base_state.shape=}, {token_idx=}")
+                    if base_state.ndim == 2:
+                        base_state = base_state.unsqueeze(0)
                     base_token_state = base_state[:, token_idx, :].clone()
                     # rotate the base representation
                     rotated_base = rotator[module_name](base_token_state)
@@ -1049,6 +1067,7 @@ def patch_linear_subspaces(
                     source_state = patch.patch
                     if source_state.ndim == 1:
                         source_state = source_state.unsqueeze(0)
+                    # print(f"{base_token_state.shape=}, {source_state.shape=}")
                     rotated_source = rotator[module_name](source_state)
                     # print(f"{rotated_base.shape=}, {rotated_source.shape=}")
 
@@ -1065,6 +1084,7 @@ def patch_linear_subspaces(
                     patch = torch.matmul(rotated_patch, rotator_inverse.T)
 
                     # replace the base representation with the patched representation
+                    # print(f"{base_state.shape=}, {patch.shape=}")
                     base_state[:, token_idx, :] = patch
 
             output = mt.output.save()

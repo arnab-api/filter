@@ -4,7 +4,7 @@ import logging
 import os
 import random
 from dataclasses import dataclass
-from typing import Union
+from typing import Literal, Union
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ class ValidationResult_on_sample_pair(DataClassJsonMixin):
 @dataclass
 class ValidationResults(DataClassJsonMixin):
     layer: str
-    projection_dim: int
+    projection_dim: int | Literal["full"]
     results: list[ValidationResult_on_sample_pair]
     summary: dict[str, float]
 
@@ -98,6 +98,7 @@ def das_sweep(
 
             track_tokens = {
                 "clean_obj": destination.ans_token_id,
+                "corrupt_obj": source.ans_token_id,
                 "target_obj": destination.metadata["track_type_obj_token_id"],
             }
 
@@ -107,7 +108,7 @@ def das_sweep(
                 source_sample=source,
                 rotators=optimal_rotator,
                 rotate_dimensions=projection_dim,
-                token_mapping={-3: -3, -2: -2, -1: -1},
+                token_mapping=token_mapping,
                 must_track_tokens=list(track_tokens.values()),
                 debug=True,
                 return_clean_predictions=True,
@@ -184,6 +185,120 @@ def das_sweep(
         logger.info("#" * 100)
 
 
+def residual_patching_sweep(
+    mt: ModelandTokenizer,
+    validation_set: list[SelectionSample, SelectionSample],
+    layers: list[str],
+    token_mapping: dict[int, int],
+    save_dir: PathLike,
+):
+    os.makedirs(save_dir, exist_ok=True)
+    for layer in layers:
+        logger.info("#" * 100)
+        logger.info(f"Processing layer: {layer}")
+        layer_save_dir = os.path.join(save_dir, layer)
+        os.makedirs(layer_save_dir, exist_ok=True)
+
+        results = []
+        for destination, source in validation_set:
+            # destination = copy.deepcopy(destination)
+            # source = copy.deepcopy(source)
+            # destination.default_option_style = "bulleted"
+            # source.prompt_template = select_task.prompt_templates[2]
+            # destination.prompt_template = select_task.prompt_templates[2]
+
+            # source_tokenized = prepare_input(prompts=[source.prompt()], tokenizer=mt)
+            # destination_tokenized = prepare_input(prompts=[destination.prompt()], tokenizer=mt)
+
+            track_tokens = {
+                "clean_obj": destination.ans_token_id,
+                "corrupt_obj": source.ans_token_id,
+                "target_obj": destination.metadata["track_type_obj_token_id"],
+            }
+
+            pair_result = validate_projections_on_sample_pair(
+                mt=mt,
+                destination_sample=destination,
+                source_sample=source,
+                rotators={layer: None},
+                rotate_dimensions="full",
+                token_mapping=token_mapping,
+                must_track_tokens=list(track_tokens.values()),
+                debug=True,
+                return_clean_predictions=True,
+            )
+            das_patched_pred = pair_result["patched_predictions"]
+            das_patched_track = pair_result["patched_track"]
+            destination_pred = pair_result["destination_predictions"]
+            destination_track = pair_result["destination_track"]
+
+            results.append(
+                ValidationResult_on_sample_pair(
+                    source=source,
+                    destination=destination,
+                    patched_predictions=das_patched_pred,
+                    patched_track=das_patched_track,
+                    clean_predictions=destination_pred,
+                    clean_track=destination_track,
+                    track_tokens=track_tokens,
+                )
+            )
+
+        # summarize the validation results
+        track_token_types = ["clean_obj", "target_obj"]
+        summary = {}
+        for token_type in track_token_types:
+            print(f"{token_type}")
+            ranks = {"clean": [], "patch": []}
+            logits = {"clean": [], "patch": []}
+            for result in results:
+                target_tok_id = result.track_tokens[token_type]
+                clean_rank, clean_pred = result.clean_track[target_tok_id]
+                patch_rank, patch_pred = result.patched_track[target_tok_id]
+                ranks["clean"].append(clean_rank)
+                ranks["patch"].append(patch_rank)
+                logits["clean"].append(clean_pred.logit)
+                logits["patch"].append(patch_pred.logit)
+
+            attr = {
+                "rank": ranks,
+                "logit": logits,
+            }
+            for key in attr:
+                clean = np.array(attr[key]["clean"])
+                patch = np.array(attr[key]["patch"])
+                delta = patch - clean
+                print(
+                    f"{key}: clean {clean.mean():.2f} ± {clean.std():.2f} -> patch {patch.mean():.2f} ± {patch.std():.2f} | delta {delta.mean():.2f} ± {delta.std():.2f}"
+                )
+
+            summary[token_type] = attr
+
+        top_1_accuracy = 0
+        for result in results:
+            target_tok_id = result.destination.metadata["track_type_obj_token_id"]
+            patched_track = result.patched_track
+            if (
+                patched_track[list(patched_track.keys())[0]][1].token_id
+                == target_tok_id
+            ):
+                top_1_accuracy += 1
+
+        top_1_accuracy = top_1_accuracy / len(results)
+        summary["top_1_accuracy"] = top_1_accuracy
+        print(f"Top-1 accuracy: {top_1_accuracy:.3f}")
+
+        validation_results = ValidationResults(
+            layer=layer,
+            projection_dim="full",
+            results=results,
+            summary=summary,
+        )
+        with open(os.path.join(layer_save_dir, "validation_results.json"), "w") as f:
+            f.write(validation_results.to_json(indent=4))
+        logger.info("#" * 100)
+
+
 def load_dataset(
     path: PathLike, limit: int, prefix=""
 ) -> list[SelectionSample, SelectionSample]:
@@ -221,7 +336,7 @@ if __name__ == "__main__":
 
     ##################################################################
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
     ##################################################################
 
     parser = argparse.ArgumentParser(
@@ -315,6 +430,12 @@ if __name__ == "__main__":
         default=8,
     )
 
+    parser.add_argument(
+        "--full_rank",
+        action="store_true",
+        help="Whether to use full rank projections | patching the whole vector",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -348,30 +469,53 @@ if __name__ == "__main__":
     )
     logger.info(f"Loaded {len(validation_set)} validation samples")
 
-    # Setup cache directory
-    save_dir = os.path.join(
-        env_utils.DEFAULT_RESULTS_DIR,
-        args.save_dir,
-        mt.name.split("/")[-1],
-        str(args.proj_dim),
-    )
-    os.makedirs(save_dir, exist_ok=True)
+    if args.full_rank:
+        logger.info("Running residual stream patching sweep")
 
-    logger.info(f"Saving results to {save_dir}")
+        # Setup cache directory
+        save_dir = os.path.join(
+            env_utils.DEFAULT_RESULTS_DIR,
+            args.save_dir,
+            mt.name.split("/")[-1],
+            "full_rank",
+        )
+        os.makedirs(save_dir, exist_ok=True)
 
-    das_sweep(
-        mt=mt,
-        train_set=train_set,
-        validation_set=validation_set,
-        layers=layers,
-        token_mapping=token_mapping,
-        projection_dim=args.proj_dim,
-        epochs=args.epochs,
-        learning_rate=1e-3,
-        ortho_reg=1e-1,
-        batch_size=args.batch_size,
-        save_dir=save_dir,
-    )
+        logger.info(f"Saving results to {save_dir}")
+        residual_patching_sweep(
+            mt=mt,
+            validation_set=validation_set,
+            layers=layers,
+            token_mapping=token_mapping,
+            save_dir=save_dir,
+        )
+
+    else:
+        logger.info("Running DAS projection sweep")
+
+        # Setup cache directory
+        save_dir = os.path.join(
+            env_utils.DEFAULT_RESULTS_DIR,
+            args.save_dir,
+            mt.name.split("/")[-1],
+            str(args.proj_dim),
+        )
+        os.makedirs(save_dir, exist_ok=True)
+
+        logger.info(f"Saving results to {save_dir}")
+        das_sweep(
+            mt=mt,
+            train_set=train_set,
+            validation_set=validation_set,
+            layers=layers,
+            token_mapping=token_mapping,
+            projection_dim=args.proj_dim,
+            epochs=args.epochs,
+            learning_rate=1e-3,
+            ortho_reg=1e-1,
+            batch_size=args.batch_size,
+            save_dir=save_dir,
+        )
 
     logger.info("#" * 100)
     logger.info("All done!")

@@ -4,7 +4,7 @@ import logging
 import os
 import types
 from itertools import product
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import baukit
 import numpy as np
@@ -1493,6 +1493,10 @@ def get_optimal_rotation(
             #     for destination_sample in destination_samples
             # ]
 
+            # print(
+            #     f"{source_tokenized.input_ids.shape=}, {destination_tokenized.input_ids.shape=}"
+            # )
+
             gold_prompts = []
             for source_sample, destination_sample in zip(
                 source_samples, destination_samples
@@ -1628,14 +1632,20 @@ def validate_projections_on_sample_pair(
     mt: ModelandTokenizer,
     destination_sample: SelectionSample | CountingSample | YesNoSample,
     source_sample: SelectionSample | CountingSample | YesNoSample,
-    rotators: dict[str, torch.nn.Linear],
-    rotate_dimensions: int,
+    rotate_dimensions: int | Literal["full"],
+    rotators: dict[str, torch.nn.Linear | None],
     token_mapping: dict[int, int] = {-1: -1},  # source_idx -> destination_idx
     consider_ques_pos: bool = False,
     must_track_tokens: list[int] = [],
     return_clean_predictions: bool = False,
     debug=False,
 ):
+    if type(rotate_dimensions) is not int:
+        assert (
+            rotate_dimensions == "full"
+        ), "If not int, rotate_dimensions must be 'full'"
+    else:
+        assert rotate_dimensions > 0, "rotate_dimensions must be positive"
 
     destination_tokenized = prepare_input(
         prompts=destination_sample.prompt(), tokenizer=mt, return_offsets_mapping=True
@@ -1736,14 +1746,22 @@ def validate_projections_on_sample_pair(
             )
         )
 
-    patched_output = patch_linear_subspaces(
-        mt=mt,
-        base_input=destination_tokenized,
-        rotator=rotators,
-        patches=patches,
-        rotate_dimensions=rotate_dimensions,
-        with_grad=False,
-    )
+    if rotate_dimensions == "full":
+        with torch.no_grad():
+            patched_output = patch_with_baukit(
+                mt=mt,
+                inputs=destination_tokenized,
+                patches=patches,
+            )
+    else:
+        patched_output = patch_linear_subspaces(
+            mt=mt,
+            base_input=destination_tokenized,
+            rotator=rotators,
+            patches=patches,
+            rotate_dimensions=rotate_dimensions,
+            with_grad=False,
+        )
 
     logits = patched_output.logits[:, -1, :]
     track_tokens = get_options_for_answer(destination_sample)
