@@ -373,7 +373,8 @@ if __name__ == "__main__":
         type=str,
         default=os.path.join(
             env_utils.DEFAULT_RESULTS_DIR,
-            "selection/samples/train/gemma-2-27b-it/select_one/objects",
+            # "selection/samples/train/gemma-2-27b-it/select_one/objects",
+            "selection/samples/train/Qwen2.5-32B-Instruct/select_one/objects",
         ),
     )
 
@@ -382,7 +383,8 @@ if __name__ == "__main__":
         type=str,
         default=os.path.join(
             env_utils.DEFAULT_RESULTS_DIR,
-            "selection/samples/validation/gemma-2-27b-it/select_one/objects",
+            # "selection/samples/validation/gemma-2-27b-it/select_one/objects",
+            "selection/samples/validation/Qwen2.5-32B-Instruct/select_one/objects",
         ),
     )
 

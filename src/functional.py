@@ -666,12 +666,12 @@ def patch_with_baukit(
 
     batch_size = inputs.input_ids.shape[0]
     seq_len = inputs.input_ids.shape[1]
-    n_heads = mt.config.num_attention_heads
+    # n_heads = mt.config.num_attention_heads
     # head_dim = mt.config.hidden_size // n_heads
     head_dim = get_module_nnsight(
         mt._model, mt.attn_module_name_format.format(0)
     ).head_dim
-    group_size = n_heads // mt.config.num_key_value_heads
+    # group_size = n_heads // mt.config.num_key_value_heads
 
     modules_to_patches = {}
     for patch in patches:
@@ -1017,7 +1017,7 @@ def patch_linear_subspaces(
     # print(f">>> {base_input.input_ids.shape=}")
     grad_env = torch.enable_grad if with_grad else torch.no_grad
     with grad_env():
-        with mt.trace(base_input) as tracer:
+        with mt.trace(base_input) as tracer:  # noqa: F841
             for module_name in module_to_tok_indices:
                 module = get_module_nnsight(mt, module_name)
 
