@@ -695,7 +695,15 @@ def patch_with_baukit(
 
         current_state = (
             repr
-            if "mlp" in layer_name or "embed" in layer_name or "_proj" in layer_name
+            if (
+                "qwen" in mt.name.lower()
+                or "llama" in mt.name.lower()
+                or (
+                    "mlp" in layer_name
+                    or layer_name == mt.embedder_name
+                    or "_proj" in layer_name
+                )
+            )
             else repr[0]
         )
         if current_state.dim() == 2:
@@ -881,6 +889,7 @@ def get_hs(
                     module.output.save()
                     if (
                         "qwen" in mt.name.lower()
+                        or "llama" in mt.name.lower()
                         or ("mlp" in module_name or module_name == mt.embedder_name)
                     )
                     else module.output[0].save()
@@ -1026,6 +1035,7 @@ def patch_linear_subspaces(
                     module.output
                     if (
                         "qwen" in mt.name.lower()
+                        or "llama" in mt.name.lower()
                         or ("mlp" in module_name or module_name == mt.embedder_name)
                     )
                     else module.output[0]
@@ -1222,7 +1232,7 @@ def low_rank_approx(
     """
     if svd is None:
         svd = SVD.calculate(matrix.float())
-    u, s, v = svd.U, svd.S, svd.Vh
+    u, s, v = svd.U, svd.S, svd.V
     matrix_approx = u[:, :rank] @ torch.diag(s[:rank]) @ v[:, :rank].T
     return matrix_approx.to(matrix.dtype)
 
@@ -1242,7 +1252,7 @@ def low_rank_pinv(
     """
     if svd is None:
         svd = SVD.calculate(matrix.float())
-    u, s, v = svd.U, svd.S, svd.Vh
+    u, s, v = svd.U, svd.S, svd.V
     matrix_pinv = v[:, :rank] @ torch.diag(1 / s[:rank]) @ u[:, :rank].T
     return matrix_pinv.to(matrix.dtype)
 

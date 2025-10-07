@@ -81,29 +81,29 @@ class PredictedToken(DataClassJsonMixin):
 class SVD:
     U: torch.Tensor
     S: torch.Tensor
-    Vh: torch.Tensor
+    V: torch.Tensor
 
     def __post_init__(self):
         # assert self.U.shape[1] == self.S.shape[0]
         # assert self.S.shape[0] == self.Vh.shape[1]
-        assert self.Vh.shape[0] == self.Vh.shape[1], "Vh must be square"
+        assert self.V.shape[0] == self.V.shape[1], "Vh must be square"
 
     @property
     def shape(self):
-        return self.U.shape, self.S.shape, self.Vh.shape
+        return self.U.shape, self.S.shape, self.V.shape
 
     def to_device(self, device: torch.device):
         """in-place device change -- to save memory"""
         self.U = self.U.to(device)
         self.S = self.S.to(device)
-        self.Vh = self.Vh.to(device)
+        self.V = self.V.to(device)
         return self
 
     def to_dtype(self, dtype: torch.dtype):
         """in-place dtype change -- to save memory"""
         self.U = self.U.to(dtype)
         self.S = self.S.to(dtype)
-        self.Vh = self.Vh.to(dtype)
+        self.V = self.V.to(dtype)
         return self
 
     @property
@@ -123,4 +123,7 @@ class SVD:
             U, S, V = torch.linalg.svd(
                 matrix.to(dtype=torch.float32), full_matrices=True
             )
-        return SVD(U=U, S=S, Vh=V)
+        svd = SVD(U=U, S=S, V=V)
+        svd.to_dtype(matrix.dtype)
+        svd.to_device(matrix.device)
+        return svd

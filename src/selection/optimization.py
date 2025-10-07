@@ -947,7 +947,7 @@ def validate_q_proj_ie_on_sample_pair(
     interested_tokens = [
         get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
         for opt in interested_tokens
-    ]
+    ] + [patch_sample.ans_token_id]
     # interested_tokens += [patch_sample.ans_token_id]
     # interested_tokens = list(set(interested_tokens))  # remove duplicates #! don't need to, made sure during sampling
 
@@ -1162,6 +1162,77 @@ def cache_q_projections_prev(
     return q_projections
 
 
+def promote_target_suppress_distractors(
+    mt: ModelandTokenizer,
+    source_samples: list,
+    destination_samples: list,
+    patched_logits: torch.FloatTensor,
+):
+    batch_target_tokens = [
+        destination_sample.metadata["track_type_obj_token_id"]
+        for destination_sample in destination_samples
+    ]
+    batch_distractor_tokens = [
+        [
+            source_sample.ans_token_id  #! stop from copying the answer from the patch sample
+        ]
+        + [
+            get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+            for opt in get_options_for_answer(destination_sample)
+            if get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
+            != destination_sample.metadata["track_type_obj_token_id"]
+        ]
+        for destination_sample, source_sample in zip(
+            destination_samples, source_samples
+        )
+    ]
+
+    target_logits = [
+        logit[tok] for logit, tok in zip(patched_logits, batch_target_tokens)
+    ]
+    target_loss = -torch.stack(target_logits).mean()  # promote target
+
+    # calculate distractor loss
+    distractor_logits = [
+        logit[distractor_tokens].mean()
+        for logit, distractor_tokens in zip(patched_logits, batch_distractor_tokens)
+    ]
+    distractor_loss = +torch.stack(distractor_logits).mean()  # suppress distractors
+
+    loss = target_loss + distractor_loss
+
+    return loss, {
+        "target_loss": target_loss.item(),
+        "distractor_loss": distractor_loss.item(),
+    }
+
+
+def match_gold_logit_distribution(
+    mt: ModelandTokenizer,
+    source_samples: list,
+    destination_samples: list,
+    patched_logits: torch.FloatTensor,
+):
+    gold_prompts = []
+    for source_sample, destination_sample in zip(source_samples, destination_samples):
+        gold_sample = copy.deepcopy(destination_sample)
+        gold_sample.category = source_sample.category
+        gold_prompts.append(gold_sample.prompt())
+    gold_tokenized = prepare_input(prompts=gold_prompts, tokenizer=mt)
+
+    with torch.no_grad():
+        gold_output = patch_with_baukit(mt=mt, inputs=gold_tokenized, patches=[])
+        gold_logits = gold_output.logits[:, -1, :]
+
+    kldiv_loss = torch.nn.functional.kl_div(
+        input=patched_logits.log_softmax(dim=-1),
+        target=gold_logits.softmax(dim=-1),
+        reduction="batchmean",
+    )
+
+    return kldiv_loss, {"kldiv_loss": kldiv_loss.item()}
+
+
 def get_optimal_head_mask_prev(
     mt: ModelandTokenizer,
     train_set: list[tuple[SelectionSample, SelectionSample]],
@@ -1176,13 +1247,19 @@ def get_optimal_head_mask_prev(
     cache_q_states_before: bool = False,
     save_path: PathLike | None = None,
     save_step: int = 5,
+    loss_fn: Literal["promote_suppress", "match_gold"] = "promote_suppress",
 ):
     hparams = {
         "learning_rate": learning_rate,
         "n_epochs": n_epochs,
         "lamb": lamb,
         "batch_size": batch_size,
+        "loss_fn": loss_fn,
     }
+    loss_fn = {
+        "promote_suppress": promote_target_suppress_distractors,
+        "match_gold": match_gold_logit_distribution,
+    }[loss_fn]
     logger.debug(f"Training with hparams: {hparams}")
     n_layer = mt.n_layer
     n_heads = mt.config.num_attention_heads
@@ -1279,19 +1356,6 @@ def get_optimal_head_mask_prev(
             patch_tokenized = TokenizerOutput(
                 data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
             )
-            batch_target_tokens = [
-                clean_sample.metadata["track_type_obj_token_id"]
-                for clean_sample in clean_samples
-            ]
-            batch_distractor_tokens = [
-                [
-                    get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
-                    for opt in get_options_for_answer(clean_sample)
-                    if get_first_token_id(tokenizer=mt.tokenizer, name=opt, prefix=" ")
-                    != clean_sample.metadata["track_type_obj_token_id"]
-                ]
-                for clean_sample in clean_samples
-            ]
 
             if cache_q_states_before:
                 patch_q_states = q_projections_from_patch_samples[batch_idx]
@@ -1348,24 +1412,21 @@ def get_optimal_head_mask_prev(
 
             logits = output.logits[:, -1, :]
 
-            # calculate target loss
-            target_logits = [
-                logit[tok] for logit, tok in zip(logits, batch_target_tokens)
-            ]
-            target_loss = -torch.stack(target_logits).mean()  # need this to go up
-
-            # calculate distractor loss
-            distractor_logits = [
-                logit[distractor_tokens].mean()
-                for logit, distractor_tokens in zip(logits, batch_distractor_tokens)
-            ]
-            distractor_loss = torch.stack(distractor_logits).mean()
+            target_loss, loss_dict = loss_fn(
+                mt=mt,
+                source_samples=patch_samples,
+                destination_samples=clean_samples,
+                patched_logits=logits,
+            )
 
             # mask_loss
             mask_l1_loss = torch.abs(mask).sum() * lamb
-            loss = target_loss + distractor_loss + mask_l1_loss
+            loss = target_loss + mask_l1_loss
+            loss_dict_indv = (
+                f"{', '.join([f'{k}={v:.3f}' for k, v in loss_dict.items()])}"
+            )
             logger.debug(
-                f"Epoch={epoch+1} | {batch_idx=} |>> {target_loss.item():.4f} + {distractor_loss.item():.4f} + {mask_l1_loss.item():.4f} = {loss.item():.4f}"
+                f"Epoch={epoch+1} | {batch_idx=} |>> {target_loss.item():.4f} [{loss_dict_indv}] + {mask_l1_loss.item():.4f} = {loss.item():.4f}"
             )
 
             loss.backward()
@@ -1431,6 +1492,8 @@ def get_optimal_rotation(
         "batch_size": batch_size,
         "layers": layers,
         "token_mapping": token_mapping,
+        "rotation_n_dim": rotation_n_dim,
+        "ortho_reg": ortho_reg,
     }
     if save_path is not None:
         os.makedirs(save_path, exist_ok=True)
@@ -1768,7 +1831,9 @@ def validate_projections_on_sample_pair(
     track_token_ids = [
         get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
         for opt in track_tokens
-    ]
+    ] + [
+        source_sample.ans_token_id
+    ]  # also track source ans
     patched_pred, patched_track = interpret_logits(
         tokenizer=mt,
         logits=logits.squeeze(),

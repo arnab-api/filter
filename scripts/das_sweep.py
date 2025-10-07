@@ -458,10 +458,11 @@ if __name__ == "__main__":
         # attn_implementation="eager",
     )
     layers = (
-        mt.layer_names
+        mt.layer_names[::2]
         if args.layers[0] == -1
         else [mt.layer_name_format.format(layer_idx) for layer_idx in args.layers]
     )
+    # layers = [mt.layer_name_format.format(layer_idx) for layer_idx in range(40, 80, 2)]
 
     # loading the datasets
     train_set = load_dataset(path=args.train_path, limit=args.train_limit)
