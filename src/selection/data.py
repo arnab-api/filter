@@ -65,6 +65,7 @@ class SelectionSample(DataClassJsonMixin):
     ans_token_id: Optional[int] = None
     metadata: dict = field(default_factory=dict)
     default_option_style: Literal["single_line", "numbered", "bulleted"] = "single_line"
+    option_label_start_from: str = "a"  # for numbered option style
 
     def __post_init__(self):
         assert "<_options_>" in self.prompt_template
@@ -108,7 +109,8 @@ class SelectionSample(DataClassJsonMixin):
 
         elif option_style == "numbered":
             options_str = "\n".join(
-                f"{chr(ord('a') + i)}. {opt}" for i, opt in enumerate(self.options)
+                f"{chr(ord(self.option_label_start_from) + i)}. {opt}"
+                for i, opt in enumerate(self.options)
             )
         elif option_style == "bulleted":
             options_str = "\n".join(f"* {opt}" for opt in self.options)
@@ -121,12 +123,13 @@ class SelectionSample(DataClassJsonMixin):
 
 
 def MCQify_sample(
-    tokenizer: ModelandTokenizer, sample: SelectionSample
+    tokenizer: ModelandTokenizer, sample: SelectionSample, start_from="a"
 ) -> SelectionSample:
     tokenizer = unwrap_tokenizer(tokenizer)
     sample = copy.deepcopy(sample)
     sample.default_option_style = "numbered"
-    correct_option = chr(ord("a") + sample.obj_idx)
+    sample.option_label_start_from = start_from
+    correct_option = chr(ord(start_from) + sample.obj_idx)
     sample.ans_token_id = get_first_token_id(
         name=correct_option, tokenizer=tokenizer, prefix=" "
     )
