@@ -1855,3 +1855,393 @@ def validate_projections_on_sample_pair(
         logger.debug("-" * 100)
 
     return ret_dict
+
+
+# for DCM on the SVD (q projection) components
+def apply_q_proj_patch_with_projection(
+    mt: ModelandTokenizer,
+    source_tokenized: TokenizerOutput,
+    destination_tokenized: TokenizerOutput,
+    projections: dict[tuple[int, int], torch.Tensor],
+    token_indices: list[int],
+):
+    q_proj_modules = []
+    layer_to_heads = {}
+    query_locations = []
+    for layer_idx, head_idx in projections.keys():
+        module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+        q_proj_modules.append(module_name)
+        if layer_idx not in layer_to_heads:
+            layer_to_heads[layer_idx] = []
+        layer_to_heads[layer_idx].append(head_idx)
+        query_locations.extend(
+            (layer_idx, head_idx, query_idx) for query_idx in token_indices
+        )
+
+    q_projections = cache_q_projections_prev(
+        mt=mt,
+        input=source_tokenized,
+        query_locations=query_locations,
+        return_output=False,
+    )
+    patches = {}
+    for (layer_idx, head_idx, query_idx), q_proj in q_projections.items():
+        module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+        patches[(module_name, head_idx)] = (layer_idx, q_proj)
+
+    patch_q_states = patches
+    batch_size = destination_tokenized.input_ids.shape[0]
+    seq_len = destination_tokenized.input_ids.shape[1]
+    n_heads = mt.config.num_attention_heads
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
+
+    def perform_patch(repr, layer_name):
+        if layer_name not in q_proj_modules:
+            return repr
+        # logger.debug(f"Patching at layer: {layer_name}")
+        layer_idx = int(layer_name.split(".")[2])
+        repr = repr.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
+        for head_idx in layer_to_heads[layer_idx]:
+            if (layer_idx, head_idx) not in projections:
+                assert (
+                    False
+                ), f"{(layer_idx, head_idx)} not in projections. This should never happen!"
+            projection = projections[(layer_idx, head_idx)]
+            q_clean = repr[:, head_idx, token_indices, :]
+            layer_idx, q_patch = patch_q_states[(layer_name, head_idx)]
+            q_patch = q_patch.clone().to(q_clean.dtype).to(q_clean.device)
+            if q_patch.dim() == 2 and q_clean.dim() == 3:
+                q_patch = q_patch.unsqueeze(1)  # Now [batch, 1, head_dim]
+            q_patch_proj = q_patch @ projection
+            q_clean_proj = q_clean @ projection
+            repr[:, head_idx, token_indices, :] += q_patch_proj - q_clean_proj
+
+        repr = repr.transpose(1, 2).view(batch_size, seq_len, n_heads * head_dim)
+        return repr
+
+    with baukit.TraceDict(
+        module=mt._model, layers=q_proj_modules, edit_output=perform_patch
+    ):
+        output = mt._model(**destination_tokenized)
+
+    return output
+
+
+def get_optimal_component_mask(
+    mt: ModelandTokenizer,
+    train_set: list[tuple[SelectionSample, SelectionSample]],
+    q_proj_basis_directions: dict[tuple[int, int], torch.Tensor],
+    learning_rate: float = 1e-3,
+    n_epochs: int = 5,
+    lamb: float = 1e-3,
+    batch_size: int = 4,
+    query_indices: int = [-1],
+    save_path: PathLike | None = None,
+    save_step: int = 5,
+    loss_fn: Literal["promote_suppress", "match_gold"] = "match_gold",
+):
+    hparams = {
+        "learning_rate": learning_rate,
+        "n_epochs": n_epochs,
+        "lamb": lamb,
+        "batch_size": batch_size,
+        "loss_fn": loss_fn,
+    }
+    loss_fn = {
+        "promote_suppress": promote_target_suppress_distractors,
+        "match_gold": match_gold_logit_distribution,
+    }[loss_fn]
+    logger.debug(f"Training with hparams: {hparams}")
+    # n_layer = mt.n_layer
+    # n_heads = mt.config.num_attention_heads
+    head_dim = get_module_nnsight(
+        mt._model, mt.attn_module_name_format.format(0)
+    ).head_dim
+
+    masks = {}
+    for layer_idx, head_idx in q_proj_basis_directions.keys():
+        masks[(layer_idx, head_idx)] = torch.ones(
+            (head_dim,), dtype=mt.dtype, requires_grad=True, device=mt.device
+        )
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    optimizer = AdamW([mask for mask in masks.values()], lr=learning_rate)
+    losses = []
+
+    all_q_proj_modules = []
+    query_locations = []
+    all_heads = list(q_proj_basis_directions.keys())
+    for layer_idx, head_idx in all_heads:
+        module_name = mt.attn_module_name_format.format(layer_idx) + ".q_proj"
+        all_q_proj_modules.append(module_name)
+        query_locations.extend(
+            (layer_idx, head_idx, query_idx) for query_idx in query_indices
+        )
+
+    batches = []
+    for batch_start in range(0, len(train_set), batch_size):
+        batches.append(train_set[batch_start : batch_start + batch_size])
+
+    def build_projections(masks):
+        projections = {}
+        for layer_idx, head_idx in all_heads:
+            basis_directions = q_proj_basis_directions[(layer_idx, head_idx)]
+            mask = (
+                masks[(layer_idx, head_idx)]
+                .to(basis_directions.dtype)
+                .to(basis_directions.device)
+            )
+            masked_basis = basis_directions * mask[:, None]
+            projections[(layer_idx, head_idx)] = masked_basis.T @ masked_basis
+        return projections
+
+    @torch.no_grad()
+    def save_projections(save_file: PathLike):
+        os.makedirs(os.path.dirname(save_file), exist_ok=True)
+        optimal_masks = {key: mask.clone().round() for key, mask in masks.items()}
+        with torch.no_grad():
+            final_projections = build_projections(optimal_masks)
+        torch.save(
+            {
+                "projections": final_projections,
+                "masks": optimal_masks,
+                "hparams": hparams,
+            },
+            save_file,
+        )
+        del optimal_masks, final_projections
+        free_gpu_cache()
+        return
+
+    logger.info("Starting training...")
+
+    for epoch in range(n_epochs):
+        epoch_loss = 0
+        for batch_idx, batch in enumerate(batches):
+            optimizer.zero_grad()
+
+            batch_size_actual = len(batch)
+
+            clean_samples, patch_samples = zip(*batch)
+            prompts = []
+            prompts.extend([sample.prompt() for sample in clean_samples])
+            prompts.extend([sample.prompt() for sample in patch_samples])
+            tokenized = prepare_input(prompts=prompts, tokenizer=mt)
+            clean_tokenized = TokenizerOutput(
+                data={k: v[: len(clean_samples), :] for k, v in tokenized.items()}
+            )
+            patch_tokenized = TokenizerOutput(
+                data={k: v[len(clean_samples) :, :] for k, v in tokenized.items()}
+            )
+
+            projections = build_projections(masks=masks)
+
+            output = apply_q_proj_patch_with_projection(
+                mt=mt,
+                source_tokenized=patch_tokenized,
+                destination_tokenized=clean_tokenized,
+                projections=projections,
+                token_indices=query_indices,
+            )
+
+            logits = output.logits[:, -1, :]
+
+            target_loss, loss_dict = loss_fn(
+                mt=mt,
+                source_samples=patch_samples,
+                destination_samples=clean_samples,
+                patched_logits=logits,
+            )
+
+            # mask loss
+            mask_l1_loss = None
+            for mask in masks.values():
+                mask = mask.float()
+                if mask_l1_loss is None:
+                    mask_l1_loss = lamb * mask.norm(p=1)
+                else:
+                    mask_l1_loss += lamb * mask.norm(p=1).to(mask_l1_loss.device)
+
+            loss = target_loss.float() + mask_l1_loss
+            # loss = mask_l1_loss
+            loss_dict_indv = (
+                f"{', '.join([f'{k}={v:.3f}' for k, v in loss_dict.items()])}"
+            )
+            logger.debug(
+                f"Epoch={epoch+1} | {batch_idx=} |>> {target_loss.item():.4f} [{loss_dict_indv}] + {mask_l1_loss.item():.4f} = {loss.item():.4f}"
+            )
+
+            loss.backward()
+            # checking if gradients are flowing
+            # for key, mask in list(masks.items())[:5]:
+            #     if mask.grad is not None:
+            #         print(f"{key}: grad norm = {mask.grad.norm().item():.6f}")
+            #     else:
+            #         print(f"{key}: NO GRADIENT!")
+            optimizer.step()
+
+            with torch.no_grad():
+                for mask in masks.values():
+                    mask.clamp_(0, 1)
+                    # mask += 1e-4  # to avoid zero gradients
+
+            # print(f"Mask sample values: {list(masks.values())[0][:5]}")  # First 5 elements
+            # print(f"Mask mean: {list(masks.values())[0].mean().item()}")
+
+            epoch_loss += loss.item() * batch_size_actual
+            losses.append(loss.item())
+
+        epoch_loss /= len(train_set)
+        logger.info(f"Epoch {epoch+1}/{n_epochs} completed. Avg Loss: {epoch_loss:.4f}")
+
+        mt._model.zero_grad()
+        del (
+            projections,
+            output,
+            logits,
+        )
+        free_gpu_cache()
+
+        if save_path is not None and (
+            (epoch + 1) % save_step == 0 or (epoch + 1) == n_epochs
+        ):
+            weight_path = os.path.join(save_path, f"epoch_{epoch+1}.pt")
+            os.makedirs(os.path.dirname(weight_path), exist_ok=True)
+            save_projections(save_file=weight_path)
+            logger.info(f"Saved optimal projections to {weight_path}")
+
+    final_masks = {key: mask.detach().round() for key, mask in masks.items()}
+    final_projections = build_projections(final_masks)
+    free_gpu_cache()
+    return final_projections, final_masks, losses
+
+
+@torch.no_grad()
+def validate_low_rank_svd_bases_on_sample_pair(
+    mt: ModelandTokenizer,
+    destination_sample: SelectionSample,
+    source_sample: SelectionSample,
+    projections: dict[tuple[int, int], torch.Tensor],
+    token_indices: list[int] = [-1],  # source_idx -> destination_idx
+    must_track_tokens: list[int] = [],
+    return_clean_predictions: bool = False,
+    debug=False,
+):
+    destination_tokenized = prepare_input(
+        prompts=destination_sample.prompt(),
+        tokenizer=mt,
+        # return_offsets_mapping=True
+    )
+    source_tokenized = prepare_input(
+        prompts=source_sample.prompt(),
+        tokenizer=mt,
+        # return_offsets_mapping=True
+    )
+
+    # destination_offset_mapping = destination_tokenized.pop("offset_mapping")[0]
+    # source_offset_mapping = source_tokenized.pop("offset_mapping")[0]
+
+    ret_dict = {
+        "source_sample": source_sample,
+        "destination_sample": destination_sample,
+    }
+    logit_location = (mt.lm_head_name, -1)
+
+    if return_clean_predictions or debug:
+        source_hidden_states = get_hs(
+            mt=mt,
+            input=source_tokenized,
+            locations=[logit_location],
+            return_dict=True,
+        )
+        source_pred, interested_tokens = interpret_logits(
+            tokenizer=mt,
+            logits=source_hidden_states[logit_location].squeeze(),
+            interested_tokens=[
+                get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                for opt in get_options_for_answer(source_sample)
+            ]
+            + must_track_tokens,
+        )
+        if return_clean_predictions:
+            ret_dict["source_predictions"] = source_pred
+            ret_dict["source_track"] = interested_tokens
+        if debug:
+            logger.debug(
+                f"{source_sample.prompt()} >> {mt.tokenizer.decode(source_sample.ans_token_id)}"
+            )
+            logger.debug(f"Source pred : {[str(pred) for pred in source_pred]}")
+            logger.debug(
+                f"Source track: {[str(pred) for tok_id, (rank, pred) in interested_tokens.items()]}"
+            )
+
+        destination_logit = get_hs(
+            mt=mt,
+            input=destination_tokenized,
+            locations=[logit_location],
+            return_dict=False,
+        ).squeeze()
+        destination_pred, interested_tokens = interpret_logits(
+            tokenizer=mt,
+            logits=destination_logit,
+            interested_tokens=[
+                get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+                for opt in get_options_for_answer(destination_sample)
+            ]
+            + must_track_tokens,
+        )
+        if return_clean_predictions:
+            ret_dict["destination_predictions"] = destination_pred
+            ret_dict["destination_track"] = interested_tokens
+        if debug:
+            logger.debug(
+                f"{destination_sample.prompt()} >> {mt.tokenizer.decode(destination_sample.ans_token_id)}"
+            )
+            logger.debug(
+                f"Destination pred : {[str(pred) for pred in destination_pred]}"
+            )
+            logger.debug(
+                f"Destination track: {[str(pred) for tok_id, (rank, pred) in interested_tokens.items()]}"
+            )
+
+    patched_output = apply_q_proj_patch_with_projection(
+        mt=mt,
+        source_tokenized=source_tokenized,
+        destination_tokenized=destination_tokenized,
+        projections=projections,
+        token_indices=token_indices,
+    )
+
+    logits = patched_output.logits[:, -1, :]
+    track_tokens = get_options_for_answer(destination_sample)
+    track_token_ids = [
+        get_first_token_id(name=opt, tokenizer=mt.tokenizer, prefix=" ")
+        for opt in track_tokens
+    ] + [
+        source_sample.ans_token_id
+    ]  # also track source ans
+    patched_pred, patched_track = interpret_logits(
+        tokenizer=mt,
+        logits=logits.squeeze(),
+        interested_tokens=track_token_ids + must_track_tokens,
+    )
+
+    ret_dict["patched_predictions"] = patched_pred
+    ret_dict["patched_track"] = patched_track
+
+    if debug:
+        logger.debug("-" * 100)
+        logger.debug(
+            f"target: {destination_sample.metadata['track_type_obj']} | \"{mt.tokenizer.decode(destination_sample.metadata['track_type_obj_token_id'])}\""
+        )
+        logger.debug(f"Patched pred : {[str(pred) for pred in patched_pred]}")
+        logger.debug(
+            f"Patched track: {[str(pred) for tok_id, (rank, pred) in patched_track.items()]}"
+        )
+        logger.debug("-" * 100)
+
+    return ret_dict

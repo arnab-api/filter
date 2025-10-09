@@ -57,31 +57,56 @@ def das_sweep(
     learning_rate: float,
     ortho_reg: float,
     save_dir: PathLike,
+    projection_path: PathLike = None,
     batch_size: int = 8,
 ):
     os.makedirs(save_dir, exist_ok=True)
     for layer in layers:
         logger.info("#" * 100)
         logger.info(f"Processing layer: {layer}")
-        layer_save_dir = os.path.join(save_dir, layer)
-        os.makedirs(layer_save_dir, exist_ok=True)
 
-        # train optimal rotator
-        optimal_rotator, training_losses = get_optimal_rotation(
-            mt=mt,
-            train_set=train_set,
-            layers=[layer],
-            token_mapping=token_mapping,
-            rotation_n_dim=projection_dim,
-            learning_rate=learning_rate,
-            ortho_reg=ortho_reg,
-            n_epochs=epochs,
-            batch_size=batch_size,
-            save_path=layer_save_dir,
-        )
-        # save the losses
-        with open(os.path.join(layer_save_dir, "training_losses.json"), "w") as f:
-            json.dump(training_losses, f, indent=4)
+        if projection_path is None:
+            layer_save_dir = os.path.join(save_dir, layer)
+            os.makedirs(layer_save_dir, exist_ok=True)
+
+            # train optimal rotator
+            optimal_rotator, training_losses = get_optimal_rotation(
+                mt=mt,
+                train_set=train_set,
+                layers=[layer],
+                token_mapping=token_mapping,
+                rotation_n_dim=projection_dim,
+                learning_rate=learning_rate,
+                ortho_reg=ortho_reg,
+                n_epochs=epochs,
+                batch_size=batch_size,
+                save_path=layer_save_dir,
+            )
+            # save the losses
+            with open(os.path.join(layer_save_dir, "training_losses.json"), "w") as f:
+                json.dump(training_losses, f, indent=4)
+
+        else:
+            # load the optimal rotator
+            layer_proj_path = os.path.join(projection_path, layer)
+            assert os.path.exists(
+                layer_proj_path
+            ), f"Projection path {layer_proj_path} does not exist"
+            epoch_files = [
+                f
+                for f in os.listdir(layer_proj_path)
+                if f.startswith("epoch_") and f.endswith(".pt")
+            ]
+            epoch_files = sorted(
+                epoch_files,
+                key=lambda x: int(x.split("_")[1].split(".")[0]),
+                reverse=True,
+            )
+            assert len(epoch_files) > 0, f"No epoch files found in {layer_proj_path}"
+            final_epoch_file = os.path.join(layer_proj_path, epoch_files[0])
+            logger.info(f"Loading projection from {final_epoch_file}")
+            optimal_rotator = torch.load(final_epoch_file, weights_only=False)
+            assert layer in optimal_rotator, f"Layer {layer} not found in projection"
 
         # validate the learned rotator
 
@@ -389,6 +414,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--projection_path",
+        type=str,
+        default=None,
+        help="Will load projections from this path, if specified",
+    )
+
+    parser.add_argument(
         "--train_limit",
         type=int,
         default=1024,
@@ -423,7 +455,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=8,
+        default=32,
     )
 
     parser.add_argument(
@@ -518,6 +550,7 @@ if __name__ == "__main__":
             ortho_reg=1e-1,
             batch_size=args.batch_size,
             save_dir=save_dir,
+            projection_path=args.projection_path,
         )
 
     logger.info("#" * 100)
