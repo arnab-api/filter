@@ -59,7 +59,7 @@ def validate(
     os.makedirs(save_dir, exist_ok=True)
 
     validation_results = []
-    for destination, source in tqdm(validation_set):
+    for destination, source in validation_set:
         # destination = copy.deepcopy(destination)
         # source = copy.deepcopy(source)
         # destination.default_option_style = "bulleted"
@@ -83,7 +83,7 @@ def validate(
             token_indices=token_indices,
             must_track_tokens=list(track_tokens.values()),
             return_clean_predictions=True,
-            debug=False,
+            debug=True,
         )
         patched_pred = pair_result["patched_predictions"]
         patched_track = pair_result["patched_track"]
@@ -109,7 +109,7 @@ def validate(
         print(f"{token_type}")
         ranks = {"clean": [], "patch": []}
         logits = {"clean": [], "patch": []}
-        for result in results:
+        for result in validation_results:
             target_tok_id = result.track_tokens[token_type]
             clean_rank, clean_pred = result.clean_track[target_tok_id]
             patch_rank, patch_pred = result.patched_track[target_tok_id]
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_dir",
         type=str,
-        default="selection/das_projections/sweep",
+        default="selection/dcm_svd/sweep",
         help="Directory to save projections and validation results",
     )
 
@@ -413,11 +413,12 @@ if __name__ == "__main__":
         train_set=train_set,
         q_proj_basis_directions=q_proj_basis_directions,
         query_indices=args.token_indices,
-        epochs=args.epochs,
+        n_epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=1e-2,
         lamb=1e-4,
         save_step=17,
+        loss_fn="match_gold",
     )
 
     # validating
