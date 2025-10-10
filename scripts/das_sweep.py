@@ -65,10 +65,10 @@ def das_sweep(
         logger.info("#" * 100)
         logger.info(f"Processing layer: {layer}")
 
-        if projection_path is None:
-            layer_save_dir = os.path.join(save_dir, layer)
-            os.makedirs(layer_save_dir, exist_ok=True)
+        layer_save_dir = os.path.join(save_dir, layer)
+        os.makedirs(layer_save_dir, exist_ok=True)
 
+        if projection_path is None:
             # train optimal rotator
             optimal_rotator, training_losses = get_optimal_rotation(
                 mt=mt,
