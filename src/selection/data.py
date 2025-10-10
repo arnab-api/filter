@@ -1934,7 +1934,10 @@ Retry count: {retry_count + 1}. Retrying ..."""
 def get_options_for_answer(sample: SelectionSample | CountingSample | YesNoSample):
     if isinstance(sample, SelectionSample):
         if sample.metadata.get("question_type", "obj") == "MCQ":
-            return [chr(ord("a") + i) for i in range(len(sample.options))]
+            return [
+                chr(ord(sample.option_label_start_from) + i)
+                for i in range(len(sample.options))
+            ]
         return sample.options
     elif isinstance(sample, CountingSample):
         return list(COUNT_STR_MAP.values())
