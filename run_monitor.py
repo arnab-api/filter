@@ -5,14 +5,20 @@ import time
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
+# training selection heads
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v 2>&1 | tee select_obj_llama.log'
-COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --mcqify -v 2>&1 | tee select_obj_llama_mcq.log'
+# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --mcqify -v 2>&1 | tee select_obj_llama_mcq.log'
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="counting" --prompt_temp_idx=1 -v 2>&1 | tee count_obj_llama.log'
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="yes_no" --prompt_temp_idx=3 -v 2>&1 | tee yes_no_obj_llama.log'
 # COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 -v 2>&1 | tee select_first_obj_llama.log'
 
+# das sweep
+# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="Qwen/Qwen2.5-72B-Instruct" --train_limit=1024 --validation_limit=512 --epochs=10 --proj_dim=128 --batch_size=32 --layers -1 --train_path="results/selection/samples/train/Qwen2.5-72B-Instruct/select_one/objects" --validation_path="results/selection/samples/validation/Qwen2.5-72B-Instruct/select_one/objects" -v 2>&1 | tee logs/das_sweep_qwen_72_128.log'
+# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="google/gemma-2-27b-it" --projection_path="results/selection/das_projections/sweep/gemma-2-27b-it/128" --validation_limit=512 --validation_path="/disk/u/arnab/Codes/Projects/retrieval/results/selection/samples/validation/gemma-2-27b-it/select_one/profession" --proj_dim=128 --layers 20 22 --save_dir="selection/das_projections/sweep_ood_eval/gemma-27b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_gemma_27_128.log'
+# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --projection_path="results/selection/das_projections/sweep/Llama-3.3-70B-Instruct/128" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --proj_dim=128 --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_128.log'
 
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --save_dir="selection/ques_mixed" --prompt_temp_idx=-1 -v 2>&1 | tee ques_mixed.log'
+COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
+
 
 # Memory threshold in GB
 MEM_THRESHOLD = 42

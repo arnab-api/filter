@@ -417,6 +417,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         learning_rate=1e-2,
         lamb=1e-4,
+        save_path=save_dir,
         save_step=17,
         loss_fn="match_gold",
     )

@@ -86,7 +86,8 @@ class SVD:
     def __post_init__(self):
         # assert self.U.shape[1] == self.S.shape[0]
         # assert self.S.shape[0] == self.Vh.shape[1]
-        assert self.V.shape[0] == self.V.shape[1], "Vh must be square"
+        # assert self.V.shape[0] == self.V.shape[1], "Vh must be square"
+        pass
 
     @property
     def shape(self):
@@ -115,14 +116,20 @@ class SVD:
         return self.U.device
 
     @staticmethod
-    def calculate(matrix: torch.Tensor):
+    def calculate(matrix: torch.Tensor) -> "SVD":
         n, d = matrix.shape
         if n >= d:
-            U, S, V = torch.svd(matrix.to(dtype=torch.float32))
+            # U, S, V = torch.svd(matrix.to(dtype=torch.float32))
+            U, S, Vh = torch.linalg.svd(
+                matrix.to(dtype=torch.float32), full_matrices=False
+            )
+            V = Vh.mH
         else:
-            U, S, V = torch.linalg.svd(
+            U, S, Vh = torch.linalg.svd(
                 matrix.to(dtype=torch.float32), full_matrices=True
             )
+            V = Vh.mH
+
         svd = SVD(U=U, S=S, V=V)
         svd.to_dtype(matrix.dtype)
         svd.to_device(matrix.device)
