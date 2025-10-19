@@ -17,7 +17,9 @@ sys.stderr.reconfigure(line_buffering=True)
 # COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="google/gemma-2-27b-it" --projection_path="results/selection/das_projections/sweep/gemma-2-27b-it/128" --validation_limit=512 --validation_path="/disk/u/arnab/Codes/Projects/retrieval/results/selection/samples/validation/gemma-2-27b-it/select_one/profession" --proj_dim=128 --layers 20 22 --save_dir="selection/das_projections/sweep_ood_eval/gemma-27b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_gemma_27_128.log'
 # COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --projection_path="results/selection/das_projections/sweep/Llama-3.3-70B-Instruct/128" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --proj_dim=128 --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_128.log'
 
-COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
+# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
+
+COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=3 --category="objects" --option_config="position" --task="select_one" --prompt_temp_idx=3 -v --save_dir="test"  --mcqify 2>&1 | tee test_pointer_obj_llama.log'
 
 
 # Memory threshold in GB

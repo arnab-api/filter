@@ -1199,9 +1199,11 @@ def patch_linear_subspaces(
 
 
 def free_gpu_cache():
+    torch.cuda.synchronize()
     # before = torch.cuda.memory_allocated()
     gc.collect()
     torch.cuda.empty_cache()
+    torch.cuda.synchronize()
     # after = torch.cuda.memory_allocated()
     # freed = before - after
 

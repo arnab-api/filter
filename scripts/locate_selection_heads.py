@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import random
@@ -10,6 +11,7 @@ import torch
 from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.selection.data import (
+    CounterFactualSamplePair,
     CountingSample,
     CountingTask,
     MCQify_sample,
@@ -46,6 +48,7 @@ def prepare_dataset(
         SelectOneTask | CountingTask | YesNoTask | SelectFirstTask | SelectLastTask
     ),
     option_config: Literal["distinct", "same", "position"],
+    save_path: PathLike,
     train_limit: int = 512,
     validation_limit: int = 256,
     prompt_template_idx: int = 3,
@@ -75,7 +78,7 @@ def prepare_dataset(
             kwargs["distinct_options"] = distinct_options
         elif isinstance(select_task, SelectOneTask):
             kwargs["distinct_options"] = distinct_options
-            kwargs["mcqify"] = mcqify
+            kwargs["mcqify"] = mcqify and option_config == "position"
             if option_config == "position":
                 n_distractors = random.choice(range(3, 7))
                 kwargs["patch_n_distractors"] = n_distractors
@@ -107,19 +110,50 @@ def prepare_dataset(
         )
 
         if option_config == "position":
-            clean_sample.metadata = {
-                "track_category": "position",
-                "track_type_obj_idx": patch_sample.obj_idx,
-                "track_type_obj": clean_sample.options[patch_sample.obj_idx],
-                "track_type_obj_token_id": get_first_token_id(
-                    name=clean_sample.options[patch_sample.obj_idx],
+            if not mcqify:
+                clean_sample.metadata = {
+                    "track_category": "position",
+                    "track_type_obj_idx": patch_sample.obj_idx,
+                    "track_type_obj": clean_sample.options[patch_sample.obj_idx],
+                    "track_type_obj_token_id": get_first_token_id(
+                        name=clean_sample.options[patch_sample.obj_idx],
+                        tokenizer=mt.tokenizer,
+                        prefix=" ",
+                    ),
+                }
+            else:
+                patch_sample = MCQify_sample(
+                    sample=patch_sample, tokenizer=mt, start_from="a"
+                )
+                patch_sample.ans_token_id = get_first_token_id(
+                    chr(
+                        patch_sample.obj_idx + ord(patch_sample.option_label_start_from)
+                    ),
                     tokenizer=mt.tokenizer,
                     prefix=" ",
-                ),
-            }
+                )
+                clean_sample = MCQify_sample(
+                    sample=clean_sample, tokenizer=mt, start_from="p"
+                )
+                clean_sample.ans_token_id = get_first_token_id(
+                    chr(
+                        clean_sample.obj_idx + ord(clean_sample.option_label_start_from)
+                    ),
+                    tokenizer=mt.tokenizer,
+                    prefix=" ",
+                )
+                # pred_obj_idx = clean_sample.metadata["track_type_obj_idx"] #! to match value
+                pred_obj_idx = patch_sample.obj_idx  #! to match position
+                clean_sample.metadata["track_type_obj_token_id"] = get_first_token_id(
+                    name=chr(ord(clean_sample.option_label_start_from) + pred_obj_idx),
+                    tokenizer=mt.tokenizer,
+                    prefix=" ",
+                )
+
             logger.debug(f"Clean sample metadata: {clean_sample.metadata}")
             #! not really using patch_sample.metadata
             patch_sample.metadata = {}
+
         dataset.append((clean_sample, patch_sample))
         if len(dataset) % 128 == 0:
             logger.debug("=" * 100)
@@ -127,7 +161,32 @@ def prepare_dataset(
             logger.debug("=" * 100)
             free_gpu_cache()
 
-    return dataset[:train_limit], dataset[train_limit:limit]
+    train_set, validation_set = dataset[:train_limit], dataset[train_limit:limit]
+
+    sample_save_dir = os.path.join(save_path, "samples")
+    os.makedirs(sample_save_dir, exist_ok=True)
+    train_save_path = os.path.join(sample_save_dir, "train")
+    validation_save_path = os.path.join(sample_save_dir, "validation")
+
+    for dataset, save_path in [
+        (train_set, train_save_path),
+        (validation_set, validation_save_path),
+    ]:
+        os.makedirs(save_path, exist_ok=True)
+        for sample_idx, (clean_sample, patch_sample) in enumerate(dataset):
+            cf_pair = CounterFactualSamplePair(
+                clean_sample=clean_sample, patch_sample=patch_sample
+            )
+            cf_pair.detensorize()
+            with open(
+                os.path.join(save_path, f"sample_{sample_idx:05d}.json"),
+                "w",
+            ) as f:
+                f.write(json.dumps(cf_pair.to_dict(), indent=2))
+
+        logger.info(f"Saved {len(dataset)} samples to {save_path}")
+
+    return train_set, validation_set
 
 
 @torch.inference_mode()
@@ -304,6 +363,7 @@ def find_optimal_masks(
         prompt_template_idx=prompt_template_idx,
         option_style=option_style,
         distinct_options=distinct_options,
+        save_path=save_path,
     )
     indices_kwargs = {"query_indices": [-2, -1]}
     if optimization_function == get_optimal_head_mask_optimized:
