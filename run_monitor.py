@@ -19,8 +19,9 @@ sys.stderr.reconfigure(line_buffering=True)
 
 # COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
 
-COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=3 --category="objects" --option_config="position" --task="select_one" --prompt_temp_idx=3 -v --save_dir="test"  --mcqify 2>&1 | tee test_pointer_obj_llama.log'
+# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/distinct_options/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee value_obj_llama.log'
 
+COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="position" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/ans_pointer/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee pointer_obj_llama.log'
 
 # Memory threshold in GB
 MEM_THRESHOLD = 42

@@ -338,6 +338,39 @@ def validate(
     logger.debug("=" * 100)
 
 
+def load_dataset(
+    path: PathLike, limit: int, prefix=""
+) -> list[SelectionSample, SelectionSample]:
+    sample_files = [
+        os.path.join(path, f) for f in os.listdir(path) if f.endswith(".json")
+    ]
+    logger.info(f"Found {len(sample_files)} sample files")
+
+    # prefix = "Recall the nationality of these people:\n"
+    # prefix = "Recall which country these landmarks are located in:\n"
+    # prefix = "Think about how these words sound when you say them aloud:\n"
+
+    random.shuffle(sample_files)
+    sample_files = sample_files[:limit]
+    dataset = []
+    for sample_file in sample_files:
+        with open(sample_file, "r") as f:
+            cf_pair_data = json.load(f)
+        cf_pair = CounterFactualSamplePair.from_dict(cf_pair_data)
+        # cf_pair.patch_sample.default_option_style = "bulleted"
+        # cf_pair.clean_sample.default_option_style = "bulleted"
+
+        cf_pair.clean_sample.prompt_template = (
+            prefix + cf_pair.clean_sample.prompt_template
+        )
+        cf_pair.patch_sample.prompt_template = (
+            prefix + cf_pair.patch_sample.prompt_template
+        )
+        dataset.append((cf_pair.clean_sample, cf_pair.patch_sample))
+
+    return dataset
+
+
 def find_optimal_masks(
     mt: ModelandTokenizer,
     select_task: SelectOneTask | SelectOrderTask,
@@ -353,18 +386,6 @@ def find_optimal_masks(
     optimization_function=get_optimal_head_mask_optimized,
     mcqify: bool = False,
 ):
-    train_set, validation_set = prepare_dataset(
-        mt=mt,
-        select_task=select_task,
-        option_config=option_config,
-        mcqify=mcqify,
-        train_limit=train_limit,
-        validation_limit=validation_limit,
-        prompt_template_idx=prompt_template_idx,
-        option_style=option_style,
-        distinct_options=distinct_options,
-        save_path=save_path,
-    )
     indices_kwargs = {"query_indices": [-2, -1]}
     if optimization_function == get_optimal_head_mask_optimized:
         indices_kwargs["add_ques_pos_to_query_indices"] = True
@@ -506,6 +527,13 @@ if __name__ == "__main__":
         help="Whether to convert the samples to multiple-choice questions",
     )
 
+    parser.add_argument(
+        "--load_dataset_from",
+        type=str,
+        default=None,
+        help="Path to load pre-saved dataset from",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -560,6 +588,30 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
 
     logger.info(f"Saving results to {save_dir}")
+
+    if args.load_dataset_from is not None:
+        train_path = os.path.join(args.load_dataset_from, "train")
+        validation_path = os.path.join(args.load_dataset_from, "validation")
+
+        train_set = load_dataset(path=train_path, limit=args.train_limit)
+        validation_set = load_dataset(path=validation_path, limit=args.validation_limit)
+        logger.info(
+            f"Loaded dataset from {args.load_dataset_from} >> {len(train_set)=}, {len(validation_set)=}"
+        )
+
+    else:
+        train_set, validation_set = prepare_dataset(
+            mt=mt,
+            select_task=select_task,
+            option_config=args.option_config,
+            mcqify=args.mcqify,
+            train_limit=args.train_limit,
+            validation_limit=args.validation_limit,
+            prompt_template_idx=args.prompt_temp_idx,
+            option_style=args.option_style,
+            distinct_options=args.option_config in ["distinct", "position"],
+            save_path=save_dir,
+        )
 
     find_optimal_masks(
         mt=mt,
