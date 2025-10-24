@@ -373,18 +373,13 @@ def load_dataset(
 
 def find_optimal_masks(
     mt: ModelandTokenizer,
-    select_task: SelectOneTask | SelectOrderTask,
-    option_config: Literal["distinct", "same", "position"],
     save_path: PathLike,
-    train_limit: int = 512,
-    validation_limit: int = 256,
-    prompt_template_idx: int = 3,
     n_epochs: int = 20,
     batch_size: int = 16,
-    option_style: str = "single_line",
-    distinct_options: bool = True,
-    optimization_function=get_optimal_head_mask_optimized,
-    mcqify: bool = False,
+    optimization_function=get_optimal_head_mask_prev,
+    loss_fn: Literal[
+        "promote_suppress", "match_gold", "increase_logit_in_latents"
+    ] = "promote_suppress",  # for most cases
 ):
     indices_kwargs = {"query_indices": [-2, -1]}
     if optimization_function == get_optimal_head_mask_optimized:
@@ -393,7 +388,12 @@ def find_optimal_masks(
         # indices_kwargs["query_indices"] = [-3, -2, -1]
         indices_kwargs["query_indices"] = [
             -1
-        ]  #! faster and getting better results with only the last token
+        ]  #! much faster and also getting better results with only the last token
+
+    if loss_fn == "increase_logit_in_latents":
+        indices_kwargs["track_logit_locations"] = [
+            (mt.layer_name_format.format(layer_idx), -1) for layer_idx in range(55, 66)
+        ]
 
     optimal_masks, losses = optimization_function(
         mt=mt,
@@ -404,6 +404,7 @@ def find_optimal_masks(
         batch_size=batch_size,
         save_path=save_path,
         save_step=5,
+        loss_fn=loss_fn,
         **indices_kwargs,
     )
     selected_heads = (
@@ -534,9 +535,22 @@ if __name__ == "__main__":
         help="Path to load pre-saved dataset from",
     )
 
+    parser.add_argument(
+        "--loss_fn",
+        type=str,
+        choices=["promote_suppress", "match_gold", "increase_logit_in_latents"],
+        default="promote_suppress",
+        help="Loss function to use for optimization",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
+
+    if args.option_config == "position":
+        assert (
+            args.loss_fn == "promote_suppress"
+        ), "Only promote_suppress loss is supported for option_config = 'position'"
 
     logger.info(f"Arguments: {args}")
 
@@ -615,18 +629,11 @@ if __name__ == "__main__":
 
     find_optimal_masks(
         mt=mt,
-        select_task=select_task,
         save_path=save_dir,
-        train_limit=args.train_limit,
-        validation_limit=args.validation_limit,
-        prompt_template_idx=args.prompt_temp_idx,
-        option_style=args.option_style,
-        distinct_options=args.option_config in ["distinct", "position"],
-        option_config=args.option_config,
         n_epochs=args.n_epochs,
         batch_size=args.batch_size,
         optimization_function=optimization_interface[args.opt_interface],
-        mcqify=args.mcqify,
+        loss_fn=args.loss_fn,
     )
 
     logger.info("#" * 100)

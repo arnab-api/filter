@@ -1233,6 +1233,40 @@ def match_gold_logit_distribution(
     return kldiv_loss, {"kldiv_loss": kldiv_loss.item()}
 
 
+def increase_logit_in_latents(
+    mt: ModelandTokenizer,
+    destination_samples: list,
+    latents: dict[tuple[str, int], torch.FloatTensor],
+    key="track_type_obj",
+    **ignored_kwargs,
+):
+    # logger.debug(f"ignoring kwargs: {ignored_kwargs.keys()}")
+    batch_target_tokens = [
+        get_first_token_id(
+            name=destination_sample.metadata[key], tokenizer=mt.tokenizer, prefix=" "
+        )
+        for destination_sample in destination_samples
+    ]
+    # print(batch_target_tokens)
+
+    location_wise_logits = {key: [] for key in latents}
+    for (module_name, position), latent in latents.items():
+        logit_lens_pred = mt.lm_head(mt.model.norm(latent))  # (batch_size, vocab_size)
+        # print(f"{module_name}, {position} >> {logit_lens_pred.shape}")
+        batch_target_logits = [
+            logit_lens_pred[idx][tok] for idx, tok in enumerate(batch_target_tokens)
+        ]
+        location_wise_logits[(module_name, position)] = torch.stack(
+            batch_target_logits
+        ).mean()
+
+    target_loss = -sum(location_wise_logits.values()) / len(
+        location_wise_logits
+    )  # promote target
+
+    return target_loss, {k: v.item() for k, v in location_wise_logits.items()}
+
+
 def get_optimal_head_mask_prev(
     mt: ModelandTokenizer,
     train_set: list[tuple[SelectionSample, SelectionSample]],
@@ -1247,7 +1281,10 @@ def get_optimal_head_mask_prev(
     cache_q_states_before: bool = False,
     save_path: PathLike | None = None,
     save_step: int = 5,
-    loss_fn: Literal["promote_suppress", "match_gold"] = "promote_suppress",
+    loss_fn: Literal[
+        "promote_suppress", "match_gold", "increase_logit_in_latents"
+    ] = "promote_suppress",
+    track_logit_locations: list[tuple[str, int]] | None = None,
 ):
     hparams = {
         "learning_rate": learning_rate,
@@ -1256,9 +1293,12 @@ def get_optimal_head_mask_prev(
         "batch_size": batch_size,
         "loss_fn": loss_fn,
     }
+    if loss_fn == "increase_logit_in_latents":
+        assert track_logit_locations is not None, "track_logit_locations cannot be None"
     loss_fn = {
         "promote_suppress": promote_target_suppress_distractors,
         "match_gold": match_gold_logit_distribution,
+        "increase_logit_in_latents": increase_logit_in_latents,
     }[loss_fn]
     logger.debug(f"Training with hparams: {hparams}")
     n_layer = mt.n_layer
@@ -1405,23 +1445,51 @@ def get_optimal_head_mask_prev(
                 )
                 return repr
 
-            with baukit.TraceDict(
-                module=mt._model, layers=all_q_proj_modules, edit_output=perform_patch
-            ):
-                output = mt._model(**clean_tokenized)
+            if track_logit_locations is None:
+                with baukit.TraceDict(
+                    module=mt._model,
+                    layers=all_q_proj_modules,
+                    edit_output=perform_patch,
+                ):
+                    output = mt._model(**clean_tokenized)
 
-            logits = output.logits[:, -1, :]
+                logits = output.logits[:, -1, :]
 
-            target_loss, loss_dict = loss_fn(
-                mt=mt,
-                source_samples=patch_samples,
-                destination_samples=clean_samples,
-                patched_logits=logits,
-            )
+                target_loss, loss_dict = loss_fn(
+                    mt=mt,
+                    source_samples=patch_samples,
+                    destination_samples=clean_samples,
+                    patched_logits=logits,
+                )
+            else:
+                latents = {}
+                track_logit_modules = [
+                    module_name for module_name, _ in track_logit_locations
+                ]
+                with baukit.TraceDict(
+                    module=mt._model,
+                    layers=all_q_proj_modules + track_logit_modules,
+                    edit_output=perform_patch,
+                ) as trace_dict:
+                    output = mt._model(**clean_tokenized)
+
+                latents = {
+                    (layer_name, token_idx): trace_dict[layer_name].output[
+                        :, token_idx, :
+                    ]
+                    for layer_name, token_idx in track_logit_locations
+                }
+
+                target_loss, loss_dict = loss_fn(
+                    mt=mt,
+                    destination_samples=clean_samples,
+                    latents=latents,
+                )
 
             # mask_loss
-            mask_l1_loss = torch.abs(mask).sum() * lamb
-            loss = target_loss + mask_l1_loss
+            # mask_l1_loss = torch.abs(mask).sum() * lamb
+            mask_l1_loss = mask.float().norm(p=1) * lamb  #! testing
+            loss = target_loss.float() + mask_l1_loss.to(target_loss.device)
             loss_dict_indv = (
                 f"{', '.join([f'{k}={v:.3f}' for k, v in loss_dict.items()])}"
             )
