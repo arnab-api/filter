@@ -1985,7 +1985,13 @@ def get_counterfactual_samples_within_task(
     # )
 
     if clean_category is None:
-        clean_category = random.choice(list(set(categories) - {patch_category}))
+        clean_category = random.choice(
+            list(
+                set(categories)
+                - {patch_category}
+                - set(task.exclude_for_category(patch_category))
+            )
+        )
 
     clean_options = task.category_wise_examples[clean_category]
     random.shuffle(clean_options)
@@ -2179,12 +2185,21 @@ def get_counterfactual_samples_within_task(
     )
 
     if mcqify:
-        patch_sample = MCQify_sample(tokenizer=mt.tokenizer, sample=patch_sample)
-        clean_sample = MCQify_sample(tokenizer=mt.tokenizer, sample=clean_sample)
+        start_options = ["a", "p"]
+        patch_start = random.choice(start_options)
+        clean_start = random.choice(list(set(start_options) - {patch_start}))
+        patch_sample = MCQify_sample(
+            tokenizer=mt.tokenizer, sample=patch_sample, start_from=patch_start
+        )
+        clean_sample = MCQify_sample(
+            tokenizer=mt.tokenizer, sample=clean_sample, start_from=clean_start
+        )
 
         target_obj_idx = clean_sample.metadata["track_type_obj_idx"]
         clean_sample.metadata["track_type_obj_token_id"] = get_first_token_id(
-            name=chr(ord("a") + target_obj_idx), tokenizer=mt.tokenizer, prefix=" "
+            name=chr(ord(clean_start) + target_obj_idx),
+            tokenizer=mt.tokenizer,
+            prefix=" ",
         )
 
     if "qwen" in mt.name.lower():
@@ -2199,9 +2214,19 @@ def get_counterfactual_samples_within_task(
             clean_sample_2.options = clean_options
             clean_sample_2.obj = clean_sample.metadata["track_type_obj"]
             clean_sample_2.obj_idx = clean_sample.metadata["track_type_obj_idx"]
-            clean_sample_2.ans_token_id = clean_sample.metadata[
-                "track_type_obj_token_id"
-            ]
+            if not mcqify:
+                clean_sample_2.ans_token_id = clean_sample.metadata[
+                    "track_type_obj_token_id"
+                ]
+            else:
+                clean_sample_2.ans_token_id = get_first_token_id(
+                    name=chr(
+                        ord(clean_sample_2.option_label_start_from)
+                        + clean_sample_2.obj_idx
+                    ),
+                    tokenizer=mt.tokenizer,
+                    prefix=" ",
+                )
             test_samples.append(clean_sample_2)
 
         for sample in test_samples:
@@ -2224,17 +2249,25 @@ def get_counterfactual_samples_within_task(
                 logger.error(
                     f'Prediction mismatch: {track_options[list(track_options.keys())[0]]}["{mt.tokenizer.decode(predictions[0].token_id)}"] != {sample.ans_token_id}["{mt.tokenizer.decode(sample.ans_token_id)}"]'
                 )
+                # return ValueError("Testing")
                 return get_counterfactual_samples_within_task(
-                    mt=mt,
                     task=task,
+                    mt=mt,
                     patch_category=patch_category,
                     clean_category=clean_category,
                     shuffle_clean_options=shuffle_clean_options,
-                    prompt_template_idx=prompt_template_idx,
-                    option_style=option_style,
                     filter_by_lm_prediction=filter_by_lm_prediction,
                     distinct_options=distinct_options,
                     n_distractors=n_distractors,
+                    patch_n_distractors=patch_n_distractors,
+                    clean_n_distractors=clean_n_distractors,
+                    prompt_template_idx=prompt_template_idx,
+                    patch_prompt_template_idx=patch_prompt_template_idx,
+                    clean_prompt_template_idx=clean_prompt_template_idx,
+                    option_style=option_style,
+                    patch_option_style=patch_option_style,
+                    clean_option_style=clean_option_style,
+                    mcqify=mcqify,
                 )
             sample.prediction = predictions
 
@@ -2729,7 +2762,13 @@ def get_counterfactual_samples_within_first_task(
 
     # Set the clean category
     if clean_category is None:
-        clean_category = random.choice(list(set(categories) - {patch_category}))
+        clean_category = random.choice(
+            list(
+                set(categories)
+                - {patch_category}
+                - set(task.exclude_for_category(patch_category))
+            )
+        )
 
     # Set the clean objects
     clean_objects = random.sample(

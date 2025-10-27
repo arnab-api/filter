@@ -19,12 +19,20 @@ sys.stderr.reconfigure(line_buffering=True)
 
 # COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
 
-COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/distinct_options/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee value_obj_llama.log'
-
+# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/distinct_options/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee value_obj_llama.log'
 # COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="position" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/ans_pointer/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee pointer_obj_llama.log'
 
+# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_one_gold.log'
+
+# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="google/gemma-2-27b-it" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" --mcqify -v 2>&1 | tee logs/gemma_27b_select_one_mcq_gold.log'
+
+# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_first.log'
+
+COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_last" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_last.log'
+
+
 # Memory threshold in GB
-MEM_THRESHOLD = 42
+MEM_THRESHOLD = 60
 CUDA_INDEX = 0
 
 # Check interval in seconds (10 minutes)

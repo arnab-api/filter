@@ -78,7 +78,7 @@ def prepare_dataset(
             kwargs["distinct_options"] = distinct_options
         elif isinstance(select_task, SelectOneTask):
             kwargs["distinct_options"] = distinct_options
-            kwargs["mcqify"] = mcqify and option_config == "position"
+            kwargs["mcqify"] = mcqify
             if option_config == "position":
                 n_distractors = random.choice(range(3, 7))
                 kwargs["patch_n_distractors"] = n_distractors
