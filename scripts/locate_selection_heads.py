@@ -12,15 +12,12 @@ from src.functional import free_gpu_cache
 from src.models import ModelandTokenizer
 from src.selection.data import (
     CounterFactualSamplePair,
-    CountingSample,
     CountingTask,
     MCQify_sample,
     SelectFirstTask,
     SelectionSample,
     SelectLastTask,
     SelectOneTask,
-    SelectOrderTask,
-    YesNoSample,
     YesNoTask,
     get_counterfactual_samples_interface,
 )

@@ -1,3 +1,6 @@
+# TODO: prune the dependencies. definitely don't need all these packages.
+#! `baukit` needs to installed separately with `pip install git+https://github.com/davidbau/baukit`
+
 name: connection
 channels:
   - conda-forge

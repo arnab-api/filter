@@ -1,0 +1,19 @@
+MODEL_DIR: "models"   # relative path. change to your absolute path if needed
+RESULTS_DIR: "results"
+HPARAMS_DIR: "hparams"
+DATA_DIR: "data"
+GPT4O_CACHE_DIR: "data/LLM_CACHE/gpt4o_cache"
+CLAUDE_CACHE_DIR: "data/LLM_CACHE/claude_cache"
+WIMBD_CONFIG: "es_config_dolma_1_7_2.yml"
+# HF_CACHE: "/disk/u/models"  will use default hf cache if this is not set
+
+OPENAI_KEY: ""
+CLAUDE_KEY: ""
+HF_WRITE: ""
+GEMINI_KEY: ""
+WANDB_KEY: ""
+GOODFIRE_KEY: ""
+
+# for deploying remote jobs on baulab machines
+# BAULAB_PASS: "<password>"
+# BAULAB_USER: "arnab"

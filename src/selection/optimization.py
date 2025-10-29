@@ -19,6 +19,7 @@ from src.functional import (
     interpret_logits,
     patch_linear_subspaces,
     patch_with_baukit,
+    repeat_kv,
 )
 from src.hooking.llama_attention import LlamaAttentionPatcher
 from src.models import ModelandTokenizer
@@ -763,9 +764,6 @@ def get_optimal_head_mask_optimized(
     return mask.round().detach().cpu(), losses
 
 
-from src.selection.functional import find_quesmark_pos
-
-
 @torch.inference_mode()
 def validate_q_proj_ie_on_sample_pair(
     mt: ModelandTokenizer,
@@ -1100,8 +1098,6 @@ def validate_q_proj_ie_on_sample_pair(
 
 ########################### Legacy code below ###########################
 # keeping to check performance
-
-from src.functional import repeat_kv
 
 
 @torch.inference_mode()
