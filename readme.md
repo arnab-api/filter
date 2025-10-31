@@ -1,5 +1,5 @@
 # LLMs Process Lists With General Filter Heads
-### [Project Website]() | [Arxiv Preprint]()
+### [Project Website](https://filter.baulab.info/) | [Arxiv Preprint](https://arxiv.org/pdf/2510.26784)
 
 This repository contains code, data, and visualizations for the paper "LLMs Process Lists With General Filter Heads".
 
@@ -8,6 +8,9 @@ How does an LLM perform *filtering* operation over a list of items? We find that
 <p align="center">
 <img src="notebooks/figures/fig_1_sliced-crop-1.png" style="width:100%;"/>
 </p> 
+
+Checkout [filter.baulab.info](http://filter.baulab.info) for more details.
+
 
 ## Setup
 
@@ -18,10 +21,9 @@ conda env create -f conda_env.yml
 ```
 
 * Some of the packages in `conda_env.yml` won't be strictly required for the code to run. We will clean this up in the future.
-* `baukit` may not get installed using conda. Please install it separately using `pip install git+https://github.com/davidbau/baukit`.
+* `baukit` may not get installed with conda. Please install it separately using `pip install git+https://github.com/davidbau/baukit`.
 * You will need to have a `env.yml` file (similar to the [env_demo.yml](env_demo.yml)) in the root directory of the project.
 
-Checkout [filter.baulab.info](http://filter.baulab.info) for more details.
 
 ## Code
 * Checkout the [demo](demo.ipynb) notebook for a quick overview of the main idea.
@@ -41,7 +43,7 @@ Please refer to the script for additional arguments.
     title={LLMs Process Lists With General Filter Heads}, 
     author={Arnab Sen Sharma and Giordano Rogers and Natalie Shapira and David Bau},
     year={2025},
-    eprint={},
+    eprint={2510.26784},
     archivePrefix={arXiv},
     primaryClass={cs.CL}
 }
