@@ -159,7 +159,10 @@ def visualize_attn_matrix(
         if end_at is None
         else attn_matrix.squeeze()[q_index][start_from:end_at]
     )
-    tokens = tokens[start_from] if end_at is None else tokens[start_from:end_at]
+    tokens = tokens[start_from:] if end_at is None else tokens[start_from:end_at]
+    assert (
+        len(tokens) == attn_matrix.shape[0]
+    ), f"Shape mismatch: {len(tokens)=} | {attn_matrix.shape=}"
     display(colored_tokens(tokens=tokens, values=attn_matrix, **vis_args))
 
 
