@@ -377,6 +377,7 @@ def find_optimal_masks(
     loss_fn: Literal[
         "promote_suppress", "match_gold", "increase_logit_in_latents"
     ] = "promote_suppress",  # for most cases
+    no_sparsity_loss: bool = False,
 ):
     indices_kwargs = {"query_indices": [-2, -1]}
     if optimization_function == get_optimal_head_mask_optimized:
@@ -402,6 +403,7 @@ def find_optimal_masks(
         save_path=save_path,
         save_step=5,
         loss_fn=loss_fn,
+        add_sparsity_loss=not no_sparsity_loss,  # default True
         **indices_kwargs,
     )
     selected_heads = (
@@ -425,14 +427,13 @@ if __name__ == "__main__":
         type=str,
         choices=[
             "meta-llama/Llama-3.1-8B-Instruct",
-            "meta-llama/Llama-3.1-70B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
             "Qwen/Qwen2.5-14B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
             "google/gemma-2-27b-it",
             "google/gemma-2-9b-it",
-            "openai/gpt-oss-20b"
+            "openai/gpt-oss-20b",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",
@@ -524,6 +525,12 @@ if __name__ == "__main__":
         "--mcqify",
         action="store_true",
         help="Whether to convert the samples to multiple-choice questions",
+    )
+
+    parser.add_argument(
+        "--no_sparsity_loss",
+        action="store_true",
+        help="Whether to disable sparsity loss during optimization",
     )
 
     parser.add_argument(
@@ -632,6 +639,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         optimization_function=optimization_interface[args.opt_interface],
         loss_fn=args.loss_fn,
+        no_sparsity_loss=args.no_sparsity_loss,
     )
 
     logger.info("#" * 100)

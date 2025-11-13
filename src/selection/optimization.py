@@ -1281,6 +1281,7 @@ def get_optimal_head_mask_prev(
         "promote_suppress", "match_gold", "increase_logit_in_latents"
     ] = "promote_suppress",
     track_logit_locations: list[tuple[str, int]] | None = None,
+    add_sparsity_loss: bool = True,
 ):
     hparams = {
         "learning_rate": learning_rate,
@@ -1485,7 +1486,10 @@ def get_optimal_head_mask_prev(
             # mask_loss
             # mask_l1_loss = torch.abs(mask).sum() * lamb
             mask_l1_loss = mask.float().norm(p=1) * lamb  #! testing
-            loss = target_loss.float() + mask_l1_loss.to(target_loss.device)
+            loss = target_loss.float()
+            if add_sparsity_loss:
+                loss += mask_l1_loss.to(target_loss.device)
+
             loss_dict_indv = (
                 f"{', '.join([f'{k}={v:.3f}' for k, v in loss_dict.items()])}"
             )
