@@ -93,6 +93,7 @@ class ModelandTokenizer(LanguageModel):
             or is_pythia_variant(self)
             or is_qwen_variant(self)
             or is_olmo_variant(self)
+            or is_gpt_oss_variant(self)
         ) is False:
             logger.error(
                 f"Unknown model type: {type(unwrap_model(self)).__name__}. Parsing may fail."
@@ -112,6 +113,7 @@ class ModelandTokenizer(LanguageModel):
             or is_gemma_variant(self)
             or is_qwen_variant(self)
             or is_olmo_variant(self)
+            or is_gpt_oss_variant(self)
         ):
             fields["mlp_module_name_format"] = "model.layers.{}.mlp"
             fields["attn_module_name_format"] = "model.layers.{}.self_attn"
@@ -292,6 +294,20 @@ def is_llama_variant(mt: Model | ModelandTokenizer) -> bool:
     return False
 
 
+def is_gpt_oss_variant(mt: Model | ModelandTokenizer) -> bool:
+    """Determine if model/tokenizer is gpt-oss variant."""
+    if isinstance(mt, ModelandTokenizer) or isinstance(mt, LanguageModel):
+        mt = unwrap_model(mt)
+    if isinstance(mt, transformers.GptOssForCausalLM):
+        return True
+    if hasattr(mt, "config"):
+        config = mt.config
+        if hasattr(config, "_name_or_path"):
+            name = config._name_or_path
+            return "gpt-oss" in name.lower()
+    return False
+
+
 def is_gemma_variant(mt: Model | ModelandTokenizer) -> bool:
     """Determine if model/tokenizer is gemma variant."""
     if isinstance(mt, ModelandTokenizer) or isinstance(mt, LanguageModel):
@@ -356,6 +372,7 @@ def determine_embedding_layer_path(model: ModelandTokenizer | Model) -> str:
         or is_gemma_variant(model)
         or is_qwen_variant(model)
         or is_olmo_variant(model)
+        or is_gpt_oss_variant(model)
     ):
         return "model.embed_tokens"
     elif is_pythia_variant(model):
@@ -373,6 +390,7 @@ def determine_final_layer_norm_path(model: ModelandTokenizer | Model) -> str:
         or is_gemma_variant(model)
         or is_qwen_variant(model)
         or is_olmo_variant(model)
+        or is_gpt_oss_variant(model)
     ):
         return "model.norm"
     elif is_pythia_variant(model):
@@ -390,6 +408,7 @@ def determine_lm_head_path(model: ModelandTokenizer | Model) -> str:
         or is_gemma_variant(model)
         or is_qwen_variant(model)
         or is_olmo_variant(model)
+        or is_gpt_oss_variant(model)
     ):
         return "lm_head"
     elif is_pythia_variant(model):
@@ -409,6 +428,7 @@ def determine_layers(model: ModelandTokenizer | Model) -> tuple[int, ...]:
         or is_gemma_variant(model)
         or is_qwen_variant(model)
         or is_olmo_variant(model)
+        or is_gpt_oss_variant(model)
     ):
         n_layer = model.config.num_hidden_layers
     else:
@@ -432,6 +452,7 @@ def determine_layer_name_format(
         or is_gemma_variant(model)
         or is_qwen_variant(model)
         or is_olmo_variant(model)
+        or is_gpt_oss_variant(model)
     ):
         return "model.layers.{}"
     elif is_pythia_variant(model):

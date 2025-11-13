@@ -424,7 +424,6 @@ if __name__ == "__main__":
         "--model",
         type=str,
         choices=[
-            "meta-llama/Llama-3.2-3B",
             "meta-llama/Llama-3.1-8B-Instruct",
             "meta-llama/Llama-3.1-70B-Instruct",
             "meta-llama/Llama-3.3-70B-Instruct",
@@ -432,6 +431,8 @@ if __name__ == "__main__":
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
             "google/gemma-2-27b-it",
+            "google/gemma-2-9b-it",
+            "openai/gpt-oss-20b"
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",

@@ -516,7 +516,7 @@ class SelectOneTask(DataClassJsonMixin):
         )
 
         # logger.debug(f"{subj=}")
-        print(category, ">>", category_wise_examples[category].values)
+        # print(category, ">>", category_wise_examples[category].values)
         obj = random.choice(
             (
                 category_wise_examples[category]
