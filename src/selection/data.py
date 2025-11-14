@@ -19,7 +19,7 @@ from src.models import ModelandTokenizer, unwrap_tokenizer
 from src.selection.utils import KeyedSet, get_first_token_id, verify_correct_option
 from src.tokens import find_token_range, prepare_input
 from src.utils.env_utils import DEFAULT_DATA_DIR
-from src.utils.typing import PathLike, PredictedToken
+from src.utils.typing import PathLike, PredictedToken, Tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ class SelectionSample(DataClassJsonMixin):
 
 
 def MCQify_sample(
-    tokenizer: ModelandTokenizer, sample: SelectionSample, start_from="a"
+    tokenizer: ModelandTokenizer | Tokenizer, sample: SelectionSample, start_from="a"
 ) -> SelectionSample:
     tokenizer = unwrap_tokenizer(tokenizer)
     sample = copy.deepcopy(sample)
@@ -1289,6 +1289,10 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
             category_wise_examples[category].values, k=n_options
         )
 
+        exclude_distractor_categories = list(
+            set(exclude_distractor_categories + self.exclude_for_category(category))
+        )
+
         distractors = []
         while len(distractors) < n_distractors:
             other_category = random.choice(
@@ -1722,6 +1726,8 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
         sample.options = sample.options + additional_items
         random.shuffle(sample.options)
 
+        # print(sample.options)
+
         category_items = [sample.obj] + additional_items
         obj, obj_idx = None, None
         for idx, option in enumerate(sample.options):
@@ -1733,7 +1739,8 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
 
         sample.obj = obj
         sample.obj_idx = obj_idx
-        sample.ans_token_id = get_first_token_id(obj, mt.tokenizer, prefix=" ")
+        sample.answer = obj
+        sample.ans_token_id = get_first_token_id(sample.obj, mt.tokenizer, prefix=" ")
         sample.prompt_template = self.prompt_templates[prompt_template_idx]
         sample.default_option_style = option_style
 
@@ -1875,6 +1882,7 @@ Categories: {", ".join(f"{cat}({len(examples)})" for cat, examples in self.categ
 
         sample.obj = obj
         sample.obj_idx = obj_idx
+        sample.answer = obj
         sample.ans_token_id = get_first_token_id(obj, mt.tokenizer, prefix=" ")
         sample.prompt_template = self.prompt_templates[prompt_template_idx]
         sample.default_option_style = option_style
