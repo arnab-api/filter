@@ -378,6 +378,7 @@ def find_optimal_masks(
         "promote_suppress", "match_gold", "increase_logit_in_latents"
     ] = "promote_suppress",  # for most cases
     no_sparsity_loss: bool = False,
+    sparsity_lambda: float = 2e-2, #! optimized for llama-70b
 ):
     indices_kwargs = {"query_indices": [-2, -1]}
     if optimization_function == get_optimal_head_mask_optimized:
@@ -398,7 +399,7 @@ def find_optimal_masks(
         train_set=train_set,
         learning_rate=1e-2,
         n_epochs=n_epochs,
-        lamb=2e-2,  #! optimized for llama-70b
+        lamb=sparsity_lambda,
         batch_size=batch_size,
         save_path=save_path,
         save_step=5,
@@ -548,6 +549,13 @@ if __name__ == "__main__":
         help="Loss function to use for optimization",
     )
 
+    parser.add_argument(
+        "--sparsity_lambda",
+        type=float,
+        default=1e-2,
+        help="Sparsity lambda for optimization",
+    )
+
     args = parser.parse_args()
     logging_utils.configure(args)
     experiment_utils.setup_experiment(args)
@@ -640,6 +648,7 @@ if __name__ == "__main__":
         optimization_function=optimization_interface[args.opt_interface],
         loss_fn=args.loss_fn,
         no_sparsity_loss=args.no_sparsity_loss,
+        sparsity_lambda=args.sparsity_lambda,
     )
 
     logger.info("#" * 100)

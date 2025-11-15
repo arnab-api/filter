@@ -1485,7 +1485,7 @@ def get_optimal_head_mask_prev(
 
             # mask_loss
             # mask_l1_loss = torch.abs(mask).sum() * lamb
-            mask_l1_loss = mask.float().norm(p=1) * lamb  #! testing
+            mask_l1_loss = mask.float().norm(p=1) * lamb
             loss = target_loss.float()
             if add_sparsity_loss:
                 loss += mask_l1_loss.to(target_loss.device)
