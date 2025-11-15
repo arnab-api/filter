@@ -1,38 +1,29 @@
 import subprocess
-import sys
 import time
+import sys
 
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-# training selection heads
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v 2>&1 | tee select_obj_llama.log'
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --mcqify -v 2>&1 | tee select_obj_llama_mcq.log'
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="counting" --prompt_temp_idx=1 -v 2>&1 | tee count_obj_llama.log'
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="yes_no" --prompt_temp_idx=3 -v 2>&1 | tee yes_no_obj_llama.log'
-# COMMAND_TO_RUN = 'python -m scripts.train_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 -v 2>&1 | tee select_first_obj_llama.log'
+lmdas = [
+    0, 
+    2e-4, 
+    2e-3, 
+    # 2e-2, 
+    # 2e-1, 
+    1.0
+]
 
-# das sweep
-# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="Qwen/Qwen2.5-72B-Instruct" --train_limit=1024 --validation_limit=512 --epochs=10 --proj_dim=128 --batch_size=32 --layers -1 --train_path="results/selection/samples/train/Qwen2.5-72B-Instruct/select_one/objects" --validation_path="results/selection/samples/validation/Qwen2.5-72B-Instruct/select_one/objects" -v 2>&1 | tee logs/das_sweep_qwen_72_128.log'
-# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="google/gemma-2-27b-it" --projection_path="results/selection/das_projections/sweep/gemma-2-27b-it/128" --validation_limit=512 --validation_path="/disk/u/arnab/Codes/Projects/retrieval/results/selection/samples/validation/gemma-2-27b-it/select_one/profession" --proj_dim=128 --layers 20 22 --save_dir="selection/das_projections/sweep_ood_eval/gemma-27b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_gemma_27_128.log'
-# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --projection_path="results/selection/das_projections/sweep/Llama-3.3-70B-Instruct/128" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --proj_dim=128 --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/128" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_128.log'
+JOBS = [
+    {
+        'name': f'lambda_{lmda}',
+        'command': f'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --save_dir="selection/lamb_search/{lmda}" --sparsity_lambda={lmda} --load_dataset_from="results/selection/optimized_heads/Llama-3.3-70B-Instruct/distinct_options/select_one/legacy/samples" -v 2>&1 | tee logs/lamb_{lmda}.log'
+    } for lmda in lmdas
+]
 
-# COMMAND_TO_RUN = 'python -m scripts.das_sweep --model="meta-llama/Llama-3.3-70B-Instruct" --validation_limit=512 --validation_path="results/selection/samples/validation/Llama-3.3-70B-Instruct/select_one/profession" --full_rank --layers -1 --save_dir="selection/das_projections/sweep_ood_eval/llama_70b/full" -v 2>&1 | tee logs/das_sweep_ood_eval_llama_70b_full.log'
-
-# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/distinct_options/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee value_obj_llama.log'
-# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="position" --task="select_one" --prompt_temp_idx=3 -v  --mcqify --load_dataset_from="results/selection/ov_contribution/Llama-3.3-70B-Instruct/ans_pointer/select_one_mcq/legacy/samples" --save_dir="ov_contribution" 2>&1 | tee pointer_obj_llama.log'
-
-# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_one_gold.log'
-
-# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="google/gemma-2-27b-it" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_one" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" --mcqify -v 2>&1 | tee logs/gemma_27b_select_one_mcq_gold.log'
-
-# COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_first" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_first.log'
-
-COMMAND_TO_RUN = 'python -m scripts.locate_selection_heads --model="meta-llama/Llama-3.3-70B-Instruct" --train_limit=2048 --validation_limit=1024 --n_epochs=10 --category="objects" --option_config="distinct" --task="select_last" --prompt_temp_idx=3 --loss_fn="match_gold" --batch_size=32 --save_dir="selection/optimized_heads_gold" -v 2>&1 | tee logs/llama_70b_select_last.log'
-
-
+################################################################################################################################################################
 # Memory threshold in GB
-MEM_THRESHOLD = 60
+MEM_THRESHOLD = 40
 CUDA_INDEX = 0
 
 # Check interval in seconds (10 minutes)
@@ -64,12 +55,11 @@ def get_gpu_free_memory():
         return 0
 
 
-def main():
-    print(
-        f"Starting GPU monitor. Waiting for cuda:0 to have more than {MEM_THRESHOLD}GB free memory."
-    )
+def wait_for_gpu_memory():
+    """Wait until GPU has enough free memory."""
+    print(f"Waiting for cuda:{CUDA_INDEX} to have more than {MEM_THRESHOLD}GB free memory.")
     print(f"Will check every {CHECK_INTERVAL/60} minutes.")
-
+    
     while True:
         free_memory = get_gpu_free_memory()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -77,29 +67,58 @@ def main():
         print(f"[{timestamp}] Free GPU memory: {free_memory:.2f}GB")
 
         if free_memory > MEM_THRESHOLD:
-            print(
-                f"GPU has {free_memory:.2f}GB of free memory, which exceeds threshold of {MEM_THRESHOLD}GB."
-            )
-            print("=" * 80)
-            print(f"Running command: {COMMAND_TO_RUN}")
-            print("=" * 80)
-
-            try:
-                # Run the command when memory threshold is met
-                subprocess.run(COMMAND_TO_RUN, shell=True, check=True)
-                print("Command completed successfully. Exiting.")
-                break
-            except subprocess.CalledProcessError as e:
-                print(f"Error running command: {e}")
-                sys.exit(1)
+            print(f"GPU has {free_memory:.2f}GB of free memory, which exceeds threshold of {MEM_THRESHOLD}GB.")
+            return free_memory
         else:
-            print(
-                f"Not enough GPU memory available. Waiting {CHECK_INTERVAL/60} minutes before checking again..."
-            )
+            print(f"Not enough GPU memory available. Waiting {CHECK_INTERVAL/60} minutes before checking again...")
             time.sleep(CHECK_INTERVAL)
 
 
+def run_job(job_info, job_num, total_jobs):
+    """Run a single job."""
+    job_name = job_info['name']
+    command = job_info['command']
+    
+    print("\n" + "=" * 80)
+    print(f"JOB {job_num}/{total_jobs}: {job_name}")
+    print("=" * 80)
+    print(f"Command: {command}")
+    print("=" * 80)
+
+    try:
+        subprocess.run(command, shell=True, check=True)
+        print(f"\n✓ Job {job_num}/{total_jobs} ({job_name}) completed successfully.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"\n✗ Error running job {job_num}/{total_jobs} ({job_name}): {e}")
+        return False
+
+
+def main():
+    print(">>> Running GPU Job Queue <<<")
+    print(f"Total jobs in queue: {len(JOBS)}")
+    print(f"GPU threshold: {MEM_THRESHOLD}GB on cuda:{CUDA_INDEX}")
+    print(f"Check interval: {CHECK_INTERVAL/60} minutes\n")
+
+    for i, job in enumerate(JOBS, 1):
+        print(f"\n{'='*80}")
+        print(f"Preparing to run job {i}/{len(JOBS)}: {job['name']}")
+        print(f"{'='*80}")
+        
+        # Wait for GPU memory to be available
+        wait_for_gpu_memory()
+        
+        # Run the job
+        success = run_job(job, i, len(JOBS))
+        
+        if not success:
+            print("\nJob failed. Auto-continuing to next job...")
+            continue
+    
+    print("\n" + "="*80)
+    print("All jobs completed!")
+    print("="*80)
+
+
 if __name__ == "__main__":
-    print(">>> Running GPU monitor <<<")
-    print(f"{COMMAND_TO_RUN}")
     main()
