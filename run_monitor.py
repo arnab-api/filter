@@ -6,12 +6,13 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 lmdas = [
-    0, 
-    2e-4, 
-    2e-3, 
+    # 0, 
+    2e-5,
+    # 2e-4, 
+    # 2e-3, 
     # 2e-2, 
     # 2e-1, 
-    1.0
+    # 1.0
 ]
 
 JOBS = [
