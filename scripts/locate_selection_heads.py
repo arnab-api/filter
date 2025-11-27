@@ -435,6 +435,7 @@ if __name__ == "__main__":
             "google/gemma-2-27b-it",
             "google/gemma-2-9b-it",
             "openai/gpt-oss-20b",
+            "allenai/Olmo-3-1125-32B",
         ],
         default="meta-llama/Llama-3.3-70B-Instruct",
         help="Model identifier",

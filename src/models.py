@@ -345,8 +345,10 @@ def is_olmo_variant(mt: Model | ModelandTokenizer) -> bool:
     """Determine if model/tokenizer is olmo2 variant."""
     if isinstance(mt, ModelandTokenizer) or isinstance(mt, LanguageModel):
         mt = unwrap_model(mt)
-    if isinstance(mt, transformers.Olmo2ForCausalLM) or isinstance(
-        mt, transformers.OlmoForCausalLM
+    if (
+        isinstance(mt, transformers.Olmo2ForCausalLM)
+        or isinstance(mt, transformers.OlmoForCausalLM)
+        or isinstance(mt, transformers.Olmo3ForCausalLM)
     ):
         return True
     if hasattr(mt, "config"):

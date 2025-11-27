@@ -30,6 +30,7 @@ Model = (
     | transformers.OlmoForCausalLM
     | transformers.Qwen3ForCausalLM
     | transformers.GptOssForCausalLM
+    | transformers.Olmo3ForCausalLM
 )
 Tokenizer = transformers.PreTrainedTokenizerFast
 TokenizerOffsetMapping = Sequence[tuple[int, int]]
